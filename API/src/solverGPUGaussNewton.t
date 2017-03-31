@@ -44,17 +44,19 @@ local cd = macro(function(apicall)
     local apicallstr = tostring(apicall)
     local filename = debug.getinfo(1,'S').source
     return quote
-        var str = [apicallstr]
-        var r = apicall
-        if r ~= 0 then  
-            C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
-            C.printf("In call: %s", str)
-            C.printf("In file: %s\n", filename)
-            C.exit(r)
-        end
-    in
-        r
-    end end)
+               var str = [apicallstr]
+               var r = apicall
+               if r ~= 0 then  
+                   C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
+                   C.printf("In call: %s", str)
+                   C.printf("In file: %s\n", filename)
+                   C.exit(r)
+               end
+           in
+               r
+           end 
+end)
+
 if initialization_parameters.use_cusparse then
     local cusparsepath = "/usr/local/cuda"
     local cusparselibpath = "/lib64/libcusparse.dylib"
@@ -99,6 +101,7 @@ return function(problemSpec)
     
     local nUnknowns,nResidualsExp,nnzExp = 0,`0,`0
     local parametersSym = symbol(&problemSpec:ParameterType(),"parameters")
+
     local function numberofelements(ES)
         if ES.kind.kind == "CenteredFunction" then
             return ES.kind.ispace:cardinality()
@@ -106,6 +109,7 @@ return function(problemSpec)
             return `parametersSym.[ES.kind.graphname].N
         end
     end
+
     if problemSpec.energyspecs then
         for i,image in ipairs(UnknownType.images) do
             imagename_to_unknown_offset[image.name] = nUnknowns
@@ -152,64 +156,68 @@ return function(problemSpec)
     
 
     local struct PlanData {
-		plan : opt.Plan
-		parameters : problemSpec:ParameterType()
+        plan : opt.Plan
+        parameters : problemSpec:ParameterType()
         solverparameters : SolverParameters
-		scratch : &opt_float
+        scratch : &opt_float
 
-		delta : TUnknownType	--current linear update to be computed -> num vars
-		r : TUnknownType		--residuals -> num vars	--TODO this needs to be a 'residual type'
+        delta : TUnknownType	--current linear update to be computed -> num vars
+        r : TUnknownType		--residuals -> num vars	--TODO this needs to be a 'residual type'
         b : TUnknownType        --J^TF. Constant during inner iterations, only used to recompute r to counteract drift -> num vars --TODO this needs to be a 'residual type'
         Adelta : TUnknownType       -- (A'A+D'D)delta TODO this needs to be a 'residual type'
-		z : TUnknownType		--preconditioned residuals -> num vars	--TODO this needs to be a 'residual type'
-		p : TUnknownType		--descent direction -> num vars
-		Ap_X : TUnknownType	--cache values for next kernel call after A = J^T x J x p -> num vars
+        z : TUnknownType		--preconditioned residuals -> num vars	--TODO this needs to be a 'residual type'
+        p : TUnknownType		--descent direction -> num vars
+        Ap_X : TUnknownType	--cache values for next kernel call after A = J^T x J x p -> num vars
         CtC : TUnknownType -- The diagonal matrix C'C for the inner linear solve (J'J+C'C)x = J'F Used only by LM
-		preconditioner : TUnknownType --pre-conditioner for linear system -> num vars
+        preconditioner : TUnknownType --pre-conditioner for linear system -> num vars
         SSq : TUnknownType -- Square of jacobi scaling diagonal
-		g : TUnknownType		--gradient of F(x): g = -2J'F -> num vars
+        g : TUnknownType		--gradient of F(x): g = -2J'F -> num vars
 		
         prevX : TUnknownType -- Place to copy unknowns to before speculatively updating. Avoids hassle when (X + delta) - delta != X 
 
-		scanAlphaNumerator : &opt_float
-		scanAlphaDenominator : &opt_float
-		scanBetaNumerator : &opt_float
+        scanAlphaNumerator : &opt_float
+        scanAlphaDenominator : &opt_float
+        scanBetaNumerator : &opt_float
 
         modelCost : &opt_float    -- modelCost = L(delta) where L(h) = F' F + 2 h' J' F + h' J' J h
         q : &opt_float -- Q value for zeta calculation (see CERES)
 		
-		timer : Timer
-		endSolver : util.TimerEvent
+        timer : Timer
+        endSolver : util.TimerEvent
 
-	    prevCost : opt_float
+        prevCost : opt_float
 	    
-	    J_csrValA : &opt_float
-	    J_csrColIndA : &int
-	    J_csrRowPtrA : &int
+        J_csrValA : &opt_float
+        J_csrColIndA : &int
+        J_csrRowPtrA : &int
+          
+        JT_csrValA : &float
+        JT_csrRowPtrA : &int
+        JT_csrColIndA : &int
+
+        JTJ_csrValA : &float
+        JTJ_csrRowPtrA : &int
+        JTJ_csrColIndA : &int
+
+        JTJ_nnz : int
 	    
-	    JT_csrValA : &float
-		JT_csrRowPtrA : &int
-		JT_csrColIndA : &int
-		
-		JTJ_csrValA : &float
-		JTJ_csrRowPtrA : &int
-		JTJ_csrColIndA : &int
-		
-		JTJ_nnz : int
-	    
-	    Jp : &float
-	}
-	if initialization_parameters.use_cusparse then
-	    PlanData.entries:insert {"handle", CUsp.cusparseHandle_t }
-	    PlanData.entries:insert {"desc", CUsp.cusparseMatDescr_t }
-	end
-	S.Object(PlanData)
-	local terra swapCol(pd : &PlanData, a : int, b : int)
-	    pd.J_csrValA[a],pd.J_csrColIndA[a],pd.J_csrValA[b],pd.J_csrColIndA[b] =
-	        pd.J_csrValA[b],pd.J_csrColIndA[b],pd.J_csrValA[a],pd.J_csrColIndA[a]
-	end
-	local terra sortCol(pd : &PlanData, s : int, e : int)
-	    for i = s,e do
+        Jp : &float
+    }
+
+    if initialization_parameters.use_cusparse then
+        PlanData.entries:insert {"handle", CUsp.cusparseHandle_t }
+        PlanData.entries:insert {"desc", CUsp.cusparseMatDescr_t }
+    end
+
+    S.Object(PlanData)
+
+    local terra swapCol(pd : &PlanData, a : int, b : int)
+        pd.J_csrValA[a],pd.J_csrColIndA[a],pd.J_csrValA[b],pd.J_csrColIndA[b] =
+            pd.J_csrValA[b],pd.J_csrColIndA[b],pd.J_csrValA[a],pd.J_csrColIndA[a]
+    end
+
+    local terra sortCol(pd : &PlanData, s : int, e : int)
+        for i = s,e do
             var minidx = i
             var min = pd.J_csrColIndA[i]
             for j = i+1,e do
@@ -220,7 +228,8 @@ return function(problemSpec)
             end
             swapCol(pd,i,minidx)
         end
-	end
+    end
+
     local terra wrap(c : int, v : float)
         if c < 0 then
             if v ~= 0.f then
@@ -236,6 +245,7 @@ return function(problemSpec)
         end
         return c
     end
+
     local function generateDumpJ(ES,dumpJ,idx,pd)
         local nnz_per_entry = 0
         for i,r in ipairs(ES.residuals) do
@@ -251,6 +261,7 @@ return function(problemSpec)
         end
         local local_rowidx = `base_rowidx + idx_offset*nnz_per_entry
         local local_residual = `base_residual + idx_offset*[#ES.residuals]
+
         local function GetOffset(idx,index)
             if index.kind == "Offset" then
                 return `idx([{unpack(index.data)}]):tooffset()
@@ -258,50 +269,53 @@ return function(problemSpec)
                 return `parametersSym.[index.graph.name].[index.element][idx]:tooffset()
             end
         end
-        return quote
-            var rhs = dumpJ(idx,pd.parameters)
-            --[[escape                
-                local nnz = 0
-                local residual = 0
-                for i,r in ipairs(ES.residuals) do
-                    emit quote
-                        pd.J_csrRowPtrA[local_residual+residual] = local_rowidx + nnz
-                    end
-                    local begincolumns = nnz
-                    for i,u in ipairs(r.unknowns) do
-                        local image_offset = imagename_to_unknown_offset[u.image.name]
-                        local nchannels = u.image.type.channelcount
-                        local uidx = GetOffset(idx,u.index)
-                        local unknown_index = `image_offset + nchannels*uidx + u.channel
 
-                        emit quote
-                            pd.J_csrValA[local_rowidx + nnz] = opt_float(rhs.["_"..tostring(nnz)])
-                            pd.J_csrColIndA[local_rowidx + nnz] = wrap(unknown_index,opt_float(rhs.["_"..tostring(nnz)]))
-                        end
-                        nnz = nnz + 1
-                    end
-                    -- sort the columns
-                    emit quote
-                        sortCol(&pd, local_rowidx + begincolumns, local_rowidx + nnz)
-                    end
-                    residual = residual + 1
-                end
-            end--]]
-        end
-	end
+        return quote
+                   var rhs = dumpJ(idx,pd.parameters)
+                   --[[escape                
+                       local nnz = 0
+                       local residual = 0
+                       for i,r in ipairs(ES.residuals) do
+                           emit quote
+                               pd.J_csrRowPtrA[local_residual+residual] = local_rowidx + nnz
+                           end
+                           local begincolumns = nnz
+                           for i,u in ipairs(r.unknowns) do
+                               local image_offset = imagename_to_unknown_offset[u.image.name]
+                               local nchannels = u.image.type.channelcount
+                               local uidx = GetOffset(idx,u.index)
+                               local unknown_index = `image_offset + nchannels*uidx + u.channel
+     
+                               emit quote
+                                   pd.J_csrValA[local_rowidx + nnz] = opt_float(rhs.["_"..tostring(nnz)])
+                                   pd.J_csrColIndA[local_rowidx + nnz] = wrap(unknown_index,opt_float(rhs.["_"..tostring(nnz)]))
+                               end
+                               nnz = nnz + 1
+                           end
+                           -- sort the columns
+                           emit quote
+                               sortCol(&pd, local_rowidx + begincolumns, local_rowidx + nnz)
+                           end
+                           residual = residual + 1
+                       end
+                   end--]]
+               end
+    end
 	
-	local delegate = {}
-	function delegate.CenterFunctions(UnknownIndexSpace,fmap)
-	    local kernels = {}
-	    local unknownElement = UnknownType:VectorTypeForIndexSpace(UnknownIndexSpace)
-	    local Index = UnknownIndexSpace:indextype()
+    local delegate = {}
+
+    function delegate.CenterFunctions(UnknownIndexSpace,fmap)
+        local kernels = {}
+        local unknownElement = UnknownType:VectorTypeForIndexSpace(UnknownIndexSpace)
+        local Index = UnknownIndexSpace:indextype()
 
         local unknownWideReduction = macro(function(idx,val,reductionTarget) return quote
-            val = util.warpReduce(val)
-            if (util.laneid() == 0) then                
-                util.atomicAdd(reductionTarget, val)
-            end
-        end end)
+                                                                                        val = util.warpReduce(val)
+                                                                                        if (util.laneid() == 0) then                
+                                                                                            util.atomicAdd(reductionTarget, val)
+                                                                                        end
+                                                                                    end -- end quote from above
+        end)
 
         local terra square(x : opt_float) : opt_float
             return x*x
@@ -311,28 +325,28 @@ return function(problemSpec)
             escape 
                 if initialization_parameters.guardedInvertType == GuardedInvertType.CERES then
                     emit quote
-                        var invp = p
-                        for i = 0, invp:size() do
-                            invp(i) = [opt_float](1.f) / square(opt_float(1.f) + util.gpuMath.sqrt(invp(i)))
-                        end
-                        return invp
-                    end
+                             var invp = p
+                             for i = 0, invp:size() do
+                                 invp(i) = [opt_float](1.f) / square(opt_float(1.f) + util.gpuMath.sqrt(invp(i)))
+                             end
+                             return invp
+                         end
                 elseif initialization_parameters.guardedInvertType == GuardedInvertType.MODIFIED_CERES then
                     emit quote
-                        var invp = p
-                        for i = 0, invp:size() do
-                             invp(i) = [opt_float](1.f) / (opt_float(1.f) + invp(i))
-                        end
-                        return invp
-                    end
+                             var invp = p
+                             for i = 0, invp:size() do
+                                  invp(i) = [opt_float](1.f) / (opt_float(1.f) + invp(i))
+                             end
+                             return invp
+                         end
                 elseif initialization_parameters.guardedInvertType == GuardedInvertType.EPSILON_ADD then
                     emit quote
-                        var invp = p
-                        for i = 0, invp:size() do
-                            invp(i) = [opt_float](1.f) / (FLOAT_EPSILON + invp(i))
-                        end
-                        return invp
-                    end
+                             var invp = p
+                             for i = 0, invp:size() do
+                                 invp(i) = [opt_float](1.f) / (FLOAT_EPSILON + invp(i))
+                             end
+                             return invp
+                         end
                 end
             end
         end
@@ -382,7 +396,7 @@ return function(problemSpec)
                 unknownWideReduction(idx,d,pd.scanAlphaNumerator)
             end
         end
-    
+        
         terra kernels.PCGInit1_Finish(pd : PlanData)	--only called for graphs
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
             var idx : Index
@@ -419,6 +433,7 @@ return function(problemSpec)
                 unknownWideReduction(idx,d,pd.scanAlphaDenominator)
             end
         end
+
         if multistep_alphaDenominator_compute then
             terra kernels.PCGStep1_Finish(pd : PlanData)
                 var d : opt_float = opt_float(0.0f)
@@ -442,7 +457,7 @@ return function(problemSpec)
                 -- update step size alpha
                 var alpha = opt_float(0.0f)
                 alpha = alphaNumerator/alphaDenominator 
-    
+
                 var delta = pd.delta(idx)+alpha*pd.p(idx)       -- do a descent step
                 pd.delta(idx) = delta
 
@@ -528,7 +543,7 @@ return function(problemSpec)
                 pd.p(idx) = pd.z(idx)+beta*pd.p(idx)			    -- update decent direction
             end
         end
-    
+        
         terra kernels.PCGLinearUpdate(pd : PlanData)
             var idx : Index
             if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
@@ -570,6 +585,7 @@ return function(problemSpec)
                 util.atomicAdd(pd.scratch, cost)
             end
         end
+
         if not fmap.dumpJ then
             terra kernels.saveJToCRS(pd : PlanData)
             end
@@ -582,7 +598,7 @@ return function(problemSpec)
                 end
             end
         end
-    
+        
 
         if fmap.precompute then
             terra kernels.precompute(pd : PlanData)
@@ -592,6 +608,7 @@ return function(problemSpec)
                 end
             end
         end
+
         if problemSpec:UsesLambda() then
             terra kernels.PCGComputeCtC(pd : PlanData)
                 var idx : Index
@@ -658,20 +675,22 @@ return function(problemSpec)
             end
 
         end -- :UsesLambda()
-	    return kernels
-	end
+
+        return kernels
+    end -- return and 'end' from function 'delegate.CenterFunctions()'
 	
-	function delegate.GraphFunctions(graphname,fmap,ES)
-	    --print("ES-graph",fmap.derivedfrom)
-	    local kernels = {}
+    function delegate.GraphFunctions(graphname,fmap,ES)
+        --print("ES-graph",fmap.derivedfrom)
+        local kernels = {}
+
         terra kernels.PCGInit1_Graph(pd : PlanData)
             var tIdx = 0
             if util.getValidGraphElement(pd,[graphname],&tIdx) then
                 fmap.evalJTF(tIdx, pd.parameters, pd.r, pd.preconditioner)
             end
         end    
-        
-    	terra kernels.PCGStep1_Graph(pd : PlanData)
+
+        terra kernels.PCGStep1_Graph(pd : PlanData)
             var d = opt_float(0.0f)
             var tIdx = 0 
             if util.getValidGraphElement(pd,[graphname],&tIdx) then
@@ -703,6 +722,7 @@ return function(problemSpec)
                 util.atomicAdd(pd.scratch, cost)
             end
         end
+
         if not fmap.dumpJ then
             terra kernels.saveJToCRS_Graph(pd : PlanData)
             end
@@ -715,6 +735,7 @@ return function(problemSpec)
                 end
             end
         end
+
         if problemSpec:UsesLambda() then
             terra kernels.PCGComputeCtC_Graph(pd : PlanData)
                 var tIdx = 0
@@ -736,36 +757,36 @@ return function(problemSpec)
             end
         end
 
-	    return kernels
-	end
-	
-	local gpu = util.makeGPUFunctions(problemSpec, PlanData, delegate, {"PCGInit1",
-                                                                        "PCGInit1_Finish",
-                                                                        "PCGComputeCtC",
-                                                                        "PCGFinalizeDiagonal",
-                                                                        "PCGStep1",
-                                                                        "PCGStep1_Finish",
-                                                                        "PCGStep2",
-                                                                        "PCGStep2_1stHalf",
-                                                                        "PCGStep2_2ndHalf",
-                                                                        "PCGStep3",
-                                                                        "PCGLinearUpdate",
-                                                                        "revertUpdate",
-                                                                        "savePreviousUnknowns",
-                                                                        "computeCost",
-                                                                        "PCGSaveSSq",
-                                                                        "precompute",
-                                                                        "computeAdelta",
-                                                                        "computeAdelta_Graph",
-                                                                        "PCGInit1_Graph",
-                                                                        "PCGComputeCtC_Graph",
-                                                                        "PCGStep1_Graph",
-                                                                        "computeCost_Graph",
-                                                                        "computeModelCost",
-                                                                        "computeModelCost_Graph",
-                                                                        "saveJToCRS",
-                                                                        "saveJToCRS_Graph"
-                                                                        })
+        return kernels
+    end
+            
+    local gpu = util.makeGPUFunctions(problemSpec, PlanData, delegate, {"PCGInit1",
+                                                                    "PCGInit1_Finish",
+                                                                    "PCGComputeCtC",
+                                                                    "PCGFinalizeDiagonal",
+                                                                    "PCGStep1",
+                                                                    "PCGStep1_Finish",
+                                                                    "PCGStep2",
+                                                                    "PCGStep2_1stHalf",
+                                                                    "PCGStep2_2ndHalf",
+                                                                    "PCGStep3",
+                                                                    "PCGLinearUpdate",
+                                                                    "revertUpdate",
+                                                                    "savePreviousUnknowns",
+                                                                    "computeCost",
+                                                                    "PCGSaveSSq",
+                                                                    "precompute",
+                                                                    "computeAdelta",
+                                                                    "computeAdelta_Graph",
+                                                                    "PCGInit1_Graph",
+                                                                    "PCGComputeCtC_Graph",
+                                                                    "PCGStep1_Graph",
+                                                                    "computeCost_Graph",
+                                                                    "computeModelCost",
+                                                                    "computeModelCost_Graph",
+                                                                    "saveJToCRS",
+                                                                    "saveJToCRS_Graph"
+                                                                    })
 
     local terra computeCost(pd : &PlanData) : opt_float
         C.cudaMemset(pd.scratch, 0, sizeof(opt_float))
@@ -794,7 +815,7 @@ return function(problemSpec)
     end
 
     local computeModelCostChange
-    
+
     if problemSpec:UsesLambda() then
         terra computeModelCostChange(pd : &PlanData) : opt_float
             var cost = pd.prevCost
@@ -812,7 +833,9 @@ return function(problemSpec)
         C.cudaMemcpy(r,ptr,N*sizeof(int),C.cudaMemcpyDeviceToHost)
         return r
     end
+
     local cusparseInner,cusparseOuter
+
     if initialization_parameters.use_cusparse then
         terra cusparseOuter(pd : &PlanData)
             var [parametersSym] = &pd.parameters
@@ -843,7 +866,7 @@ return function(problemSpec)
             
             var endJTJmm : util.TimerEvent
             pd.timer:startEvent("JTJ multiply",nil,&endJTJmm)
-    
+
             cd(CUsp.cusparseScsrgemm(pd.handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
            nUnknowns,nUnknowns,nResidualsExp,
            pd.desc,nnzExp,pd.J_csrValA,pd.J_csrRowPtrA,pd.J_csrColIndA,
@@ -933,67 +956,71 @@ return function(problemSpec)
         terra cusparseOuter(pd : &PlanData) end
     end
 
-	local terra init(data_ : &opaque, params_ : &&opaque)
-	   var pd = [&PlanData](data_)
-	   pd.timer:init()
-	   pd.timer:startEvent("overall",nil,&pd.endSolver)
+    local terra init(data_ : &opaque, params_ : &&opaque)
+       var pd = [&PlanData](data_)
+       pd.timer:init()
+       pd.timer:startEvent("overall",nil,&pd.endSolver)
        [util.initParameters(`pd.parameters,problemSpec,params_,true)]
        var [parametersSym] = &pd.parameters
-        escape if initialization_parameters.use_cusparse then emit quote
-            if pd.J_csrValA == nil then
-                cd(CUsp.cusparseCreateMatDescr( &pd.desc ))
-                cd(CUsp.cusparseSetMatType( pd.desc,CUsp.CUSPARSE_MATRIX_TYPE_GENERAL ))
-                cd(CUsp.cusparseSetMatIndexBase( pd.desc,CUsp.CUSPARSE_INDEX_BASE_ZERO ))
-                cd(CUsp.cusparseCreate( &pd.handle ))
-                
-                logSolver("nnz = %s\n",[tostring(nnzExp)])
-                logSolver("nResiduals = %s\n",[tostring(nResidualsExp)])
-                logSolver("nnz = %d, nResiduals = %d\n",int(nnzExp),int(nResidualsExp))
-                
-                -- J alloc
-                C.cudaMalloc([&&opaque](&(pd.J_csrValA)), sizeof(opt_float)*nnzExp)
-                C.cudaMalloc([&&opaque](&(pd.J_csrColIndA)), sizeof(int)*nnzExp)
-                C.cudaMemset(pd.J_csrColIndA,-1,sizeof(int)*nnzExp)
-                C.cudaMalloc([&&opaque](&(pd.J_csrRowPtrA)), sizeof(int)*(nResidualsExp+1))
-                
-                -- J^T alloc
-                C.cudaMalloc([&&opaque](&pd.JT_csrValA), nnzExp*sizeof(float))
-                C.cudaMalloc([&&opaque](&pd.JT_csrColIndA), nnzExp*sizeof(int))
-                C.cudaMalloc([&&opaque](&pd.JT_csrRowPtrA), (nUnknowns + 1) *sizeof(int))
-                
-                -- Jp alloc
-                cd(C.cudaMalloc([&&opaque](&pd.Jp), nResidualsExp*sizeof(float)))
-                
-                -- write J_csrRowPtrA end
-                var nnz = nnzExp
-                C.printf("setting rowptr[%d] = %d\n",nResidualsExp,nnz)
-                cd(C.cudaMemcpy(&pd.J_csrRowPtrA[nResidualsExp],&nnz,sizeof(int),C.cudaMemcpyHostToDevice))
-            end
-        end end end
+       escape
+           if initialization_parameters.use_cusparse then
+               emit quote
+                        if pd.J_csrValA == nil then
+                            cd(CUsp.cusparseCreateMatDescr( &pd.desc ))
+                            cd(CUsp.cusparseSetMatType( pd.desc,CUsp.CUSPARSE_MATRIX_TYPE_GENERAL ))
+                            cd(CUsp.cusparseSetMatIndexBase( pd.desc,CUsp.CUSPARSE_INDEX_BASE_ZERO ))
+                            cd(CUsp.cusparseCreate( &pd.handle ))
+                             
+                            logSolver("nnz = %s\n",[tostring(nnzExp)])
+                            logSolver("nResiduals = %s\n",[tostring(nResidualsExp)])
+                            logSolver("nnz = %d, nResiduals = %d\n",int(nnzExp),int(nResidualsExp))
+                             
+                            -- J alloc
+                            C.cudaMalloc([&&opaque](&(pd.J_csrValA)), sizeof(opt_float)*nnzExp)
+                            C.cudaMalloc([&&opaque](&(pd.J_csrColIndA)), sizeof(int)*nnzExp)
+                            C.cudaMemset(pd.J_csrColIndA,-1,sizeof(int)*nnzExp)
+                            C.cudaMalloc([&&opaque](&(pd.J_csrRowPtrA)), sizeof(int)*(nResidualsExp+1))
+                             
+                            -- J^T alloc
+                            C.cudaMalloc([&&opaque](&pd.JT_csrValA), nnzExp*sizeof(float))
+                            C.cudaMalloc([&&opaque](&pd.JT_csrColIndA), nnzExp*sizeof(int))
+                            C.cudaMalloc([&&opaque](&pd.JT_csrRowPtrA), (nUnknowns + 1) *sizeof(int))
+                             
+                            -- Jp alloc
+                            cd(C.cudaMalloc([&&opaque](&pd.Jp), nResidualsExp*sizeof(float)))
+                             
+                            -- write J_csrRowPtrA end
+                            var nnz = nnzExp
+                            C.printf("setting rowptr[%d] = %d\n",nResidualsExp,nnz)
+                            cd(C.cudaMemcpy(&pd.J_csrRowPtrA[nResidualsExp],&nnz,sizeof(int),C.cudaMemcpyHostToDevice))
+                        end 
+                    end 
+               end
+           end
 
-	   pd.solverparameters.nIter = 0
+       pd.solverparameters.nIter = 0
        escape 
-            if problemSpec:UsesLambda() then
-              emit quote 
-                pd.parameters.trust_region_radius       = pd.solverparameters.trust_region_radius
-                pd.parameters.radius_decrease_factor    = pd.solverparameters.radius_decrease_factor
-                pd.parameters.min_lm_diagonal           = pd.solverparameters.min_lm_diagonal
-                pd.parameters.max_lm_diagonal           = pd.solverparameters.max_lm_diagonal
-              end
-	        end 
-       end
-	   gpu.precompute(pd)
-	   pd.prevCost = computeCost(pd)
-	end
+           if problemSpec:UsesLambda() then
+               emit quote 
+                        pd.parameters.trust_region_radius       = pd.solverparameters.trust_region_radius
+                        pd.parameters.radius_decrease_factor    = pd.solverparameters.radius_decrease_factor
+                        pd.parameters.min_lm_diagonal           = pd.solverparameters.min_lm_diagonal
+                        pd.parameters.max_lm_diagonal           = pd.solverparameters.max_lm_diagonal
+                    end
+              end 
+           end
+       gpu.precompute(pd)
+       pd.prevCost = computeCost(pd)
+    end
 
-	local terra cleanup(pd : &PlanData)
+    local terra cleanup(pd : &PlanData)
         logSolver("final cost=%f\n", pd.prevCost)
         pd.timer:endEvent(nil,pd.endSolver)
         pd.timer:evaluate()
         pd.timer:cleanup()
     end
 
-	local terra step(data_ : &opaque, params_ : &&opaque)
+    local terra step(data_ : &opaque, params_ : &&opaque)
         var pd = [&PlanData](data_)
         var residual_reset_period : int         = pd.solverparameters.residual_reset_period
         var min_relative_decrease : opt_float   = pd.solverparameters.min_relative_decrease
@@ -1003,155 +1030,159 @@ return function(problemSpec)
         var function_tolerance : opt_float      = pd.solverparameters.function_tolerance
         var Q0 : opt_float
         var Q1 : opt_float
-		[util.initParameters(`pd.parameters,problemSpec, params_,false)]
-		if pd.solverparameters.nIter < pd.solverparameters.nIterations then
-			C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-			C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-			C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
+        [util.initParameters(`pd.parameters,problemSpec, params_,false)]
+        if pd.solverparameters.nIter < pd.solverparameters.nIterations then
+                C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
+                C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
+                C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
 
-			gpu.PCGInit1(pd)
-			if isGraph then
-				gpu.PCGInit1_Graph(pd)	
-				gpu.PCGInit1_Finish(pd)	
-			end
+                gpu.PCGInit1(pd)
+                if isGraph then
+                        gpu.PCGInit1_Graph(pd)	
+                        gpu.PCGInit1_Finish(pd)	
+                end
 
-            escape 
-                if problemSpec:UsesLambda() then
-                    emit quote
-                        C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))
-                        C.cudaMemset(pd.q, 0, sizeof(opt_float))
-                        if [initialization_parameters.jacobiScaling == JacobiScalingType.ONCE_PER_SOLVE] and pd.solverparameters.nIter == 0 then
-                            gpu.PCGSaveSSq(pd)
+                escape 
+                    if problemSpec:UsesLambda() then
+                        emit quote
+                            C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))
+                            C.cudaMemset(pd.q, 0, sizeof(opt_float))
+                            if [initialization_parameters.jacobiScaling == JacobiScalingType.ONCE_PER_SOLVE] and pd.solverparameters.nIter == 0 then
+                                gpu.PCGSaveSSq(pd)
+                            end
+                            gpu.PCGComputeCtC(pd)
+                            gpu.PCGComputeCtC_Graph(pd)
+                            -- This also computes Q
+                            gpu.PCGFinalizeDiagonal(pd)
+                            Q0 = fetchQ(pd)
+                             end
                         end
-                        gpu.PCGComputeCtC(pd)
-                        gpu.PCGComputeCtC_Graph(pd)
-                        -- This also computes Q
-                        gpu.PCGFinalizeDiagonal(pd)
-                        Q0 = fetchQ(pd)
                     end
-                end
-            end
-            cusparseOuter(pd)
-            for lIter = 0, pd.solverparameters.lIterations do				
 
-                C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))
-                C.cudaMemset(pd.q, 0, sizeof(opt_float))
+                cusparseOuter(pd)
 
-                if not initialization_parameters.use_cusparse then
-    				gpu.PCGStep1(pd)
-    				if isGraph then
-    					gpu.PCGStep1_Graph(pd)
-    				end
-                end
+                for lIter = 0, pd.solverparameters.lIterations do				
 
-				-- only does anything if initialization_parameters.use_cusparse is true
-                cusparseInner(pd)
+                    C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))
+                    C.cudaMemset(pd.q, 0, sizeof(opt_float))
 
-                if multistep_alphaDenominator_compute then
-                    gpu.PCGStep1_Finish(pd)
-                end
-				
-				C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))
-				
-				if [problemSpec:UsesLambda()] and ((lIter + 1) % residual_reset_period) == 0 then
-                    gpu.PCGStep2_1stHalf(pd)
-                    gpu.computeAdelta(pd)
-                    if isGraph then
-                        gpu.computeAdelta_Graph(pd)
+                    if not initialization_parameters.use_cusparse then
+                        gpu.PCGStep1(pd)
+                        if isGraph then
+                                gpu.PCGStep1_Graph(pd)
+                        end
                     end
-                    gpu.PCGStep2_2ndHalf(pd)
-                else
-                    gpu.PCGStep2(pd)
-                end
-                gpu.PCGStep3(pd)
 
-				-- save new rDotz for next iteration
-				C.cudaMemcpy(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float), C.cudaMemcpyDeviceToDevice)	
-				
-				if [problemSpec:UsesLambda()] then
-	                Q1 = fetchQ(pd)
-	                var zeta = [opt_float](lIter+1)*(Q1 - Q0) / Q1 
-                    --logSolver("%d: Q0(%g) Q1(%g), zeta(%g)\n", lIter, Q0, Q1, zeta)
-	                if zeta < q_tolerance then
+                    -- only does anything if initialization_parameters.use_cusparse is true
+                    cusparseInner(pd)
+
+                    if multistep_alphaDenominator_compute then
+                        gpu.PCGStep1_Finish(pd)
+                    end
+                                    
+                    C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))
+                                    
+                    if [problemSpec:UsesLambda()] and ((lIter + 1) % residual_reset_period) == 0 then
+                        gpu.PCGStep2_1stHalf(pd)
+                        gpu.computeAdelta(pd)
+                        if isGraph then
+                            gpu.computeAdelta_Graph(pd)
+                        end
+                        gpu.PCGStep2_2ndHalf(pd)
+                    else
+                        gpu.PCGStep2(pd)
+                    end
+
+                    gpu.PCGStep3(pd)
+
+                    -- save new rDotz for next iteration
+                    C.cudaMemcpy(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float), C.cudaMemcpyDeviceToDevice)	
+                    
+                    if [problemSpec:UsesLambda()] then
+                        Q1 = fetchQ(pd)
+                        var zeta = [opt_float](lIter+1)*(Q1 - Q0) / Q1 
+                        --logSolver("%d: Q0(%g) Q1(%g), zeta(%g)\n", lIter, Q0, Q1, zeta)
+                        if zeta < q_tolerance then
                         logSolver("zeta=%.18g, breaking at iteration: %d\n", zeta, (lIter+1))
-	                    break
-	                end
-	                Q0 = Q1
-				end
-			end
-			
-
-            var model_cost_change : opt_float
-
-            escape if problemSpec:UsesLambda() then
-                emit quote 
-                    model_cost_change = computeModelCostChange(pd)
-                    gpu.savePreviousUnknowns(pd)
+                            break
+                        end
+                        Q0 = Q1
+                    end
                 end
-            end end
-
-			gpu.PCGLinearUpdate(pd)    
-			gpu.precompute(pd)
-			var newCost = computeCost(pd)
-
-			escape 
-                if problemSpec:UsesLambda() then
-                    emit quote
-                        var cost_change = pd.prevCost - newCost
                         
-                        
-                        -- See CERES's TrustRegionStepEvaluator::StepAccepted() for a more complicated version of this
-                        var relative_decrease = cost_change / model_cost_change
-                        if cost_change >= 0 and relative_decrease > min_relative_decrease then
-                            var absolute_function_tolerance = pd.prevCost * function_tolerance
-                            if cost_change <= absolute_function_tolerance then
-                                logSolver("\nFunction tolerance reached, exiting\n")
-                                cleanup(pd)
-                                return 0
-                            end
+                var model_cost_change : opt_float
 
-                            var step_quality = relative_decrease
-                            var min_factor = 1.0/3.0
-                            var tmp_factor = 1.0 - util.cpuMath.pow(2.0 * step_quality - 1.0, 3.0)
-                            pd.parameters.trust_region_radius = pd.parameters.trust_region_radius / util.cpuMath.fmax(min_factor, tmp_factor)
-                            pd.parameters.trust_region_radius = util.cpuMath.fmin(pd.parameters.trust_region_radius, max_trust_region_radius)
-                            pd.parameters.radius_decrease_factor = 2.0
-
-                            pd.prevCost = newCost
-                        else 
-                            gpu.revertUpdate(pd)
-
-                            pd.parameters.trust_region_radius = pd.parameters.trust_region_radius / pd.parameters.radius_decrease_factor
-                            logSolver(" trust_region_radius=%f \n", pd.parameters.trust_region_radius)
-                            pd.parameters.radius_decrease_factor = 2.0 * pd.parameters.radius_decrease_factor
-                            if pd.parameters.trust_region_radius <= min_trust_region_radius then
-                                logSolver("\nTrust_region_radius is less than the min, exiting\n")
-                                cleanup(pd)
-                                return 0
-                            end
-                            logSolver("REVERT\n")
-                            gpu.precompute(pd)
+                escape 
+                    if problemSpec:UsesLambda() then
+                        emit quote 
+                                 model_cost_change = computeModelCostChange(pd)
+                                 gpu.savePreviousUnknowns(pd)
+                             end
                         end
                     end
-                else
-                    emit quote
-                        pd.prevCost = newCost 
+
+                gpu.PCGLinearUpdate(pd)    
+                gpu.precompute(pd)
+                var newCost = computeCost(pd)
+
+                escape 
+                    if problemSpec:UsesLambda() then
+                        emit quote
+                                 var cost_change = pd.prevCost - newCost
+                        
+                        
+                                 -- See CERES's TrustRegionStepEvaluator::StepAccepted() for a more complicated version of this
+                                 var relative_decrease = cost_change / model_cost_change
+                                 if cost_change >= 0 and relative_decrease > min_relative_decrease then
+                                     var absolute_function_tolerance = pd.prevCost * function_tolerance
+                                     if cost_change <= absolute_function_tolerance then
+                                         logSolver("\nFunction tolerance reached, exiting\n")
+                                         cleanup(pd)
+                                         return 0
+                                     end
+
+                                     var step_quality = relative_decrease
+                                     var min_factor = 1.0/3.0
+                                     var tmp_factor = 1.0 - util.cpuMath.pow(2.0 * step_quality - 1.0, 3.0)
+                                     pd.parameters.trust_region_radius = pd.parameters.trust_region_radius / util.cpuMath.fmax(min_factor, tmp_factor)
+                                     pd.parameters.trust_region_radius = util.cpuMath.fmin(pd.parameters.trust_region_radius, max_trust_region_radius)
+                                     pd.parameters.radius_decrease_factor = 2.0
+
+                                     pd.prevCost = newCost
+                                 else 
+                                     gpu.revertUpdate(pd)
+
+                                     pd.parameters.trust_region_radius = pd.parameters.trust_region_radius / pd.parameters.radius_decrease_factor
+                                     logSolver(" trust_region_radius=%f \n", pd.parameters.trust_region_radius)
+                                     pd.parameters.radius_decrease_factor = 2.0 * pd.parameters.radius_decrease_factor
+                                     if pd.parameters.trust_region_radius <= min_trust_region_radius then
+                                         logSolver("\nTrust_region_radius is less than the min, exiting\n")
+                                         cleanup(pd)
+                                         return 0
+                                     end
+                                     logSolver("REVERT\n")
+                                     gpu.precompute(pd)
+                                 end
+                        end
+                    else
+                        emit quote
+                                 pd.prevCost = newCost 
+                             end
+                        end 
                     end
-                end 
-            end
 
-            --[[ 
-            To match CERES we would check for termination:
-            iteration_summary_.gradient_max_norm <= options_.gradient_tolerance
-            ]]
+                    --[[ 
+                    To match CERES we would check for termination:
+                    iteration_summary_.gradient_max_norm <= options_.gradient_tolerance
+                    ]]
 
-			pd.solverparameters.nIter = pd.solverparameters.nIter + 1
-			return 1
-		else
-			cleanup(pd)
-		    return 0
-		end
-	end
+                        pd.solverparameters.nIter = pd.solverparameters.nIter + 1
+                        return 1
+        else
+            cleanup(pd)
+            return 0
+        end
+    end
 
     local terra cost(data_ : &opaque) : double
         var pd = [&PlanData](data_)
@@ -1187,46 +1218,49 @@ return function(problemSpec)
             -- explicitly emit an if-statement chain for setting the parameter
             for _,entry in ipairs(SolverParameters.entries) do
                 emit quote
-                    if C.strcmp([entry.field],name)==0 then
-                        pd.solverparameters.[entry.field] = @[&entry.type]([value])
-                        return
-                    end
+                         if C.strcmp([entry.field],name)==0 then
+                             pd.solverparameters.[entry.field] = @[&entry.type]([value])
+                             return
+                         end
+                     end
                 end
             end
-        end
         logSolver("Warning: tried to set nonexistent solver parameter %s\n", name)
     end
 
-	local terra makePlan() : &opt.Plan
-		var pd = PlanData.alloc()
-		pd.plan.data = pd
-		pd.plan.init,pd.plan.step,pd.plan.cost,pd.plan.setsolverparameter = init,step,cost,setSolverParameter
-		pd.delta:initGPU()
-		pd.r:initGPU()
-        pd.b:initGPU()
-        pd.Adelta:initGPU()
-		pd.z:initGPU()
-		pd.p:initGPU()
-		pd.Ap_X:initGPU()
-        pd.CtC:initGPU()
-        pd.SSq:initGPU()
-		pd.preconditioner:initGPU()
-		pd.g:initGPU()
-        pd.prevX:initGPU()
+    local terra makePlan() : &opt.Plan
+            var pd = PlanData.alloc()
+            pd.plan.data = pd
+            pd.plan.init,pd.plan.step,pd.plan.cost,pd.plan.setsolverparameter = init,step,cost,setSolverParameter
+            pd.delta:initGPU()
+            pd.r:initGPU()
+            pd.b:initGPU()
+            pd.Adelta:initGPU()
+            pd.z:initGPU()
+            pd.p:initGPU()
+            pd.Ap_X:initGPU()
+            pd.CtC:initGPU()
+            pd.SSq:initGPU()
+            pd.preconditioner:initGPU()
+            pd.g:initGPU()
+            pd.prevX:initGPU()
 
-        initializeSolverParameters(&pd.solverparameters)
-		
-		[util.initPrecomputedImages(`pd.parameters,problemSpec)]	
-		C.cudaMalloc([&&opaque](&(pd.scanAlphaNumerator)), sizeof(opt_float))
-		C.cudaMalloc([&&opaque](&(pd.scanBetaNumerator)), sizeof(opt_float))
-		C.cudaMalloc([&&opaque](&(pd.scanAlphaDenominator)), sizeof(opt_float))
-		C.cudaMalloc([&&opaque](&(pd.modelCost)), sizeof(opt_float))
-		
-		C.cudaMalloc([&&opaque](&(pd.scratch)), sizeof(opt_float))
-        C.cudaMalloc([&&opaque](&(pd.q)), sizeof(opt_float))
-		pd.J_csrValA = nil
-		pd.JTJ_csrRowPtrA = nil
-		return &pd.plan
-	end
-	return makePlan
+            initializeSolverParameters(&pd.solverparameters)
+            
+            [util.initPrecomputedImages(`pd.parameters,problemSpec)]	
+            C.cudaMalloc([&&opaque](&(pd.scanAlphaNumerator)), sizeof(opt_float))
+            C.cudaMalloc([&&opaque](&(pd.scanBetaNumerator)), sizeof(opt_float))
+            C.cudaMalloc([&&opaque](&(pd.scanAlphaDenominator)), sizeof(opt_float))
+            C.cudaMalloc([&&opaque](&(pd.modelCost)), sizeof(opt_float))
+            
+            C.cudaMalloc([&&opaque](&(pd.scratch)), sizeof(opt_float))
+            C.cudaMalloc([&&opaque](&(pd.q)), sizeof(opt_float))
+            pd.J_csrValA = nil
+            pd.JTJ_csrRowPtrA = nil
+
+            return &pd.plan
+    end
+
+    return makePlan
+
 end
