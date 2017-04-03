@@ -102,7 +102,7 @@ return function(problemSpec)
     local nUnknowns,nResidualsExp,nnzExp = 0,`0,`0
     local parametersSym = symbol(&problemSpec:ParameterType(),"parameters")
 
-    local function numberofelements(ES)
+    local function numberofelements(ES) -- only used in next 20 lines or so --> TODO make local closer to usage
         if ES.kind.kind == "CenteredFunction" then
             return ES.kind.ispace:cardinality()
         else
@@ -155,7 +155,7 @@ return function(problemSpec)
 
     
 
-    local struct PlanData {
+    local struct PlanData { -- structs are a terra concept (not a lua concept), see 'exotypes' section in the docs
         plan : opt.Plan
         parameters : problemSpec:ParameterType()
         solverparameters : SolverParameters
@@ -209,14 +209,14 @@ return function(problemSpec)
         PlanData.entries:insert {"desc", CUsp.cusparseMatDescr_t }
     end
 
-    S.Object(PlanData)
+    S.Object(PlanData) -- makes an object out of PlanData, see 'std.t' in terra std-lib. This basically only provides alloc() and destruct() functions for 'PlanData'
 
-    local terra swapCol(pd : &PlanData, a : int, b : int)
+    local terra swapCol(pd : &PlanData, a : int, b : int) -- TODO dead code? cannot find any usages, except in 'sortCol' below, which seems to be dead
         pd.J_csrValA[a],pd.J_csrColIndA[a],pd.J_csrValA[b],pd.J_csrColIndA[b] =
             pd.J_csrValA[b],pd.J_csrColIndA[b],pd.J_csrValA[a],pd.J_csrColIndA[a]
     end
 
-    local terra sortCol(pd : &PlanData, s : int, e : int)
+    local terra sortCol(pd : &PlanData, s : int, e : int) -- TODO dead code? cannot find any usages
         for i = s,e do
             var minidx = i
             var min = pd.J_csrColIndA[i]
@@ -230,7 +230,7 @@ return function(problemSpec)
         end
     end
 
-    local terra wrap(c : int, v : float)
+    local terra wrap(c : int, v : float) -- TODO dead code??? cannot find any usages
         if c < 0 then
             if v ~= 0.f then
                 printf("wrap a non-zero? %d %f\n",c,v)
@@ -246,7 +246,7 @@ return function(problemSpec)
         return c
     end
 
-    local function generateDumpJ(ES,dumpJ,idx,pd)
+    local function generateDumpJ(ES,dumpJ,idx,pd) -- only used in building of 'delegate'
         local nnz_per_entry = 0
         for i,r in ipairs(ES.residuals) do
             nnz_per_entry = nnz_per_entry + #r.unknowns
@@ -302,7 +302,8 @@ return function(problemSpec)
                end
     end
 	
-    local delegate = {}
+    -- BUILD DELEGATE START
+    local delegate = {} -- wird spaeter an 'makeGPUfunctions' uebergeben, sonst keine Verwendung
 
     function delegate.CenterFunctions(UnknownIndexSpace,fmap)
         local kernels = {}
@@ -759,7 +760,11 @@ return function(problemSpec)
 
         return kernels
     end
+    -- BUILD DELEGATE END
             
+    -- problemSpec is input to the current function, there seem to be no modifications, only accesses
+    -- PlanData is a struct built above. it seems to be the only input to all the kernel-functions that are accumulated in 'delegate'. The only access to it seems to be in 'MakePlan' at the
+       -- end of this file to PlanData.alloc(). PlanData seems to be sort-of like a 'class', and 'alloc()' in 'MakePlan()' creates an instance of this class.
     local gpu = util.makeGPUFunctions(problemSpec, PlanData, delegate, {"PCGInit1",
                                                                     "PCGInit1_Finish",
                                                                     "PCGComputeCtC",
@@ -956,6 +961,7 @@ return function(problemSpec)
         terra cusparseOuter(pd : &PlanData) end
     end
 
+    -- from here on: define init, step, etc, which make up the main body of the solver
     local terra init(data_ : &opaque, params_ : &&opaque)
        var pd = [&PlanData](data_)
        pd.timer:init()
@@ -1229,9 +1235,9 @@ return function(problemSpec)
     end
 
     local terra makePlan() : &opt.Plan
-            var pd = PlanData.alloc()
+            var pd = PlanData.alloc() -- this seems to be sort-of like a constructor call of the "PlanData" class.
             pd.plan.data = pd
-            pd.plan.init,pd.plan.step,pd.plan.cost,pd.plan.setsolverparameter = init,step,cost,setSolverParameter
+            pd.plan.init ,pd.plan.step, pd.plan.cost, pd.plan.setsolverparameter = init, step, cost, setSolverParameter
             pd.delta:initGPU()
             pd.r:initGPU()
             pd.b:initGPU()

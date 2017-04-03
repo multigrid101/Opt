@@ -106,7 +106,7 @@ local gaussNewtonGPU = require("solverGPUGaussNewton")
 
 local ffi = require('ffi')
 
-local problems = {}
+local problems = {} -- table that holds all the problems
 
 -- this function should do anything it needs to compile an optimizer defined
 -- using the functions in tbl, using the optimizer 'kind' (e.g. kind = gradientdecesnt)
@@ -817,20 +817,22 @@ end
 
 local function problemPlan(id, dimensions, pplan)
     local success,p = xpcall(function()  
-		local problemmetadata = assert(problems[id])
+
+        local problemmetadata = assert(problems[id])
         opt.dimensions = dimensions
         opt.math = problemmetadata.kind:match("GPU") and util.gpuMath or util.cpuMath
         opt.problemkind = problemmetadata.kind
-		local b = terralib.currenttimeinseconds()
+        local b = terralib.currenttimeinseconds()
         local tbl = opt.problemSpecFromFile(problemmetadata.filename)
         assert(ProblemSpec:isclassof(tbl))
-		local result = compilePlan(tbl,problemmetadata.kind)
-		local e = terralib.currenttimeinseconds()
-		print("compile time: ",e - b)
-		allPlans:insert(result)
-		pplan[0] = result()
+        local result = compilePlan(tbl,problemmetadata.kind)
+        local e = terralib.currenttimeinseconds()
+        print("compile time: ",e - b)
+        allPlans:insert(result)
+        pplan[0] = result()
         print("problem plan complete")
-    end,function(err) errorPrint(debug.traceback(err,2)) end)
+
+            end,function(err) errorPrint(debug.traceback(err,2)) end)
 end
 problemPlan = terralib.cast({int,&uint32,&&opt.Plan} -> {}, problemPlan)
 
@@ -1948,6 +1950,7 @@ end
 
 local EMPTY = List()
 
+-- CREATE STUFF START
 local function createjtjcentered(PS,ES)
     local UnknownType = PS.P:UnknownType()
     local ispace = ES.kind.ispace
@@ -2329,6 +2332,7 @@ function createprecomputed(self,precomputedimages)
     end
     return precomputes
 end
+
 local function extractresidualterms(...)
     local exp = terralib.newlist {}
     for i = 1, select("#",...) do
@@ -2344,6 +2348,9 @@ local function extractresidualterms(...)
     end
     return exp
 end
+-- CREATE STUFF END
+
+-- ProblemSpec START
 function ProblemSpecAD:Cost(...)
     local terms = extractresidualterms(...)
     
@@ -2386,7 +2393,9 @@ function ProblemSpecAD:Exclude(exp)
     exp = assert(ad.toexp(exp), "expected a AD expression")
     self.excludeexps:insert(exp)
 end
+-- ProblemSpec END
 
+-- SampledImage START
 function SampledImage:__call(x,y,c)
     if c or self.op.imagebeingsampled.type.channelcount == 1 then
         assert(not c or c < self.op.imagebeingsampled.type.channelcount, "index out of bounds")
@@ -2422,6 +2431,7 @@ function ad.sampledimage(image,imagedx,imagedy)
     end
     return SampledImage(op)
 end
+-- SampledImage END
 
 for i = 2,12 do
     opt["float"..tostring(i)] = util.Vector(float,i)
@@ -2441,7 +2451,7 @@ opt.toispace = toispace
 -- WARNING: if you change these you need to update release/Opt.h
 
 -- define just stores meta-data right now. ProblemPlan does all compilation for now
-terra opt.ProblemDefine(filename : rawstring, kind : rawstring)
+terra opt.ProblemDefine(filename : rawstring, kind : rawstring) -- registers problem with a unique id, but doesn't actually do anything big
     var id : int
     problemDefine(filename, kind, &id)
     return [&opt.Problem](id)
@@ -2465,7 +2475,7 @@ terra opt.ProblemInit(plan : &opt.Plan, params : &&opaque)
     return plan.init(plan.data, params)
 end
 terra opt.ProblemStep(plan : &opt.Plan, params : &&opaque) : int
-    return plan.step(plan.data, params)
+    return plan.step(plan.data, params) -- this seems to be the 'step' function defined in solverGPUGaussNewton.t
 end
 terra opt.ProblemSolve(plan : &opt.Plan, params : &&opaque)
    opt.ProblemInit(plan, params)
