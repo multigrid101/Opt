@@ -83,7 +83,7 @@ local BLOCK_SIZE =  opt.BLOCK_SIZE
 
 local FLOAT_EPSILON = `[opt_float](0.00000001f) 
 -- GAUSS NEWTON (or LEVENBERG-MARQUADT)
-return function(problemSpec)
+return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost() returns in o.t
     local UnknownType = problemSpec:UnknownType()
     local TUnknownType = UnknownType:terratype()	
     -- start of the unknowns that correspond to this image
@@ -1038,7 +1038,7 @@ return function(problemSpec)
         var Q1 : opt_float
         [util.initParameters(`pd.parameters,problemSpec, params_,false)]
         if pd.solverparameters.nIter < pd.solverparameters.nIterations then
-                C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
+                C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset TODO so why not just move it to PCGInit1????
                 C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
                 C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
 
@@ -1079,7 +1079,7 @@ return function(problemSpec)
                         end
                     end
 
-                    -- only does anything if initialization_parameters.use_cusparse is true
+                    -- only does something if initialization_parameters.use_cusparse is true
                     cusparseInner(pd)
 
                     if multistep_alphaDenominator_compute then
@@ -1129,7 +1129,7 @@ return function(problemSpec)
 
                 gpu.PCGLinearUpdate(pd)    
                 gpu.precompute(pd)
-                var newCost = computeCost(pd)
+                var newCost = computeCost(pd) -- calls gpu.computeCost() and does some device <--> host data exchange
 
                 escape 
                     if problemSpec:UsesLambda() then

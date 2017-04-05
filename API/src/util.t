@@ -688,7 +688,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
     return GPULauncher
 end
 
-function util.makeGPUFunctions(problemSpec, PlanData, delegate, names)
+function util.makeGPUFunctions(problemSpec, PlanData, delegate, names) -- same  problemSpec as in solver.t
     -- step 1: compile the actual cuda kernels
     local kernelFunctions = {}
     local key = tostring(os.time())
@@ -696,13 +696,14 @@ function util.makeGPUFunctions(problemSpec, PlanData, delegate, names)
         return string.format("%s_%s_%s",name,tostring(ft),key)
     end
     
-    for _,problemfunction in ipairs(problemSpec.functions) do
+    for _,problemfunction in ipairs(problemSpec.functions) do -- problemfunction is of type ProblemFunction, see grammar in o.t
         if problemfunction.typ.kind == "CenteredFunction" then
            local ispace = problemfunction.typ.ispace
            local dimcount = #ispace.dims
 	       assert(dimcount <= 3, "cannot launch over images with more than 3 dims")
-           local ks = delegate.CenterFunctions(ispace,problemfunction.functionmap)
+           local ks = delegate.CenterFunctions(ispace,problemfunction.functionmap) -- ks are the kernelfunctions as shown in gaussNewtonGPU.t
            for name,func in pairs(ks) do
+             print(name,func) -- debug
                 kernelFunctions[getkname(name,problemfunction.typ)] = { kernel = func , annotations = { {"maxntidx", GRID_SIZES[dimcount][1]}, {"maxntidy", GRID_SIZES[dimcount][2]}, {"maxntidz", GRID_SIZES[dimcount][3]}, {"minctasm",1} } }
            end
         else
@@ -714,7 +715,11 @@ function util.makeGPUFunctions(problemSpec, PlanData, delegate, names)
         end
     end
     
+    print('\nIn makeGPUFunctions:') -- debug
+    for k,v in pairs(kernelFunctions) do print(k,v) end
     local kernels = terralib.cudacompile(kernelFunctions, false)
+    -- print('\ncompiled cuda kernels')
+    -- for k,v in pairs(kernels) do print(k,v) end -- end
     
     -- step 2: generate wrapper functions around each named thing
     local grouplaunchers = {}
@@ -726,6 +731,7 @@ function util.makeGPUFunctions(problemSpec, PlanData, delegate, names)
             local kernel = kernels[kname]
             if kernel then -- some domains do not have an associated kernel, (see _Finish kernels in GN which are only defined for 
                 local launcher = makeGPULauncher(PlanData, name, problemfunction.typ, kernel)
+                -- print(launcher) -- debug
                 if not args then
                     args = launcher:gettype().parameters:map(symbol)
                 end
@@ -744,7 +750,11 @@ function util.makeGPUFunctions(problemSpec, PlanData, delegate, names)
         end
         grouplaunchers[name] = fn 
     end
+    -- for k,v in pairs(grouplaunchers) do print(k,v) end -- debug
     return grouplaunchers
+end
+
+function util.makeCPUFunctions(problemSpec, PlanData, delegate, names)
 end
 
 return util

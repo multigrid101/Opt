@@ -1,4 +1,19 @@
 opt = {} --anchor it in global namespace, otherwise it can be collected
+
+
+-- need to remove the following later, I need them at the moment in order to load o.t into the repl
+_opt_verbosity = 1
+_opt_double_precision = false
+_opt_collect_kernel_timing = true
+opt.problemkind = 'gaussNewtonGPU'
+opt.dimensions = {1000,2000}
+-- opt.dimensions
+opt.dimensions[0] = 1000
+opt.dimensions[1] = 2000
+
+
+
+
 local S = require("std")
 local ffi = require("ffi")
 local util = require("util")
@@ -8,6 +23,7 @@ require("precision")
 local A = ad.classes
 
 local C = util.C
+
 
 local use_pitched_memory = true
 local use_split_sums = true
@@ -106,7 +122,7 @@ local gaussNewtonGPU = require("solverGPUGaussNewton")
 
 local ffi = require('ffi')
 
-local problems = {} -- table that holds all the problems
+problems = {} -- table that holds all the problems -- TEMP was local before
 
 -- this function should do anything it needs to compile an optimizer defined
 -- using the functions in tbl, using the optimizer 'kind' (e.g. kind = gradientdecesnt)
@@ -196,11 +212,11 @@ function opt.ProblemSpec()
     ps.parameters = terralib.newlist() -- ProblemParam*
     ps.names = {} -- name -> index in parameters list
     ps.functions = List() -- ProblemFunctions*
-	ps.maxStencil = 0
-	ps.stage = "inputs"
-	ps.usepreconditioner = false
-	ps.problemkind = opt.problemkind
-	return ps
+    ps.maxStencil = 0
+    ps.stage = "inputs"
+    ps.usepreconditioner = false
+    ps.problemkind = opt.problemkind
+    return ps
 end
 
 function ProblemSpec:UsePreconditioner(v)
@@ -805,14 +821,14 @@ function opt.problemSpecFromFile(filename)
     if not file then
         error(errorString, 0)
     end
-    local P = ad.ProblemSpec()
+    local P = ad.ProblemSpec() -- ad.ProblemSpec() is defined in this file somewhere below, seems to mostly return a ProblemSpecAD instance
     local libinstance = optlib(P)
     setfenv(file,libinstance)
     local result = file()
     if ProblemSpec:isclassof(result) then
         return result
     end
-    return libinstance.Result()
+    return libinstance.Result() -- returns P:Cost(...)
 end
 
 local function problemPlan(id, dimensions, pplan)
@@ -823,7 +839,7 @@ local function problemPlan(id, dimensions, pplan)
         opt.math = problemmetadata.kind:match("GPU") and util.gpuMath or util.cpuMath
         opt.problemkind = problemmetadata.kind
         local b = terralib.currenttimeinseconds()
-        local tbl = opt.problemSpecFromFile(problemmetadata.filename)
+        local tbl = opt.problemSpecFromFile(problemmetadata.filename) -- tbl seems to be ProblemSpec in solver***.t, seems to be more or less whatever ProblemSpecAD:Cost() returns
         assert(ProblemSpec:isclassof(tbl))
         local result = compilePlan(tbl,problemmetadata.kind)
         local e = terralib.currenttimeinseconds()
@@ -1176,7 +1192,8 @@ function Condition:Union(rhs)
     return Condition:create(r)
 end
 
-local function createfunction(problemspec,name,Index,arguments,results,scatters)
+-- really long (~ 700 l.o.c.) function, that turns a FunctionSpec into a function that can be used later (e.g. evalJTF)
+local function createfunction(problemspec,name,Index,arguments,results,scatters) 
     results = removeboundaries(results)
     
     local imageload = terralib.memoize(function(imageaccess)
@@ -1572,6 +1589,11 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
         W:close()
     end
     
+    -- debug
+    print('\n')
+    print(problemspec, name)
+    for k,v in pairs(problemspec) do print(k,v) end
+
     local P = symbol(problemspec.P:ParameterType(),"P")
     local idx = symbol(Index,"idx")
     local midx = symbol(Index,"midx")
@@ -1819,7 +1841,7 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
         scatterstatements:insert(stmt)
     end
 
-    local terra generatedfn([idx], [P], [extraarguments])
+    local terra generatedfn([idx], [P], [extraarguments]) -- IMPORTANT: THIS corresponds to e.g. 'evalJTF()' later
         var [midx] = idx
         [declarations]
         [statements]
@@ -1841,7 +1863,7 @@ function ProblemSpecAD:CompileFunctionSpec(functionspec)
     return createfunction(self,functionspec.name,Index,functionspec.arguments,functionspec.results,functionspec.scatters)
 end
 
-function ProblemSpecAD:AddFunctions(functionspecs)
+function ProblemSpecAD:AddFunctions(functionspecs) -- takes fspecs, compiles them and stores compiled functions in self.P.functions
     local kind_to_functionmap = {}
     local kinds = List()
     for i,fs in ipairs(functionspecs) do -- group by unique function kind to pass to ProblemSpec:Functions call
@@ -1852,7 +1874,7 @@ function ProblemSpecAD:AddFunctions(functionspecs)
             kinds:insert(fs.kind)
         end
         assert(not fm[fs.name],"function already defined!")
-        fm[fs.name] = self:CompileFunctionSpec(fs)
+        fm[fs.name] = self:CompileFunctionSpec(fs) -- takes a FunctionSpec and turns it into a "functionmap"
         if fm.derivedfrom and fs.derivedfrom then
             assert(fm.derivedfrom == fs.derivedfrom, "not same energy spec?")
         end
@@ -2384,7 +2406,7 @@ function ProblemSpecAD:Cost(...)
         functionspecs:insert(A.FunctionSpec(class, "exclude", EMPTY,List{exclude}, EMPTY))
     end
     
-    self:AddFunctions(functionspecs)
+    self:AddFunctions(functionspecs) -- add 'functions' field to self.P
     self.P.energyspecs = energyspecs
     return self.P
 end
@@ -2488,5 +2510,28 @@ end
 terra opt.SetSolverParameter(plan : &opt.Plan, name : rawstring, value : &opaque) 
     return plan.setsolverparameter(plan.data, name, value)
 end
+
+
+-- temporary stuff for testing
+-- problem = opt.ProblemDefine("../../examples/image_warping/image_warping.t", "gaussNewtonGPU")
+problem = opt.ProblemDefine("testinput.t", "gaussNewtonGPU")
+meta = problems[1]
+opt.math = meta.kind:match("GPU") and util.gpuMath or util.cpuMath
+spec = opt.problemSpecFromFile("testinput.t")
+fmapcost = spec.functions[1].functionmap.cost
+
+
+
+result = compilePlan(spec, 'gaussNewtonGPU')
+plan = result()
+
+-- spec.functions[1].functionmap.cost has the compiled cost function (fmap.cost()) (seems to be of type table.... why??? --> all terra functions have this type)
+-- createcost(spec.energyspecs[1]) has the raw cost function (the FunctionSpec() for fmap.cost())
+
+-- energyspec = spec.energyspecs[1]
+-- costspec = createcost(energyspec)
+-- fmapcost = ProblemSpecAD:CompileFunctionSpec(costspec) -- does not work for some reason.... ProblemSpecAD seems to have some global state
+
+
 
 return opt
