@@ -7,6 +7,7 @@ local ffi = require("ffi")
 local C = util.C
 local Timer = util.Timer
 
+-- TODO where is this used? grep can't find anything
 local getValidUnknown = util.getValidUnknown
 
 local GuardedInvertType = { CERES = {}, MODIFIED_CERES = {}, EPSILON_ADD = {} }
@@ -82,8 +83,14 @@ opt.BLOCK_SIZE = 16
 local BLOCK_SIZE =  opt.BLOCK_SIZE
 
 local FLOAT_EPSILON = `[opt_float](0.00000001f) 
+-- TODO find out what happens up to this point
+
+
+-- TODO find out why the return-value is this weird function, which itself returns a function.
+
 -- GAUSS NEWTON (or LEVENBERG-MARQUADT)
-return function(problemSpec)
+-- takes the problem-specification as input. That makes sense, since the generated solver is problem-specific
+return function(problemSpec) 
     local UnknownType = problemSpec:UnknownType()
     local TUnknownType = UnknownType:terratype()	
     -- start of the unknowns that correspond to this image
@@ -230,7 +237,7 @@ return function(problemSpec)
         end
     end
 
-    local terra wrap(c : int, v : float) -- TODO dead code??? cannot find any usages
+    local terra wrap(c : int, v : float) -- TODO dead code??? cannot find any usages except in some commented-out code below
         if c < 0 then
             if v ~= 0.f then
                 printf("wrap a non-zero? %d %f\n",c,v)
@@ -246,7 +253,7 @@ return function(problemSpec)
         return c
     end
 
-    local function generateDumpJ(ES,dumpJ,idx,pd) -- only used in building of 'delegate'
+    local function generateDumpJ(ES,dumpJ,idx,pd) -- TODO only used in building of 'delegate' --> make local there
         local nnz_per_entry = 0
         for i,r in ipairs(ES.residuals) do
             nnz_per_entry = nnz_per_entry + #r.unknowns
@@ -272,6 +279,7 @@ return function(problemSpec)
 
         return quote
                    var rhs = dumpJ(idx,pd.parameters)
+                   -- TODO what is this???
                    --[[escape                
                        local nnz = 0
                        local residual = 0
@@ -303,7 +311,8 @@ return function(problemSpec)
     end
 	
     -- BUILD DELEGATE START
-    local delegate = {} -- wird spaeter an 'makeGPUfunctions' uebergeben, sonst keine Verwendung
+    -- only provides two functions/attributes: CenterFunctions and GraphFunctions
+    local delegate = {} -- TODO wird spaeter an 'makeGPUfunctions' uebergeben, sonst keine Verwendung --> extra file
 
     function delegate.CenterFunctions(UnknownIndexSpace,fmap)
         local kernels = {}
@@ -378,6 +387,7 @@ return function(problemSpec)
                     residuum = -residuum
                     pd.r(idx) = residuum
                 
+                    -- TODO problemSpec is more or less global scope, try to find a more elegant solution without relying on global state
                     if not problemSpec.usepreconditioner then
                         pre = opt_float(1.0f)
                     end
@@ -793,6 +803,7 @@ return function(problemSpec)
                                                                     "saveJToCRS_Graph"
                                                                     })
 
+    -- TODO all of the below seem to be helper functions, put in appropriate place
     local terra computeCost(pd : &PlanData) : opt_float
         C.cudaMemset(pd.scratch, 0, sizeof(opt_float))
         gpu.computeCost(pd)
@@ -820,7 +831,6 @@ return function(problemSpec)
     end
 
     local computeModelCostChange
-
     if problemSpec:UsesLambda() then
         terra computeModelCostChange(pd : &PlanData) : opt_float
             var cost = pd.prevCost
@@ -962,6 +972,7 @@ return function(problemSpec)
     end
 
     -- from here on: define init, step, etc, which make up the main body of the solver
+    -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra init(data_ : &opaque, params_ : &&opaque)
        var pd = [&PlanData](data_)
        pd.timer:init()
@@ -1019,6 +1030,7 @@ return function(problemSpec)
        pd.prevCost = computeCost(pd)
     end
 
+    -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra cleanup(pd : &PlanData)
         logSolver("final cost=%f\n", pd.prevCost)
         pd.timer:endEvent(nil,pd.endSolver)
@@ -1026,6 +1038,7 @@ return function(problemSpec)
         pd.timer:cleanup()
     end
 
+    -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra step(data_ : &opaque, params_ : &&opaque)
         var pd = [&PlanData](data_)
         var residual_reset_period : int         = pd.solverparameters.residual_reset_period
@@ -1190,11 +1203,13 @@ return function(problemSpec)
         end
     end
 
+    -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra cost(data_ : &opaque) : double
         var pd = [&PlanData](data_)
         return [double](pd.prevCost)
     end
 
+    -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra initializeSolverParameters(params : &SolverParameters)
         escape
             -- for each value in solver_parameter_defaults, assign to params
@@ -1216,6 +1231,7 @@ return function(problemSpec)
         end
     end
 
+    -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra setSolverParameter(data_ : &opaque, name : rawstring, value : &opaque) 
         var pd = [&PlanData](data_)
         var success = false
@@ -1234,6 +1250,7 @@ return function(problemSpec)
         logSolver("Warning: tried to set nonexistent solver parameter %s\n", name)
     end
 
+    -- TODO put in extra file 'solverskeleton.t' or something similar (or maybe keep only this and put everything above in solverskeleton.t)
     local terra makePlan() : &opt.Plan
             var pd = PlanData.alloc() -- this seems to be sort-of like a constructor call of the "PlanData" class.
             pd.plan.data = pd

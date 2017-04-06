@@ -68,9 +68,15 @@ util.gpuMath["abs"] = terra (x : opt_float)
 	end
 	return x
 end
+-- TODO find out what happens up to this point
 
+-- TODO make sure to group with stuff below
 local Vectors = {}
+
+--  TODO what does this to?
 function util.isvectortype(t) return Vectors[t] end
+
+-- TODO what does this to? seems to be used only in o.t
 util.Vector = terralib.memoize(function(typ,N)
     N = assert(tonumber(N),"expected a number")
     local ops = { "__sub","__add","__mul","__div" }
@@ -171,6 +177,8 @@ util.Vector = terralib.memoize(function(typ,N)
     return VecType
 end)
 
+-- TODO what is this? (seems to be a lua "class" definition)
+-- TODO only used in some timer-related stuff below, so make local there and put in appropriate file
 function Array(T,debug)
     local struct Array(S.Object) {
         _data : &T;
@@ -271,9 +279,11 @@ end
 
 local Array = S.memoize(Array)
 
+-- TODO used only a few times much further below, so put there
 local warpSize = 32
 util.warpSize = warpSize
 
+-- TODO who uses this??? grep can't find any usages
 util.symTable = function(typ, N, name)
 	local r = terralib.newlist()
 	for i = 1, N do
@@ -282,10 +292,16 @@ util.symTable = function(typ, N, name)
 	return r
 end
 
+-- TODO who uses this??? grep can't find any usages
 util.ceilingDivide = terra(a : int32, b : int32)
 	return (a + b - 1) / b
 end
 
+--------------------------- Timing stuff start
+-- TODO put in separate file
+
+
+-- TODO what is this? its only used in the next few lines? can we make this local to the Timer "class"?
 struct util.TimingInfo {
 	startEvent : C.cudaEvent_t
 	endEvent : C.cudaEvent_t
@@ -328,6 +344,7 @@ terra Timer:endEvent(stream : C.cudaStream_t, endEvent : C.cudaEvent_t)
     C.cudaEventRecord(endEvent, stream)
 end
 
+-- TODO only used in next function, so make local there
 terra isprefix(pre : rawstring, str : rawstring) : bool
     if @pre == 0 then return true end
     if @str ~= @pre then return false end
@@ -394,8 +411,10 @@ terra Timer:evaluate()
 	end
     
 end
+--------------------------- Timing stuff end
 
 
+-- TODO what is this? Used in this file and solvers, put in appropriate place
 local terra laneid()
     var laneid : int;
     laneid = terralib.asm(int,"mov.u32 $0, %laneid;","=r", true)
@@ -403,9 +422,12 @@ local terra laneid()
 end
 util.laneid = laneid
 
+-- TODO only one usage below, so maybe make local there
 __syncthreads = cudalib.nvvm_barrier0
 
 
+-- TODO do we need this declaration or can we leave it out?
+-- TODO only one usage below, so maybe put in extra file or local to usage (or in separate file with usage)
 local __shfl_down 
 
 if opt_float == float then
@@ -494,6 +516,7 @@ else
 end
 
 -- Using the "Kepler Shuffle", see http://devblogs.nvidia.com/parallelforall/faster-parallel-reductions-kepler/
+-- TODO used also in solver, so find appropriate place
 local terra warpReduce(val : opt_float) 
 
   var offset = warpSize >> 1
@@ -534,6 +557,7 @@ end
 util.blockReduce = blockReduce
 
 
+-- TODO general purpose stuff, put in appropriate place
 util.max = terra(x : double, y : double)
 	return terralib.select(x > y, x, y)
 end
@@ -546,6 +570,7 @@ local function noFooter(pd)
 	return quote end
 end
 
+-- TODO used only in definition of solver-skeleton, so put it there
 util.initParameters = function(self, ProblemSpec, params, isInit)
     local stmts = terralib.newlist()
 	for _, entry in ipairs(ProblemSpec.parameters) do
@@ -576,6 +601,7 @@ util.initParameters = function(self, ProblemSpec, params, isInit)
 	return stmts
 end
 
+-- TODO used only in definition of solver-skeleton, so put it there
 util.initPrecomputedImages = function(self, ProblemSpec)
     local stmts = terralib.newlist()
 	for _, entry in ipairs(ProblemSpec.parameters) do
@@ -591,6 +617,7 @@ end
 
 
 
+-- TODO where is this used? grep can only find an assignment in solver, but no subsequent usages
 util.getValidUnknown = macro(function(pd,pw,ph)
 	return quote
 		@pw,@ph = blockDim.x * blockIdx.x + threadIdx.x, blockDim.y * blockIdx.y + threadIdx.y
@@ -598,6 +625,8 @@ util.getValidUnknown = macro(function(pd,pw,ph)
 		 @pw < pd.parameters.X:W() and @ph < pd.parameters.X:H() 
 	end
 end)
+
+-- TODO only used in Graph kernels, so put there
 util.getValidGraphElement = macro(function(pd,graphname,idx)
 	graphname = graphname:asvalue()
 	return quote
@@ -607,8 +636,11 @@ util.getValidGraphElement = macro(function(pd,graphname,idx)
 	end
 end)
 
+-- TODO where is this used? grep can't find anything
 local positionForValidLane = util.positionForValidLane
 
+-- TODO choose better name and put with other general purpose stuff
+-- TODO this seems to be re-defined in solver AND o.t
 local cd = macro(function(apicall) 
     local apicallstr = tostring(apicall)
     local filename = debug.getinfo(1,'S').source
@@ -626,6 +658,7 @@ local cd = macro(function(apicall)
     end end)
 
 
+-- TODO only used in next function, so make local there
 local checkedLaunch = macro(function(kernelName, apicall)
     local apicallstr = tostring(apicall)
     local filename = debug.getinfo(1,'S').source
@@ -640,9 +673,11 @@ local checkedLaunch = macro(function(kernelName, apicall)
         r
     end end)
 
+-- TODO only used with compiler functions below, group appropriately or find better way to inject this "global" variable
 local GRID_SIZES = { {256,1,1}, {16,16,1}, {8,8,4} }
 
 
+-- TODO put in extra file for compiler stuff
 local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
     kernelName = kernelName.."_"..tostring(ft)
     local kernelparams = compiledKernel:gettype().parameters
@@ -688,6 +723,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
     return GPULauncher
 end
 
+-- TODO put in extra file for compiler pipeline stuff
 function util.makeGPUFunctions(problemSpec, PlanData, delegate, names) -- same  problemSpec as in solver.t
     -- step 1: compile the actual cuda kernels
     local kernelFunctions = {}
@@ -703,7 +739,7 @@ function util.makeGPUFunctions(problemSpec, PlanData, delegate, names) -- same  
 	       assert(dimcount <= 3, "cannot launch over images with more than 3 dims")
            local ks = delegate.CenterFunctions(ispace,problemfunction.functionmap) -- ks are the kernelfunctions as shown in gaussNewtonGPU.t
            for name,func in pairs(ks) do
-             print(name,func) -- debug
+             -- print(name,func) -- debug
                 kernelFunctions[getkname(name,problemfunction.typ)] = { kernel = func , annotations = { {"maxntidx", GRID_SIZES[dimcount][1]}, {"maxntidy", GRID_SIZES[dimcount][2]}, {"maxntidz", GRID_SIZES[dimcount][3]}, {"minctasm",1} } }
            end
         else
@@ -715,8 +751,8 @@ function util.makeGPUFunctions(problemSpec, PlanData, delegate, names) -- same  
         end
     end
     
-    print('\nIn makeGPUFunctions:') -- debug
-    for k,v in pairs(kernelFunctions) do print(k,v) end
+    -- print('\nIn makeGPUFunctions:') -- debug
+    -- for k,v in pairs(kernelFunctions) do print(k,v) end
     local kernels = terralib.cudacompile(kernelFunctions, false)
     -- print('\ncompiled cuda kernels')
     -- for k,v in pairs(kernels) do print(k,v) end -- end
@@ -754,7 +790,61 @@ function util.makeGPUFunctions(problemSpec, PlanData, delegate, names) -- same  
     return grouplaunchers
 end
 
+-- --------------------------------- CPU --------------------------------------
+
+-- TODO turn functions into locals after finishing
+
+
 function util.makeCPUFunctions(problemSpec, PlanData, delegate, names)
+
+    local function cpucompile(kernelFunctions)
+
+        local function makecpufunc(func)
+            local terra cpufunc(pd: &PlanData)
+                for k = 1,1000 do
+                    func(k, pd)
+                end
+            end
+            return cpufunc
+        end
+
+        local compiledfuncs = {}
+        for name, func in pairs(kernelFunctions) do
+            compiledfuncs:insert(makecpufunc(func.kernel))
+        end
+
+        return compiledfuncs
+    end
+
+    local kernelFunctions = {}
+    local key = tostring(os.time())
+    local function getkname(name,ft)
+        return string.format("%s_%s_%s",name,tostring(ft),key)
+    end
+    
+    for _,problemfunction in ipairs(problemSpec.functions) do -- problemfunction is of type ProblemFunction, see grammar in o.t
+        if problemfunction.typ.kind == "CenteredFunction" then
+           local ispace = problemfunction.typ.ispace
+           local dimcount = #ispace.dims
+	       assert(dimcount <= 3, "cannot launch over images with more than 3 dims")
+           local ks = delegate.CenterFunctions(ispace,problemfunction.functionmap) -- ks are the kernelfunctions as shown in gaussNewtonGPU.t
+           for name,func in pairs(ks) do
+               -- print(name,func) -- debug
+               -- TODO folgende Zeile anpassen
+               kernelFunctions[getkname(name,problemfunction.typ)] = { kernel = func , annotations = { {"maxntidx", GRID_SIZES[dimcount][1]}, {"maxntidy", GRID_SIZES[dimcount][2]}, {"maxntidz", GRID_SIZES[dimcount][3]}, {"minctasm",1} } }
+           end
+        else
+            local graphname = problemfunction.typ.graphname
+            local ks = delegate.GraphFunctions(graphname,problemfunction.functionmap)
+            for name,func in pairs(ks) do            
+                -- TODO folgende Zeile anpassen
+                kernelFunctions[getkname(name,problemfunction.typ)] = { kernel = func , annotations = { {"maxntidx", 256}, {"minctasm",1} } }
+            end
+        end
+    end
+
+    local cpufuncs = cpucompile(kernelFunctions)
+    return cpufuncs
 end
 
 return util

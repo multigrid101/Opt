@@ -1,15 +1,15 @@
 opt = {} --anchor it in global namespace, otherwise it can be collected
 
 
--- need to remove the following later, I need them at the moment in order to load o.t into the repl
-_opt_verbosity = 1
-_opt_double_precision = false
-_opt_collect_kernel_timing = true
-opt.problemkind = 'gaussNewtonGPU'
-opt.dimensions = {1000,2000}
--- opt.dimensions
-opt.dimensions[0] = 1000
-opt.dimensions[1] = 2000
+-- TODO need to remove the following later, I need them at the moment in order to load o.t into the repl
+-- _opt_verbosity = 1
+-- _opt_double_precision = false
+-- _opt_collect_kernel_timing = true
+-- opt.problemkind = 'gaussNewtonCPU'
+-- opt.dimensions = {1000,2000}
+-- -- opt.dimensions
+-- opt.dimensions[0] = 1000
+-- opt.dimensions[1] = 2000
 
 
 
@@ -116,10 +116,13 @@ for i,d in ipairs(GPUBlockDims) do
     _G[a] = tbl
 end
 
+-- TODO this is defined in o.t AND util.t --. move to some general purpose utils or whatever
 __syncthreads = cudalib.nvvm_barrier0
 
+-- TODO change this name to "solver" or whatever
 local gaussNewtonGPU = require("solverGPUGaussNewton")
 
+-- TODO why is this down here? ffi is already required at the top
 local ffi = require('ffi')
 
 problems = {} -- table that holds all the problems -- TEMP was local before
@@ -128,12 +131,15 @@ problems = {} -- table that holds all the problems -- TEMP was local before
 -- using the functions in tbl, using the optimizer 'kind' (e.g. kind = gradientdecesnt)
 -- it should generate the field makePlan which is the terra function that 
 -- allocates the plan
-
+-- TODO this is 'almost' C API, should go to the bottom and be accessible as part of the opt package
 local function compilePlan(problemSpec, kind)
-    assert(kind == "gaussNewtonGPU" or kind == "LMGPU" ,"expected solver kind to be gaussNewtonGPU or LMGPU")
+    assert( kind == "gaussNewtonCPU" or kind == "gaussNewtonGPU" or kind == "LMGPU" ,"expected solver kind to be gaussNewtonGPU or LMGPU")
     return gaussNewtonGPU(problemSpec)
 end
 
+-- TODO what does this syntax do, I can't find what "struct foo() {}" with brackets does
+-- TODO other syntax problem: what do the arrows do?
+-- TODO maybe put in extra file
 struct opt.Plan(S.Object) {
     init : {&opaque,&&opaque} -> {} -- plan.data,params
     setsolverparameter : {&opaque,rawstring,&opaque} -> {} -- plan.data,name,param
@@ -142,7 +148,9 @@ struct opt.Plan(S.Object) {
     data : &opaque
 } 
 
+-- TODO What does 'opaque type' mean?
 struct opt.Problem {} -- just used as an opaque type, pointers are actually just the ID
+-- TODO this is almost C API, may move to bottom?
 local function problemDefine(filename, kind, pid)
     local problemmetadata = { filename = ffi.string(filename), kind = ffi.string(kind), id = #problems + 1 }
     problems[problemmetadata.id] = problemmetadata
@@ -150,7 +158,10 @@ local function problemDefine(filename, kind, pid)
 end
 problemDefine = terralib.cast({rawstring, rawstring, &int} -> {}, problemDefine)
 
+-- TODO just a shortcut for convenience, should go to an appropriate section at top of file or maybe even with Array in util.t
 local List = terralib.newlist
+
+-- TODO what does this stuff actually do? :D
 A:Extern("ExpLike",function(x) return ad.Exp:isclassof(x) or ad.ExpVector:isclassof(x) end)
 A:Define [[
 Dim = (string name, number size, number? _index) unique
@@ -202,11 +213,19 @@ UnknownType = (ImageParam* images)
 
 ProblemFunctions = (FunctionKind typ, table functionmap)
 ]]
+-- TODO can this go somewhere else, maybe if we move the stuff upwards from here?....
 local Dim,IndexSpace,Index,Offset,GraphElement,ImageType,Image,ImageVector,ProblemParam,ImageParam,ScalarParam,GraphParam,VarDef,ImageAccess,BoundsAccess,IndexValue,ParamValue,Graph,GraphFunctionSpec,Scatter,Condition,IRNode,ProblemSpec,ProblemSpecAD,SampledImage, GradientImage,UnknownType = 
       A.Dim,A.IndexSpace,A.Index,A.Offset,A.GraphElement,A.ImageType,A.Image,A.ImageVector,A.ProblemParam,A.ImageParam,A.ScalarParam,A.GraphParam,A.VarDef,A.ImageAccess,A.BoundsAccess,A.IndexValue,A.ParamValue,A.Graph,A.GraphFunctionSpec,A.Scatter,A.Condition,A.IRNode,A.ProblemSpec,A.ProblemSpecAD,A.SampledImage,A.GradientImage,A.UnknownType
+-- TODO find out what happens up to this point
 
+-- TODO where is this used? grep can't find anything
 opt.PSpec = ProblemSpec
+
+-- TODO this only seems to be used in ProblemSpec:Stage, a few functions down, so make local there
 local PROBLEM_STAGES  = { inputs = 0, functions = 1 }
+
+-- TODO put with other 'opt' stuff, organize with other 'problemSpec' stuff...
+-- TODO this is only used to define ad.problemSpec, so why do we have this extra "class"?
 function opt.ProblemSpec()
     local ps = ProblemSpec()
     ps.parameters = terralib.newlist() -- ProblemParam*
@@ -219,41 +238,57 @@ function opt.ProblemSpec()
     return ps
 end
 
+-------------------------------------- ProblemSpec start
+
+-- TODO who uses this? grep can't find anything
+-- --> ProblemSpecAD redirects to this
 function ProblemSpec:UsePreconditioner(v)
 	self:Stage "inputs"
 	self.usepreconditioner = v
 end
-function ProblemSpec:Stage(name)
+
+-- TODO only called from within ProblemSpec, make private somehow
+--  this functions provides a mechanism to ensure that certain functions can only be called in a certain order
+function ProblemSpec:Stage(name) -- sets the stage to new stage and ensures that stages only move forward
     assert(PROBLEM_STAGES[self.stage] <= PROBLEM_STAGES[name], "all inputs must be specified before functions are added")
     self.stage = name
 end
 
+
+-- TODO only used once and within ProblemSpec, make private somehow
 function ProblemSpec:registername(name)
     assert(not self.names[name],string.format("name %s already in use",name))
     self.names[name] = #self.parameters + 1
 end
 
+-- TODO these two need to go somewhere else
 function ProblemParam:terratype() return self.type end
 function ImageParam:terratype() return self.imagetype:terratype() end
 
 
+-- TODO who uses this? grep can't find anything
 function ProblemSpec:MaxStencil()
     self:Stage "functions"
 	return self.maxStencil
 end
 
-function ProblemSpec:Stencil(stencil) 
+
+-- TODO who uses this? grep can't find anything
+function ProblemSpec:Stencil(stencil) -- sets stencil to max of current and new stencil 
     self:Stage "inputs"
 	self.maxStencil = math.max(stencil, self.maxStencil)
 end
 
-function ProblemSpec:newparameter(p)
+
+-- TODO only used from within ProblemSpec, make private somehow
+function ProblemSpec:newparameter(p) -- adds new parameter
     assert(ProblemParam:isclassof(p))
     self:registername(p.name)
     self.parameters:insert(p)
 end
 
-function ProblemSpec:ParameterType()
+-- TODO name not equal to functionality
+function ProblemSpec:ParameterType() -- returns types of problemparameters
     self:Stage "functions"
     if not self.ProblemParameters then
         self.ProblemParameters = terralib.types.newstruct("ProblemParameters")
@@ -266,7 +301,8 @@ function ProblemSpec:ParameterType()
     return self.ProblemParameters
 end
 
-function ProblemSpec:UnknownType()
+-- somehow builds a list (images) of unknowns and wrappes them in 'UnknownType'
+function ProblemSpec:UnknownType() -- TODO what does this do???
     self:Stage "functions"
     if not self._UnknownType then
         local images = List()
@@ -278,9 +314,14 @@ function ProblemSpec:UnknownType()
     return self._UnknownType
 end
 
+-- TODO put these two somewhere else
+-- TODO if these functions are part of 'A', why aren't they defined there?
 function A.CenteredFunction:__tostring() return tostring(self.ispace) end
 function A.GraphFunction:__tostring() return tostring(self.graphname) end
 
+-- TODO what is ft?
+-- puts 'ft' and 'functions' into an 'A.ProblemFunctions' and inserts that into self.functions
+-- TODO only called once from within ProblemSpecAD, maybe refactor?
 function ProblemSpec:Functions(ft, functions)
     self:Stage "functions"
     for k,v in pairs(functions) do
@@ -308,23 +349,42 @@ function ProblemSpec:Functions(ft, functions)
     end
     self.functions:insert(A.ProblemFunctions(ft, functions))
 end
+
+-- meaning is pretty clear
 function ProblemSpec:UsesGraphs() return self.usesgraphs or false end
 
-function ProblemSpec:Param(name,typ,idx)
+-- TODO sortof a duplicate of self:newparameter, change name to something more meaningful
+function ProblemSpec:Param(name,typ,idx) -- adds a new parameter of type 'ScalarParam'
     self:Stage "inputs"
     self:newparameter(ScalarParam(typ,name,idx))
 end
 
+-- meaning is clear
+-- TODO is this really the most elegant way to propagate this type of information?
 function ProblemSpec:UsesLambda() return self.problemkind:match("LM") ~= nil end
+-------------------------------------- ProblemSpec start
+---- there are more ProblemSpec methods below!
+
+
+
+----------------------------------- DIM ---------------------------------------
+-- TODO The only usage of this class I can find is near the function 'todim()'
+-- in this file but todim() seems to be dead code
 
 
 function Dim:__tostring() return "Dim("..self.name..")" end
 
+-- TODO who uses this? grep can't find anything
 function opt.Dim(name, idx)
     idx = assert(tonumber(idx), "expected an index for this dimension")
     local size = tonumber(opt.dimensions[idx])
     return Dim(name,size,idx)
 end
+----------------------------------- DIM END ---------------------------------------
+
+----------------------------------- IndexSpace ---------------------------------------
+-- TODO contains CUDA  stuff
+-- TODO can't find many usages of this class in this file
 
 function IndexSpace:cardinality()
     local c = 1
@@ -333,9 +393,12 @@ function IndexSpace:cardinality()
     end
     return c
 end
+
+-- TODO can't find usages of this, but grepping is difficult because 'init' is a common string
 function IndexSpace:init()
     self._string = self.dims:map(function(x) return x.name end):concat("_")
 end
+
 function IndexSpace:__tostring() return self._string end
 
 function IndexSpace:ZeroOffset()
@@ -414,7 +477,7 @@ function IndexSpace:indextype()
     
     if #dims <= 3 then
         local dimnames = "xyz"
-        terra Index:initFromCUDAParams() : bool
+        terra Index:initFromCUDAParams() : bool -- add 'x', 'y' and 'z' field to the index
             escape
                 local lhs,rhs = terralib.newlist(),terralib.newlist()
                 local valid = `true
@@ -435,7 +498,12 @@ function IndexSpace:indextype()
     end
     return Index
 end
+----------------------------------- IndexSpace END ---------------------------------------
 
+----------------------------------- ImageType ---------------------------------------
+-- TODO contains CUDA stuff
+
+-- TODO only used once and within ImageType, make private
 function ImageType:usestexture() -- texture, 2D texture
     local c = self.channelcount
     if use_bindless_texture and self.scalartype == float and 
@@ -453,6 +521,7 @@ function ImageType:usestexture() -- texture, 2D texture
     return false, false 
 end
 
+-- TODO this is re-defined in several files
 local cd = macro(function(apicall) 
     local apicallstr = tostring(apicall)
     local filename = debug.getinfo(1,'S').source
@@ -469,6 +538,7 @@ local cd = macro(function(apicall)
         r
     end end)
 
+-- TODO only used in ImageType:terraype() below, so move there or make private to Imagetype
 local terra wrapBindlessTexture(data : &uint8, channelcount : int, width : int, height : int) : C.cudaTextureObject_t
     var res_desc : C.cudaResourceDesc
     C.memset(&res_desc, 0, sizeof(C.cudaResourceDesc))
@@ -504,6 +574,8 @@ local terra wrapBindlessTexture(data : &uint8, channelcount : int, width : int, 
 end
 
 function ImageType:ElementType() return util.Vector(self.scalartype,self.channelcount) end
+
+-- TODO only used in function below, so maybe make private?
 function ImageType:LoadAsVector() return self.channelcount == 2 or self.channelcount == 4 end
 function ImageType:terratype()
     if self._terratype then return self._terratype end
@@ -593,7 +665,7 @@ function ImageType:terratype()
     end
     local cardinality = self.ispace:cardinality()
     terra Image:totalbytes() return sizeof(vectortype)*cardinality end
-	terra Image:initCPU()
+	terra Image:initGPU()
 		self.data = [&vectortype](C.malloc(self:totalbytes()))
 		C.memset(self.data,0,self:totalbytes())
 	end
@@ -626,7 +698,9 @@ function ImageType:terratype()
     end
     return Image
 end
+----------------------------------- ImageType END ---------------------------------------
 
+-- TODO find an appropriate place for this
 local function MapAndGroupBy(list,fn,...)
     local groups,map = List(),{}
     for _,l in ipairs(list) do
@@ -639,6 +713,9 @@ local function MapAndGroupBy(list,fn,...)
     end
     return groups,map
 end
+
+----------------------------------- UnknownType ---------------------------------------
+-- TODO contains CUDA stuff
 
 function UnknownType:init()
     self.ispaces,self.ispacetoimages = MapAndGroupBy(self.images, function(ip)
@@ -654,10 +731,15 @@ function UnknownType:init()
         self.ispacesizes[ispace] = N
     end
 end
+
+-- TODO only used from within UnknownType, so make private or eliminate because too short or change name to get....
 function UnknownType:IndexSpaces()
     return self.ispaces
 end
+
+
 function UnknownType:VectorSizeForIndexSpace(ispace) return assert(self.ispacesizes[ispace],"unused ispace") end 
+
 function UnknownType:VectorTypeForIndexSpace(ispace)
     return util.Vector(opt_float,self:VectorSizeForIndexSpace(ispace))
 end
@@ -756,12 +838,16 @@ function UnknownType:terratype()
 
     return self._terratype
 end
+----------------------------------- UnknownType END ---------------------------------------
 
-local unity = Dim("1",1)
+-- TODO put somewhere else
+local unity = Dim("1",1) -- TODO make this local to 'todim()' function
+-- TODO who uses this? grep can't find anything
 local function todim(d)
     return Dim:isclassof(d) and d or d == 1 and unity
 end
 
+-- TODO make this local to the following function (ProblemSpec:ImageType())
 local function tovalidimagetype(typ)
     if not terralib.types.istype(typ) then return nil end
     if util.isvectortype(typ) then
@@ -771,12 +857,15 @@ local function tovalidimagetype(typ)
     end
 end
 
+-- TODO move to ProblemSpec stuff
+-- TODO who is using this??? grep doesn't find anything
 function ProblemSpec:ImageType(typ,ispace)
     local scalartype,channelcount = tovalidimagetype(typ,"expected a number or an array of numbers")
     assert(scalartype,"expected a number or an array of numbers")
     return ImageType(ispace,scalartype,channelcount) 
 end
 
+-- TODO this is only used by ProblemSpec and ProblemSpecAD, so make it a class/object method and inherit appropriately
 local function toispace(ispace)
     if not IndexSpace:isclassof(ispace) then -- for handwritten API
         assert(#ispace > 0, "expected at least one dimension")
@@ -786,14 +875,18 @@ local function toispace(ispace)
 end
 
 
+-- TODO move to ProblemSpec stuff
 function ProblemSpec:Image(name,typ,ispace,idx,isunknown)
     self:Stage "inputs"
     isunknown = isunknown and true or false
     self:newparameter(ImageParam(self:ImageType(typ,toispace(ispace)),isunknown,name,idx))
 end
+
+-- TODO move to ProblemSpec stuff
 function ProblemSpec:Unknown(name,typ,ispace,idx) return self:Image(name,typ,ispace,idx,true) end
 
 
+-- TODO move to ProblemSpec stuff
 function ProblemSpec:Graph(name, idx, ...)
     self:Stage "inputs"
     local GraphType = terralib.types.newstruct(name)
@@ -812,10 +905,12 @@ function ProblemSpec:Graph(name, idx, ...)
     self:newparameter(GraphParam(GraphType,name,idx))
 end
 
+-- TODO next two lines only used in 'problemPlan()', two functions below, so make local there
 local allPlans = terralib.newlist()
-
 errorPrint = rawget(_G,"errorPrint") or print
 
+-- TODO we could make this local to 'problemPlan', but that would make it unavailable to REPL
+-- TODO this is (almost) the C API, so move down
 function opt.problemSpecFromFile(filename)
     local file, errorString = terralib.loadfile(filename)
     if not file then
@@ -831,6 +926,7 @@ function opt.problemSpecFromFile(filename)
     return libinstance.Result() -- returns P:Cost(...)
 end
 
+-- TODO this is (almost) the C API, so move down
 local function problemPlan(id, dimensions, pplan)
     local success,p = xpcall(function()  
 
@@ -852,6 +948,8 @@ local function problemPlan(id, dimensions, pplan)
 end
 problemPlan = terralib.cast({int,&uint32,&&opt.Plan} -> {}, problemPlan)
 
+------------------------------- Weird random Objects start
+-- TODO make more meaningful groups
 function Offset:__tostring() return string.format("(%s)",self.data:map(tostring):concat(",")) end
 function GraphElement:__tostring() return ("%s_%s"):format(tostring(self.graph), self.element) end
 
@@ -884,10 +982,13 @@ function ImageAccess:gradient()
     end
     return emptygradient
  end
+------------------------------- Weird random Objects end
  
+-- TODO if this is **ad**.blabla, then shouldn't it be in 'ad.t'?
 function ad.Index(d) return IndexValue(d,0):asvar() end
  
 
+-- TODO if this is **ad**.blabla, then shouldn't it be in 'ad.t'?
 function ad.ProblemSpec()
     local ps = ProblemSpecAD()
     ps.P,ps.nametoimage,ps.precomputed,ps.extraarguments,ps.excludeexps = opt.ProblemSpec(), {}, List(), List(), List()
@@ -899,6 +1000,9 @@ function ad.ProblemSpec()
     end
     return ps
 end
+
+------------------------- ProblemSpecAD start
+-- TODO find out how this relates to ProblemSpec, opt.ProblemSpec, etc. and make meaningful groups
 function ProblemSpecAD:UsesLambda() return self.P:UsesLambda() end
 function ProblemSpecAD:UsePreconditioner(v)
 	self.P:UsePreconditioner(v)
@@ -941,6 +1045,7 @@ function ProblemSpecAD:ImageWithName(name)
     return assert(self.nametoimage[name],"unknown image name?")
 end
 
+-- TODO put with Image stuff
 function Image:__tostring() return self.name end
 
 local function bboxforexpression(ispace,exp)
@@ -1000,7 +1105,9 @@ function ProblemSpecAD:ComputedImage(name,dims,exp)
     return im
 end
 
+-- TODO put with Graph stuff
 function Graph:__tostring() return self.name end
+
 function ProblemSpecAD:Graph(name,idx,...)
     self.P:Graph(name,idx,...)
     local g = Graph(name)
@@ -1017,7 +1124,9 @@ function ProblemSpecAD:Param(name,typ,idx)
     self.P:Param(name,typ,idx)
     return ParamValue(name,typ):asvar()
 end
+------------------------- ProblemSpecAD end
 
+-- TODO put next two with Image stuff
 function Image:DimCount() return #self.type.ispace.dims end
 function Image:__call(first,...)
     local index,c
@@ -1047,7 +1156,9 @@ function Image:__call(first,...)
         return ad.Vector(unpack(r))
     end
 end
+
  -- wrapper for many images in a vector, just implements the __call methodf for Images Image:
+ -- TODO maybe find a more appropriate place for this. According to grep, this is only used in ProblemSpecAD, so maybe make local there
 function ImageVector:__call(...)
     local args = {...}
     local channelindex = self.images[1]:DimCount() + 1
@@ -1060,6 +1171,7 @@ function ImageVector:__call(...)
     return ad.Vector(unpack(result))
 end
 
+-------------------- More weird random stuff start
 function opt.InBounds(...)
     local offset = Offset(List{...})
 	return BoundsAccess(offset,offset):asvar()
@@ -1095,7 +1207,9 @@ local function shiftexp(exp,o)
     end
     return exp:rename(rename)
 end 
+-------------------- More weird random stuff end
 
+--------------------------------------- Offset start
 function Offset:IsZero()
     for i,o in ipairs(self.data) do
         if o ~= 0 then return false end
@@ -1140,6 +1254,9 @@ function Offset:shift(o)
     end
     return Offset(ns)
 end
+--------------------------------------- Offset end
+
+-- TODO only used in 'createfunction', so make local there.
 local function removeboundaries(exp)
     if ad.ExpVector:isclassof(exp) or terralib.islist(exp) then return exp:map(removeboundaries) end
     local function nobounds(a)
@@ -1149,10 +1266,16 @@ local function removeboundaries(exp)
     return exp:rename(nobounds)
 end
 
+-- TODO only used in next function, so make local there
 local nextirid = 0
+
+-- TODO who uses this???? grep finds nothing
 function IRNode:init()
     self.id,nextirid = nextirid,nextirid+1
 end
+
+------------------------------------------- Condition start
+-- TODO it seems that 'Condition' is only used in createfunction() (check again), so make local there
 function Condition:create(members)
     local function cmp(a,b)
         if a.kind == "intrinsic" and b.kind ~= "intrinsic" then return true
@@ -1191,8 +1314,10 @@ function Condition:Union(rhs)
     end
     return Condition:create(r)
 end
+------------------------------------------- Condition end
 
 -- really long (~ 700 l.o.c.) function, that turns a FunctionSpec into a function that can be used later (e.g. evalJTF)
+-- TODO put this in extra file
 local function createfunction(problemspec,name,Index,arguments,results,scatters) 
     results = removeboundaries(results)
     
@@ -1590,8 +1715,8 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
     end
     
     -- debug
-    print('\n')
-    print(problemspec, name)
+    -- print('\n')
+    -- print(problemspec, name)
     for k,v in pairs(problemspec) do print(k,v) end
 
     local P = symbol(problemspec.P:ParameterType(),"P")
@@ -1856,13 +1981,17 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
     return generatedfn
 end
 
+-- TODO who is using this??? grep can't find anything
 local noscatters = terralib.newlist()
 
+-- TODO move to ProblemSpecAD stuff
+-- TODO somehow, this does not work from REPL, so make minimum example and create issue.
 function ProblemSpecAD:CompileFunctionSpec(functionspec)
     local Index = functionspec.kind.kind == "GraphFunction" and int or functionspec.kind.ispace:indextype()
     return createfunction(self,functionspec.name,Index,functionspec.arguments,functionspec.results,functionspec.scatters)
 end
 
+-- TODO move to ProblemSpecAD stuff
 function ProblemSpecAD:AddFunctions(functionspecs) -- takes fspecs, compiles them and stores compiled functions in self.P.functions
     local kind_to_functionmap = {}
     local kinds = List()
@@ -1887,6 +2016,7 @@ function ProblemSpecAD:AddFunctions(functionspecs) -- takes fspecs, compiles the
 end
 
 
+-- TODO find out what this does and put in some file that states the purpose
 local function classifyexpression(exp) -- what index space, or graph is this thing mapped over
     local classification
     local seenunknown = {}
@@ -1930,6 +2060,7 @@ local function classifyexpression(exp) -- what index space, or graph is this thi
     return classification,template
 end
 
+-- TODO Important function, move downwards
 local function toenergyspecs(Rs)    
     local kinds,kind_to_templates = MapAndGroupBy(Rs,classifyexpression)
     return kinds:map(function(k) return A.EnergySpec(k,kind_to_templates[k]) end)
@@ -1939,6 +2070,7 @@ end
 --what is the set of residuals will use variable X(0,0).
 --this amounts to taking each variable in unknown support and asking which residual is it
 --that makes that variable X(0,0)
+-- TODO only used in create***(), so make local there after those functions have been grouped in a file
 local function residualsincludingX00(unknownsupport,unknown,channel)
     assert(channel)
     local r = terralib.newlist()
@@ -1950,10 +2082,13 @@ local function residualsincludingX00(unknownsupport,unknown,channel)
     end
     return r
 end
+
+-- TODO only used in create***(), so make local there after those functions have been grouped in a file
 local function unknownsforresidual(r,unknownsupport)
     return unknownsupport:map("shift",r)
 end
 
+-- TODO only used in create***(), so make local there after those functions have been grouped in a file
 local function createzerolist(N)
     local r = terralib.newlist()
     for i = 1,N do
@@ -1962,6 +2097,7 @@ local function createzerolist(N)
     return r
 end
     
+-- TODO only used in create***(), so make local there after those functions have been grouped in a file
 local function lprintf(ident,fmt,...)
     if true then return end 
     local str = fmt:format(...)
@@ -1970,9 +2106,9 @@ local function lprintf(ident,fmt,...)
     return print(str) 
 end
 
-local EMPTY = List()
 
 -- CREATE STUFF START
+local EMPTY = List()
 local function createjtjcentered(PS,ES)
     local UnknownType = PS.P:UnknownType()
     local ispace = ES.kind.ispace
@@ -2290,7 +2426,10 @@ local function createdumpjgraph(PS,ES)
     return A.FunctionSpec(ES.kind, "dumpJ", EMPTY, outputs, EMPTY,ES)
 end
 
+-- TODO put next two with other helper functions
+-- TODO only used in function below, so try to make local (it seems that this variable together with the function is supposed to behave like an object, so may this needs to be resolved differently
 local lastTime = nil
+-- TODO who is using this??? grep doesn't find anything
 function timeSinceLast(name)
     local currentTime = terralib.currenttimeinseconds()
     if (lastTime) then
@@ -2372,7 +2511,7 @@ local function extractresidualterms(...)
 end
 -- CREATE STUFF END
 
--- ProblemSpec START
+-- TODO put with other ProblemSpecAD stuff
 function ProblemSpecAD:Cost(...)
     local terms = extractresidualterms(...)
     
@@ -2411,11 +2550,11 @@ function ProblemSpecAD:Cost(...)
     return self.P
 end
 
+-- TODO put with other ProblemSpecAD stuff
 function ProblemSpecAD:Exclude(exp)
     exp = assert(ad.toexp(exp), "expected a AD expression")
     self.excludeexps:insert(exp)
 end
--- ProblemSpec END
 
 -- SampledImage START
 function SampledImage:__call(x,y,c)
@@ -2430,6 +2569,8 @@ function SampledImage:__call(x,y,c)
         return ad.Vector(unpack(r))
     end
 end
+
+-- TODO this seems to be used only in next function, so make local there
 local function tosampledimage(im)
     if Image:isclassof(im) then
         assert(im:DimCount() == 2, "sampled images must be 2D")
@@ -2437,6 +2578,8 @@ local function tosampledimage(im)
     end
     return SampledImage:isclassof(im) and im or nil
 end
+
+-- TODO if this is **ad**.blabla, then why not put it in 'ad.t'?
 function ad.sampledimage(image,imagedx,imagedy)
     if imagedx then
         imagedx = assert(tosampledimage(imagedx), "expected an image or a sampled image as a derivative")
@@ -2455,6 +2598,7 @@ function ad.sampledimage(image,imagedx,imagedy)
 end
 -- SampledImage END
 
+-- TODO what is this?^^
 for i = 2,12 do
     opt["float"..tostring(i)] = util.Vector(float,i)
     opt["double"..tostring(i)] = util.Vector(double,i)
@@ -2466,6 +2610,7 @@ for i = 2,12 do
 end
 
 
+-- TODO make sure that in the end all 'opt' stuff is defined down here
 opt.Dot = util.Dot
 opt.toispace = toispace
 
@@ -2514,16 +2659,16 @@ end
 
 -- temporary stuff for testing
 -- problem = opt.ProblemDefine("../../examples/image_warping/image_warping.t", "gaussNewtonGPU")
-problem = opt.ProblemDefine("testinput.t", "gaussNewtonGPU")
-meta = problems[1]
-opt.math = meta.kind:match("GPU") and util.gpuMath or util.cpuMath
-spec = opt.problemSpecFromFile("testinput.t")
-fmapcost = spec.functions[1].functionmap.cost
+-- problem = opt.ProblemDefine("testinput.t", "gaussNewtonGPU")
+-- meta = problems[1]
+-- opt.math = meta.kind:match("GPU") and util.gpuMath or util.cpuMath
+-- spec = opt.problemSpecFromFile("testinput.t")
+-- fmapcost = spec.functions[1].functionmap.cost
 
 
 
-result = compilePlan(spec, 'gaussNewtonGPU')
-plan = result()
+-- result = compilePlan(spec, 'gaussNewtonGPU')
+-- plan = result()
 
 -- spec.functions[1].functionmap.cost has the compiled cost function (fmap.cost()) (seems to be of type table.... why??? --> all terra functions have this type)
 -- createcost(spec.energyspecs[1]) has the raw cost function (the FunctionSpec() for fmap.cost())

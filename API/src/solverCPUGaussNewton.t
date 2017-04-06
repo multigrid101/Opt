@@ -765,7 +765,7 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
     -- problemSpec is input to the current function, there seem to be no modifications, only accesses
     -- PlanData is a struct built above. it seems to be the only input to all the kernel-functions that are accumulated in 'delegate'. The only access to it seems to be in 'MakePlan' at the
        -- end of this file to PlanData.alloc(). PlanData seems to be sort-of like a 'class', and 'alloc()' in 'MakePlan()' creates an instance of this class.
-    local gpu = util.makeGPUFunctions(problemSpec, PlanData, delegate, {"PCGInit1",
+    local gpu = util.makeCPUFunctions(problemSpec, PlanData, delegate, {"PCGInit1",
                                                                     "PCGInit1_Finish",
                                                                     "PCGComputeCtC",
                                                                     "PCGFinalizeDiagonal",
@@ -793,7 +793,7 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
                                                                     "saveJToCRS_Graph"
                                                                     })
 
-    local terra computeCost(pd : &PlanData) : opt_float
+    local terra computeCost(pd : &PlanData) : opt_float -- just a helper function, not important
         C.cudaMemset(pd.scratch, 0, sizeof(opt_float))
         gpu.computeCost(pd)
         gpu.computeCost_Graph(pd)
