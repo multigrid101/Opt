@@ -568,12 +568,12 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
             end
         end
         
-        -- terra kernels.PCGLinearUpdate(pd : PlanData)
-        --     var idx : Index
-        --     if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
-        --         pd.parameters.X(idx) = pd.parameters.X(idx) + pd.delta(idx)
-        --     end
-        -- end	
+        terra kernels.PCGLinearUpdate(x:int, y:int, pd : PlanData)
+            var idx : Index
+            if idx:initFromCPUParams(x,y) and not fmap.exclude(idx,pd.parameters) then
+                pd.parameters.X(idx) = pd.parameters.X(idx) + pd.delta(idx)
+            end
+        end	
         
         -- terra kernels.revertUpdate(pd : PlanData)
         --     var idx : Index
@@ -649,14 +649,14 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
         -- end
         
 
-        -- if fmap.precompute then
-        --     terra kernels.precompute(pd : PlanData)
-        --         var idx : Index
-        --         if idx:initFromCUDAParams() then
-        --            fmap.precompute(idx,pd.parameters)
-        --         end
-        --     end
-        -- end
+        if fmap.precompute then -- TODO QUES what's the deal with this? creation depends on a parameter but usage in 'step' is unconditional
+            terra kernels.precompute(x:int, y:int ,pd : PlanData)
+                var idx : Index
+                if idx:initFromCPUParams(x,y) then
+                   fmap.precompute(idx,pd.parameters)
+                end
+            end
+        end
 
         -- if problemSpec:UsesLambda() then
         --     terra kernels.PCGComputeCtC(pd : PlanData)
@@ -1180,8 +1180,9 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
 
     --                 -- save new rDotz for next iteration
     --                 C.cudaMemcpy(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float), C.cudaMemcpyDeviceToDevice)	
+                    @pd.scanAlphaNumerator = @pd.scanBetaNumerator
                     
-    --                 if [problemSpec:UsesLambda()] then
+    --                 if [problemSpec:UsesLambda()] then -- TODO don't need this at the moment, implement later
     --                     Q1 = fetchQ(pd)
     --                     var zeta = [opt_float](lIter+1)*(Q1 - Q0) / Q1 
     --                     --logSolver("%d: Q0(%g) Q1(%g), zeta(%g)\n", lIter, Q0, Q1, zeta)
@@ -1194,9 +1195,9 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
                 C.printf("Hello from from inner solver iteration end\n")
                 end
                         
-    --             var model_cost_change : opt_float
+                var model_cost_change : opt_float
 
-    --             escape 
+    --             escape  -- TODO don't need this at the moment, implement later
     --                 if problemSpec:UsesLambda() then
     --                     emit quote 
     --                              model_cost_change = computeModelCostChange(pd)
@@ -1205,13 +1206,13 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
     --                     end
     --                 end
 
-    --             gpu.PCGLinearUpdate(pd)    
-    --             gpu.precompute(pd)
+                gpu.PCGLinearUpdate(pd)    
+                -- gpu.precompute(pd) -- TODO QUES how do I define this? is it important?
                 var newCost = computeCost(pd) -- calls gpu.computeCost() and does some device <--> host data exchange
                 C.printf('inside step() newcost is: %f\n', newCost)
 
-    --             escape 
-    --                 if problemSpec:UsesLambda() then
+                escape 
+                    if problemSpec:UsesLambda() then -- TODO implement later
     --                     emit quote
     --                              var cost_change = pd.prevCost - newCost
                         
@@ -1249,20 +1250,20 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
     --                                  gpu.precompute(pd)
     --                              end
     --                     end
-    --                 else
-    --                     emit quote
-    --                              pd.prevCost = newCost 
-    --                          end
-    --                     end 
-    --                 end
+                    else
+                        emit quote
+                                 pd.prevCost = newCost 
+                             end
+                        end 
+                    end
 
-    --                 --[[ 
+    --                 --[[ -- TODO QUES is this needed?
     --                 To match CERES we would check for termination:
     --                 iteration_summary_.gradient_max_norm <= options_.gradient_tolerance
     --                 ]]
 
-    --                     pd.solverparameters.nIter = pd.solverparameters.nIter + 1
-    --                     return 1
+                        pd.solverparameters.nIter = pd.solverparameters.nIter + 1
+                        -- return 1
     --     else
     --         cleanup(pd)
             return 0
