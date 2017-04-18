@@ -1066,9 +1066,9 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
                -- end
            -- end
 
-       -- pd.solverparameters.nIter = 0
+       pd.solverparameters.nIter = 0
        -- escape 
-       --     if problemSpec:UsesLambda() then
+       --     if problemSpec:UsesLambda() then -- TODO implement later
        --         emit quote 
        --                  pd.parameters.trust_region_radius       = pd.solverparameters.trust_region_radius
        --                  pd.parameters.radius_decrease_factor    = pd.solverparameters.radius_decrease_factor
@@ -1077,8 +1077,8 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
        --              end
        --        end 
        --     end
-       -- gpu.precompute(pd)
-       -- pd.prevCost = computeCost(pd)
+       -- gpu.precompute(pd) -- TODO QUES what does this do?
+       pd.prevCost = computeCost(pd)
     end
     print('\nDefinition of init:') -- debug
     print(init)
