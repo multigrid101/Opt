@@ -158,57 +158,57 @@ public:
         }
     }
 
-	void resetGPU()
-	{
-        std::vector<float2> h_urshape(m_dims[0] * m_dims[1]);
-        std::vector<float>  h_mask(m_dims[0] * m_dims[1]);
-		for (unsigned int y = 0; y < m_image.getHeight(); y++)
-		{
-			for (unsigned int x = 0; x < m_image.getWidth(); x++)
-			{
-                h_urshape[y*m_image.getWidth() + x] = { (float)x, (float)y };
-                h_mask[y*m_image.getWidth() + x] = (float)m_imageMask(x, y);
-			}
-		}
+	void resetGPU() 
+        {
+            std::vector<float2> h_urshape(m_dims[0] * m_dims[1]);
+            std::vector<float>  h_mask(m_dims[0] * m_dims[1]);
+            for (unsigned int y = 0; y < m_image.getHeight(); y++)
+            {
+                for (unsigned int x = 0; x < m_image.getWidth(); x++)
+                {
+                    h_urshape[y*m_image.getWidth() + x] = { (float)x, (float)y };
+                    h_mask[y*m_image.getWidth() + x] = (float)m_imageMask(x, y);
+                }
+                    
+            }
 
-		setConstraintImage(1.0f);
-        m_urshape->update(h_urshape);
-        m_warpField->update(h_urshape);
-        m_mask->update(h_mask);
-        cudaSafeCall(cudaMemset(m_warpAngles->data(), 0, sizeof(float)*m_image.getWidth()*m_image.getHeight()));
+            setConstraintImage(1.0f);
+            m_urshape->update(h_urshape);
+            m_warpField->update(h_urshape);
+            m_mask->update(h_mask);
+            cudaSafeCall(cudaMemset(m_warpAngles->data(), 0, sizeof(float)*m_image.getWidth()*m_image.getHeight()));
 	}
 
 	void setConstraintImage(float alpha)
 	{
-        std::vector<float2> h_constraints(m_image.getWidth()*m_image.getHeight());
-		for (unsigned int y = 0; y < m_image.getHeight(); y++)
-		{
-			for (unsigned int x = 0; x < m_image.getWidth(); x++)
-			{
-                h_constraints[y*m_image.getWidth() + x] = { -1.0f, -1.0f };
-			}
-		}
+            std::vector<float2> h_constraints(m_image.getWidth()*m_image.getHeight());
+            for (unsigned int y = 0; y < m_image.getHeight(); y++)
+            {
+                for (unsigned int x = 0; x < m_image.getWidth(); x++)
+                {
+                    h_constraints[y*m_image.getWidth() + x] = { -1.0f, -1.0f };
+                }
+            }
 
-		for (unsigned int k = 0; k < m_constraints.size(); k++)
-		{
-			int x = m_constraints[k][0];
-			int y = m_constraints[k][1];
+            for (unsigned int k = 0; k < m_constraints.size(); k++)
+            {
+                int x = m_constraints[k][0];
+                int y = m_constraints[k][1];
 
-			if (m_imageMask(x, y) == 0)
-			{
-                float newX = (1.0f - alpha)*(float)x + alpha*(float)m_constraints[k][2];
-                float newY = (1.0f - alpha)*(float)y + alpha*(float)m_constraints[k][3];
+                if (m_imageMask(x, y) == 0)
+                {
+                    float newX = (1.0f - alpha)*(float)x + alpha*(float)m_constraints[k][2];
+                    float newY = (1.0f - alpha)*(float)y + alpha*(float)m_constraints[k][3];
 
-
-                h_constraints[y*m_image.getWidth() + x] = { newX, newY };
-			}
-		}
-        m_constraintImage->update(h_constraints);
+                    h_constraints[y*m_image.getWidth() + x] = { newX, newY };
+                }
+            }
+            m_constraintImage->update(h_constraints);
 	}
 
 	
-    vec2f toVec2(float2 p) {
-		return vec2f(p.x, p.y);
+        vec2f toVec2(float2 p) {
+            return vec2f(p.x, p.y);
 	}
 
     void rasterizeTriangle(float2 p0, float2 p1, float2 p2, vec3f c0, vec3f c1, vec3f c2) {
@@ -243,49 +243,51 @@ public:
 		// z-test?
 	}
 
-	void copyResultToCPU() {
-		m_scale = 1.0f;
-        m_resultColor = ColorImageR32G32B32((unsigned int)(m_image.getWidth()*m_scale), (unsigned int)(m_image.getHeight()*m_scale));
-		m_resultColor.setPixels(vec3f(255.0f, 255.0f, 255.0f));
+	void copyResultToCPU() 
+        {
+            m_scale = 1.0f;
+            m_resultColor = ColorImageR32G32B32((unsigned int)(m_image.getWidth()*m_scale), (unsigned int)(m_image.getHeight()*m_scale));
+            m_resultColor.setPixels(vec3f(255.0f, 255.0f, 255.0f));
 
-        std::vector<float2> h_warpField(m_image.getWidth()*m_image.getHeight());
-        m_warpField->copyTo(h_warpField);
+            std::vector<float2> h_warpField(m_image.getWidth()*m_image.getHeight());
+            m_warpField->copyTo(h_warpField);
 
-        // Rasterize the results
-		unsigned int c = 3;
-		for (unsigned int y = 0; y < m_image.getHeight(); y++)
-		{
-			for (unsigned int x = 0; x < m_image.getWidth(); x++)
-			{
-				if (y + 1 < m_image.getHeight() && x + 1 < m_image.getWidth())
-				{
-					if (m_imageMask(x, y) == 0)
-					{
-                        float2 pos00 = h_warpField[y*m_image.getWidth() + x];
-                        float2 pos01 = h_warpField[y*m_image.getWidth() + (x + 1)];
-                        float2 pos10 = h_warpField[(y + 1)*m_image.getWidth() + x];
-                        float2 pos11 = h_warpField[(y + 1)*m_image.getWidth() + (x + 1)];
+            // Rasterize the results
+            unsigned int c = 3;
+            for (unsigned int y = 0; y < m_image.getHeight(); y++)
+            {
+                for (unsigned int x = 0; x < m_image.getWidth(); x++)
+                {
+                    if (y + 1 < m_image.getHeight() && x + 1 < m_image.getWidth())
+                    {
+                        if (m_imageMask(x, y) == 0)
+                        {
+                            float2 pos00 = h_warpField[y*m_image.getWidth() + x];
+                            float2 pos01 = h_warpField[y*m_image.getWidth() + (x + 1)];
+                            float2 pos10 = h_warpField[(y + 1)*m_image.getWidth() + x];
+                            float2 pos11 = h_warpField[(y + 1)*m_image.getWidth() + (x + 1)];
 
-						vec3f v00 = m_imageColor(x, y);
-						vec3f v01 = m_imageColor(x + 1, y);
-						vec3f v10 = m_imageColor(x, y + 1);
-						vec3f v11 = m_imageColor(x + 1, y + 1);
+                            vec3f v00 = m_imageColor(x, y);
+                            vec3f v01 = m_imageColor(x + 1, y);
+                            vec3f v10 = m_imageColor(x, y + 1);
+                            vec3f v11 = m_imageColor(x + 1, y + 1);
 
-						bool valid00 = (m_imageMask(x, y) == 0);
-						bool valid01 = (m_imageMask(x, y + 1) == 0);
-						bool valid10 = (m_imageMask(x + 1, y) == 0);
-						bool valid11 = (m_imageMask(x + 1, y + 1) == 0);
+                            bool valid00 = (m_imageMask(x, y) == 0);
+                            bool valid01 = (m_imageMask(x, y + 1) == 0);
+                            bool valid10 = (m_imageMask(x + 1, y) == 0);
+                            bool valid11 = (m_imageMask(x + 1, y + 1) == 0);
 
-						if (valid00 && valid01 && valid10 && valid11) {
-							rasterizeTriangle(pos00, pos01, pos10,
-								v00, v01, v10);
-							rasterizeTriangle(pos10, pos01, pos11,
-								v10, v01, v11);
-						}
-					}
-				}
-			}
-		}
+                            if (valid00 && valid01 && valid10 && valid11) {
+                                    rasterizeTriangle(pos00, pos01, pos10,
+                                            v00, v01, v10);
+                                    rasterizeTriangle(pos10, pos01, pos11,
+                                            v10, v01, v11);
+                                        
+                            }
+                        }
+                    }
+                }
+            }
 	}
 
     ColorImageR32G32B32* result() {
@@ -297,21 +299,21 @@ private:
 	ColorImageR32G32B32 m_imageColor;
 	ColorImageR32 m_imageMask;
 
-    float m_weightFitSqrt;
-    float m_weightRegSqrt;
+        float m_weightFitSqrt;
+        float m_weightRegSqrt;
 
 	ColorImageR32 m_result;
 	ColorImageR32G32B32 m_resultColor;
 
 	float m_scale;
 
-    std::vector<unsigned int> m_dims;
+        std::vector<unsigned int> m_dims;
 
 	std::shared_ptr<OptImage> m_urshape;
-    std::shared_ptr<OptImage> m_warpField;
-    std::shared_ptr<OptImage> m_constraintImage;
+        std::shared_ptr<OptImage> m_warpField;
+        std::shared_ptr<OptImage> m_constraintImage;
 	std::shared_ptr<OptImage> m_warpAngles;
-    std::shared_ptr<OptImage> m_mask;
+        std::shared_ptr<OptImage> m_mask;
 
 
 	std::vector<std::vector<int>>& m_constraints;

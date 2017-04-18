@@ -1,5 +1,7 @@
-CXX = clang++
-LINK = clang++
+# CXX = clang++
+CXX = g++
+# LINK = clang++
+LINK = g++
 NVCC = /usr/local/cuda/bin/nvcc
 SRC ?= src
 CUDAHOME += /usr/local/cuda
@@ -10,7 +12,7 @@ ifeq ($(UNAME), Linux)
   S4 = 64
 endif
 
-FLAGS += -O3 -g -std=c++11 -Isrc -Isrc/cutil/inc -I../../API/release/include -I$(TERRAHOME)/include -I$(CUDAHOME)/include -I../external/mLib/include -I../external -I../external/OpenMesh/include
+FLAGS += -O3 -g -std=c++11 -Isrc -Isrc/cutil/inc -I../../API/release/include -I$(TERRAHOME)/include -I$(CUDAHOME)/include -I../external/mLib/include -I../external -I../external/OpenMesh/include 
 NVCCFLAGS += -arch sm_30 $(FLAGS)
 LFLAGS += -std=c++11 -L../../API/release/lib -L$(CUDAHOME)/lib$(S4) -lcudart -L$(TERRAHOME)/lib -lterra -ldl
 UNAME := $(shell uname)
@@ -33,7 +35,7 @@ OPTLIB = ../../API/release/lib/libOptDev.a
 
 build/%.o:	$(SRC)/%.cpp
 	@mkdir -p build
-	$(CXX) $(FLAGS) -MP -MD $< -c -o $@
+	$(CXX) $(FLAGS) -fpermissive -MP -MD $< -c -o $@
 build/%.o:	$(SRC)/%.cu
 	@mkdir -p build
 	$(NVCC) $(NVCCFLAGS) $< -c -o $@

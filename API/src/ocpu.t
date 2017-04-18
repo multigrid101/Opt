@@ -2,21 +2,21 @@ opt = {} --anchor it in global namespace, otherwise it can be collected
 
 
 -- TODO need to remove the following later, I need them at the moment in order to load o.t into the repl
--- _opt_verbosity = 1
--- _opt_double_precision = false
--- _opt_collect_kernel_timing = true
--- opt.problemkind = 'gaussNewtonCPU'
--- opt.dimensions = {1000,2000}
--- -- opt.dimensions
--- opt.dimensions[0] = 1000
--- opt.dimensions[1] = 2000
+_opt_verbosity = 1
+_opt_double_precision = false
+_opt_collect_kernel_timing = true
+opt.problemkind = 'gaussNewtonCPU'
+opt.dimensions = {1000,2000}
+-- opt.dimensions
+opt.dimensions[0] = 1000
+opt.dimensions[1] = 2000
 
 
 
 
 local S = require("std")
 local ffi = require("ffi")
-local util = require("util")
+local util = require("utilcpu")
 local optlib = require("lib")
 ad = require("ad")
 require("precision")
@@ -25,17 +25,17 @@ local A = ad.classes
 local C = util.C
 
 
-local use_pitched_memory = true
+local use_pitched_memory = false -- TODO originally was 'true'
 local use_split_sums = true
 local use_condition_scheduling = true
 local use_register_minimization = true
 local use_conditionalization = true
 local use_contiguous_allocation = false
-local use_bindless_texture = true and (not use_contiguous_allocation)
+local use_bindless_texture = false and (not use_contiguous_allocation) -- TODO originally was 'true' where it says 'false'
 local use_cost_speculate = false -- takes a lot of time and doesn't do much
 
 if false then
-    local fileHandle = C.fopen("crap.txt", 'w')
+    local fileHandle = C.fopen("crap.txt", 'w') -- TODO :D ???
     C._close(1)
     C._dup2(C._fileno(fileHandle), 1)
     C._close(2)
@@ -120,7 +120,7 @@ end
 __syncthreads = cudalib.nvvm_barrier0
 
 -- TODO change this name to "solver" or whatever
-local gaussNewtonGPU = require("solverGPUGaussNewton")
+local gaussNewtonCPU = require("solverCPUGaussNewton")
 
 -- TODO why is this down here? ffi is already required at the top
 local ffi = require('ffi')
@@ -134,12 +134,20 @@ problems = {} -- table that holds all the problems -- TEMP was local before
 -- TODO this is 'almost' C API, should go to the bottom and be accessible as part of the opt package
 local function compilePlan(problemSpec, kind)
     assert( kind == "gaussNewtonCPU" or kind == "gaussNewtonGPU" or kind == "LMGPU" ,"expected solver kind to be gaussNewtonGPU or LMGPU")
-    return gaussNewtonGPU(problemSpec)
+    print('The problemSpec inside compilePlan:') -- debug
+    for k,v in pairs(problemSpec) do print(k,v) end
+
+    print('The problemSpec.parameters inside compilePlan:') -- debug
+    for k,v in pairs(problemSpec.parameters) do print(k,v) end
+    -- print(problemSpec.parameters.A) -- debug
+
+    return gaussNewtonCPU(problemSpec)
 end
 
 -- TODO what does this syntax do, I can't find what "struct foo() {}" with brackets does
--- TODO other syntax problem: what do the arrows do?
+-- TODO other syntax problem: what do the arrows do? Answer example: '{int, int} -> {float}' constructs a type that represents a function that maps two ints to a float
 -- TODO maybe put in extra file
+-- TODO where are the functions (such as 'init') defined? maybe they are the functions at the bottom of solver.t?
 struct opt.Plan(S.Object) {
     init : {&opaque,&&opaque} -> {} -- plan.data,params
     setsolverparameter : {&opaque,rawstring,&opaque} -> {} -- plan.data,name,param
@@ -430,6 +438,7 @@ function IndexSpace:indextype()
 
     terra Index.metamethods.__apply(self : &Index, [params])
         var rhs : Index
+        C.printf('Inside Index.__apply\n')
         escape
             for i = 1,#dims do
                 emit quote  
@@ -439,6 +448,7 @@ function IndexSpace:indextype()
         end
         return rhs
     end
+    print(Index.metamethods.__apply) -- debug
 
     -- TODO only used in following function, make local there
     -- this seems to convert an (x,y) index to a linear index
@@ -498,6 +508,13 @@ function IndexSpace:indextype()
                     return valid
                 end
             end  
+        end
+
+        -- TODO needs to work for 3D as well
+        terra Index:initFromCPUParams(a:int, b:int) : bool
+            self.d0 = a
+            self.d1 = b
+            return true
         end
         print(Index) -- debug
         for k,v in pairs(Index.methods)  do print(k,v) end -- debug
@@ -579,11 +596,12 @@ local terra wrapBindlessTexture(data : &uint8, channelcount : int, width : int, 
     return tex
 end
 
+-- This returns a type by instantiating the 'vector' template
 function ImageType:ElementType() return util.Vector(self.scalartype,self.channelcount) end
 
--- TODO only used in function below, so maybe make private?
+-- TODO only used in function below, so maybe make private? name vs functionality doesn#t really make sense
 function ImageType:LoadAsVector() return self.channelcount == 2 or self.channelcount == 4 end
-function ImageType:terratype()
+function ImageType:terratype() -- returns a type 'Image' which depends on some parameters of 'self'
     if self._terratype then return self._terratype end
     local scalartype = self.scalartype
     local vectortype = self:ElementType()
@@ -615,16 +633,30 @@ function ImageType:terratype()
                 "=f,=f,=f,=f,l,r",false, self.tex,idx:tooffset())
             return @[&vectortype](&read)
         end
-    elseif self:LoadAsVector() then -- QUES seems to use "linear" index of idx
+    -- elseif self:LoadAsVector() then -- QUES seems to use "linear" index of idx
+    elseif false then -- QUES seems to use "linear" index of idx
         terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
             var a = VT(self.data)[idx:tooffset()]
-            return @[&vectortype](&a)
+            -- return @[&vectortype](&a)
+            C.printf('Inside Image.metamethods.__apply (3rd version)\n')
+            return 0.1f
         end
     else    -- QUES seems to use "linear" index of idx
         terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
-            return self.data[idx:tooffset()]
+            -- C.printf('Inside Image.metamethods.__apply (4th version)\n') -- all debugging, only last line is required
+            -- var vari : vectortype
+            -- var thedata : float[1]
+            -- thedata[0] = 1.5f
+            -- vari.data = thedata
+            -- C.printf("Inside Image....__apply: vari holds: %f\n", vari.data[0])
+            -- return 0.1f
+            -- return vari
+            C.printf("the index is: %d\n", idx:tooffset())
+            return self.data[idx:tooffset()] -- 'self' here is something like parameters.X.X
         end
     end
+    print("\nThe Image....__apply method:")
+    print(Image.metamethods.__apply) -- debug
     -- writes
     if self:LoadAsVector() then
         terra Image.metamethods.__update(self : &Image, idx : Index, v : vectortype)
@@ -695,16 +727,22 @@ function ImageType:terratype()
     else
         terra Image:setGPUptr(ptr : &uint8) self.data = [&vectortype](ptr) end
     end
-	terra Image:initFromGPUptr( ptr : &uint8 )
-            self.data = nil
-            self:setGPUptr(ptr)
-        end
-	terra Image:initGPU()
-            var data : &uint8
-            cd(C.cudaMalloc([&&opaque](&data), self:totalbytes()))
-            cd(C.cudaMemset([&opaque](data), 0, self:totalbytes()))
-            self:initFromGPUptr(data)
-        end
+    terra Image:initFromGPUptr( ptr : &uint8 )
+        self.data = nil
+        self:setGPUptr(ptr)
+    end
+
+    -- TODO delete the other initGPU above
+    -- terra Image:initGPU()
+    --     var data : &uint8
+    --     cd(C.cudaMalloc([&&opaque](&data), self:totalbytes()))
+    --     cd(C.cudaMemset([&opaque](data), 0, self:totalbytes()))
+    --     self:initFromGPUptr(data)
+    -- end
+    terra Image:initGPU()
+            self.data = [&vectortype](C.malloc(self:totalbytes()))
+            C.memset(self.data,0,self:totalbytes())
+    end
     return Image
 end
 ----------------------------------- ImageType END ---------------------------------------
@@ -800,6 +838,7 @@ function UnknownType:terratype()
             end
         end
     else
+        -- TODO at the moment we only use this branch but later the initGPU definition above needs to be fixed
         terra T:initGPU()
             escape
                 for i,ip in ipairs(images) do
@@ -927,12 +966,14 @@ function opt.problemSpecFromFile(filename)
     end
     local P = ad.ProblemSpec() -- ad.ProblemSpec() is defined in this file somewhere below, seems to mostly return a ProblemSpecAD instance
     local libinstance = optlib(P)
+    print('\nbefore setfenv')
     setfenv(file,libinstance)
-    local result = file()
+    print('after setfenv')
+    local result = file() -- this is only required in the if-statement but is where the inputfile is run and somehow saved somewhere
     if ProblemSpec:isclassof(result) then
         return result
     end
-    return libinstance.Result() -- returns P:Cost(...)
+    return libinstance.Result() -- returns ProblemSpecAD:Cost(...)
 end
 
 -- TODO this is (almost) the C API, so move down
@@ -1726,6 +1767,7 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
     -- debug
     -- print('\n')
     -- print(problemspec, name)
+    print('Inside createfunction(): the problemspec:')
     for k,v in pairs(problemspec) do print(k,v) end
 
     local P = symbol(problemspec.P:ParameterType(),"P")
@@ -1987,6 +2029,8 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
     if verboseAD then
         generatedfn:printpretty(false, false)
     end
+    print('The generated cost function:')
+    print(generatedfn) -- debug
     return generatedfn
 end
 
@@ -2607,7 +2651,7 @@ function ad.sampledimage(image,imagedx,imagedy)
 end
 -- SampledImage END
 
--- TODO what is this?^^
+-- TODO what is this?^^ -- seems to be some kind of type-alias for vectors of floats and ints
 for i = 2,12 do
     opt["float"..tostring(i)] = util.Vector(float,i)
     opt["double"..tostring(i)] = util.Vector(double,i)
@@ -2630,7 +2674,8 @@ opt.toispace = toispace
 terra opt.ProblemDefine(filename : rawstring, kind : rawstring) -- registers problem with a unique id, but doesn't actually do anything big
     var id : int
     problemDefine(filename, kind, &id)
-    return [&opt.Problem](id)
+    return id
+    -- return [&opt.Problem](id) -- TEMP this is original line
 end 
 terra opt.ProblemDelete(p : &opt.Problem)
     var id = int64(p)
@@ -2638,7 +2683,7 @@ terra opt.ProblemDelete(p : &opt.Problem)
 end
 terra opt.ProblemPlan(problem : &opt.Problem, dimensions : &uint32) : &opt.Plan
 	var p : &opt.Plan = nil 
-	problemPlan(int(int64(problem)),dimensions,&p)
+	problemPlan(int(int64(problem)),dimensions,&p) -- TODO QUES wieso uebergibt man hier einen doppelpointer auf Plan?
 	return p
 end 
 
@@ -2647,9 +2692,15 @@ terra opt.PlanFree(plan : &opt.Plan)
     plan:delete()
 end
 
+
 terra opt.ProblemInit(plan : &opt.Plan, params : &&opaque) 
     return plan.init(plan.data, params)
+    -- var initfun = plan.init
+    -- return initfun(getValidPlanPtr(),getValidVoidPtrPtr())
+
 end
+
+
 terra opt.ProblemStep(plan : &opt.Plan, params : &&opaque) : int
     return plan.step(plan.data, params) -- this seems to be the 'step' function defined in solverGPUGaussNewton.t
 end
@@ -2661,25 +2712,103 @@ terra opt.ProblemCurrentCost(plan : &opt.Plan) : double
     return plan.cost(plan.data)
 end
 
--- TODO need to use this to set unknowns etc.
 terra opt.SetSolverParameter(plan : &opt.Plan, name : rawstring, value : &opaque) 
     return plan.setsolverparameter(plan.data, name, value)
 end
 
 
 -- temporary stuff for testing
--- problem = opt.ProblemDefine("../../examples/image_warping/image_warping.t", "gaussNewtonGPU")
--- problem = opt.ProblemDefine("testinput.t", "gaussNewtonGPU")
--- meta = problems[1]
--- opt.math = meta.kind:match("GPU") and util.gpuMath or util.cpuMath
+
+-- problemPlan(id, dimensions, pplan) start
+
+local function innerProblemPlan(id, dimensions, pplan)
+    local problemmetadata = assert(problems[id])
+    opt.dimensions[0] = dimensions[1] -- need to shift the index due to lua/terra indexing conventions
+    opt.dimensions[1] = dimensions[2]
+    opt.math = problemmetadata.kind:match("GPU") and util.gpuMath or util.cpuMath
+    opt.problemkind = problemmetadata.kind
+    local b = terralib.currenttimeinseconds()
+    local tbl = opt.problemSpecFromFile(problemmetadata.filename) -- tbl seems to be ProblemSpec in solver***.t, seems to be more or less whatever ProblemSpecAD:Cost() returns
+    assert(ProblemSpec:isclassof(tbl))
+    local result = compilePlan(tbl,problemmetadata.kind)
+    local e = terralib.currenttimeinseconds()
+    print("compile time: ",e - b)
+    allPlans:insert(result)
+    pplan[0] = result() -- TEMP this is original line
+    print('\nthe plan inside innerProblemPlan')
+    print(pplan[0])
+end
+-- innerProblemPlan = terralib.cast({int,{uint32,uint32},&&opt.Plan} -> {}, innerProblemPlan)
+
+terra getEmptyPlanPtr()
+    var P: &opt.Plan = nil
+    return P
+end
+terra getEmptyPlanPtrPtr()
+    var P: &opt.Plan = nil
+    return &P
+end
+terra getEmptyVoidPtrPtr()
+    -- var P: &&opaque = nil
+    var P = [&&opaque](C.malloc(sizeof(int64) * 2))
+    var X = [&float](C.malloc(sizeof(float) * 9))
+    var A = [&float](C.malloc(sizeof(float) * 9))
+
+    for k = 0,10 do
+        X[k] = k/3.0f
+        A[k] = k/5.0f
+        C.printf("A[k] is: %f\n", A[k])
+    end
+
+    P[0] = X
+    P[1] = A
+
+    return P
+end
+local function testProblemPlan(problem , dimensions ) 
+	local plan_ptrptr = getEmptyPlanPtrPtr()
+	innerProblemPlan(problem,dimensions,plan_ptrptr)
+	return plan_ptrptr[0]
+end
+-- problemPlan() End
+
+-- problem = opt.ProblemDefine("../../examples/image_warping/image_warping.t", "gaussNewtonCPU")
+problem = opt.ProblemDefine("testinput.t", "gaussNewtonCPU")
+meta = problems[1]
+opt.math = meta.kind:match("GPU") and util.gpuMath or util.cpuMath
+theplan = testProblemPlan(problem, {3, 3})
+print('\nThe plan after testProblemPlan:')
+print(theplan)
+
+print('\nbefore ProblemInit')
+opt.ProblemInit(theplan, getEmptyVoidPtrPtr()) -- second argument does not matter at the moment, it's not used
+print('after ProblemInit')
+
+print('\nbefore ProblemStep')
+opt.ProblemStep(theplan, getEmptyVoidPtrPtr())
+print('after ProblemStep')
+
+terra doit()
+
+end
+
+
 -- spec = opt.problemSpecFromFile("testinput.t")
 -- fmapcost = spec.functions[1].functionmap.cost
+-- fmapexclude = sec.functions[1].functionmap.exclude
+
+-- print('\nThe fmap.exclude function:')
+-- print(fmapexclude)
 -- a = Index.initFromCUDAParams
 
 
 
+-- print('\nin ocpu.t, before compilePlan') -- debug
 -- result = compilePlan(spec, 'gaussNewtonGPU')
+-- print('\nin ocpu.t, after compilePlan') -- debug
+-- print('\nin ocpu.t, before result()') -- debug
 -- plan = result()
+-- print('\nin ocpu.t, after result()') -- debug
 
 -- spec.functions[1].functionmap.cost has the compiled cost function (fmap.cost()) (seems to be of type table.... why??? --> all terra functions have this type)
 -- createcost(spec.energyspecs[1]) has the raw cost function (the FunctionSpec() for fmap.cost())

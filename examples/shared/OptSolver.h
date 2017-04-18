@@ -12,6 +12,8 @@ extern "C" {
 #include "NamedParameters.h"
 #include "SolverBase.h"
 
+/**
+ */
 static NamedParameters copyParametersAndConvertUnknownsToDouble(const NamedParameters& original) {
     NamedParameters newParams(original);
     std::vector<NamedParameters::Parameter> unknownParameters = original.unknownParameters();
@@ -77,7 +79,7 @@ public:
         if (profiledSolve) {
             launchProfiledSolve(m_optimizerState, m_plan, finalProblemParameters.data().data(), iters);
         } else {
-            Opt_ProblemSolve(m_optimizerState, m_plan, finalProblemParameters.data().data());
+            Opt_ProblemSolve(m_optimizerState, m_plan, finalProblemParameters.data().data()); // first data() puts parameters in a std::vector<void*>, second data() returns the underlying pointer to that vector
         }
         m_finalCost = Opt_ProblemCurrentCost(m_optimizerState, m_plan);
 

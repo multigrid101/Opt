@@ -6,7 +6,7 @@
 
 
 /**
-Uses SoA, fairly efficient for small # of parameters.
+Uses SoA, fairly efficient for small # of parameters. -- TODO QUES: isn't this a AoS? see declaration of m_parameters below
 If parameter count could be large, consider better approaches
 */
 class NamedParameters {
@@ -31,6 +31,7 @@ public:
         return params;
     }
 
+    // gets a vector of pointers to the images
     std::vector<void*> data() const {
         std::vector<void*> d;
         for (auto p : m_parameters) {
@@ -56,7 +57,7 @@ public:
         if (location == m_parameters.end()) {
             m_parameters.push_back(Parameter(name, data));
         } else {
-            auto index = std::distance(m_parameters.begin(), location);
+            auto index = std::distance(m_parameters.begin(), location); // TODO where is this needed?
             location->ptr = data;
             location->im = nullptr;
             location->graph = nullptr;
@@ -68,7 +69,7 @@ public:
             m_parameters.push_back(Parameter(name, im->data(), im));
         } else {
             auto index = std::distance(m_parameters.begin(), location);
-            location->ptr = im->data();
+            location->ptr = im->data(); // a void* (pointer) to the image data
             location->im = im;
             location->graph = nullptr;
         }

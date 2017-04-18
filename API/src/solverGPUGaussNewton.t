@@ -319,7 +319,7 @@ return function(problemSpec)
         local unknownElement = UnknownType:VectorTypeForIndexSpace(UnknownIndexSpace)
         local Index = UnknownIndexSpace:indextype()
 
-        local unknownWideReduction = macro(function(idx,val,reductionTarget) return quote
+        local unknownWideReduction = macro(function(idx,val,reductionTarget) return quote -- TODO QUES why does this macro have 'idx' as an argument???
                                                                                         val = util.warpReduce(val)
                                                                                         if (util.laneid() == 0) then                
                                                                                             util.atomicAdd(reductionTarget, val)
@@ -1251,6 +1251,7 @@ return function(problemSpec)
     end
 
     -- TODO put in extra file 'solverskeleton.t' or something similar (or maybe keep only this and put everything above in solverskeleton.t)
+    -- TODO why is all this stuff in "make plan" and not in init? Picture data is initialized in 'init', intermediate data is initialized here.
     local terra makePlan() : &opt.Plan
             var pd = PlanData.alloc() -- this seems to be sort-of like a constructor call of the "PlanData" class.
             pd.plan.data = pd

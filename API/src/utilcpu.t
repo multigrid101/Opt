@@ -331,17 +331,18 @@ terra Timer:cleanup()
 end 
 
 
+-- TODO finish these later, but do nothing for now
 terra Timer:startEvent(name : rawstring,  stream : C.cudaStream_t, endEvent : &C.cudaEvent_t)
-    var timingInfo : TimingInfo
-    timingInfo.eventName = name
-    C.cudaEventCreate(&timingInfo.startEvent)
-    C.cudaEventCreate(&timingInfo.endEvent)
-    C.cudaEventRecord(timingInfo.startEvent, stream)
-    self.timingInfo:insert(timingInfo)
-    @endEvent = timingInfo.endEvent
+    -- var timingInfo : TimingInfo
+    -- timingInfo.eventName = name
+    -- C.cudaEventCreate(&timingInfo.startEvent)
+    -- C.cudaEventCreate(&timingInfo.endEvent)
+    -- C.cudaEventRecord(timingInfo.startEvent, stream)
+    -- self.timingInfo:insert(timingInfo)
+    -- @endEvent = timingInfo.endEvent
 end
 terra Timer:endEvent(stream : C.cudaStream_t, endEvent : C.cudaEvent_t)
-    C.cudaEventRecord(endEvent, stream)
+    -- C.cudaEventRecord(endEvent, stream)
 end
 
 -- TODO only used in next function, so make local there
@@ -434,7 +435,8 @@ local __shfl_down
 if opt_float == float then
 
     local terra atomicAdd(sum : &float, value : float)
-    	terralib.asm(terralib.types.unit,"red.global.add.f32 [$0],$1;","l,f", true, sum, value)
+    	-- terralib.asm(terralib.types.unit,"red.global.add.f32 [$0],$1;","l,f", true, sum, value)
+        @sum = @sum + value
     end
     util.atomicAdd = atomicAdd
 
@@ -481,25 +483,27 @@ else
 
     if pascalOrBetterGPU then
         local terra atomicAdd(sum : &double, value : double)
-            var address_as_i : uint64 = [uint64] (sum);
-            terralib.asm(terralib.types.unit,"red.global.add.f64 [$0],$1;","l,d", true, address_as_i, value)
+            -- var address_as_i : uint64 = [uint64] (sum);
+            -- terralib.asm(terralib.types.unit,"red.global.add.f64 [$0],$1;","l,d", true, address_as_i, value)
+            @sum = @sum + value
         end
         util.atomicAdd = atomicAdd
     else
         local terra atomicAdd(sum : &double, value : double)
-            var address_as_i : &uint64 = [&uint64] (sum);
-            var old : uint64 = address_as_i[0];
-            var assumed : uint64;
+            -- var address_as_i : &uint64 = [&uint64] (sum);
+            -- var old : uint64 = address_as_i[0];
+            -- var assumed : uint64;
 
-            repeat
-                assumed = old;
-                old = terralib.asm(uint64,"atom.global.cas.b64 $0,[$1],$2,$3;", 
-                    "=l,l,l,l", true, address_as_i, assumed, 
-                    __double_as_ull( value + __ull_as_double(assumed) )
-                    );
-            until assumed == old;
+            -- repeat
+            --     assumed = old;
+            --     old = terralib.asm(uint64,"atom.global.cas.b64 $0,[$1],$2,$3;", 
+            --         "=l,l,l,l", true, address_as_i, assumed, 
+            --         __double_as_ull( value + __ull_as_double(assumed) )
+            --         );
+            -- until assumed == old;
 
-            return __ull_as_double(old);
+            -- return __ull_as_double(old);
+            @sum = @sum + value
         end
         util.atomicAdd = atomicAdd
     end
@@ -818,26 +822,17 @@ function util.makeCPUFunctions(problemSpec, PlanData, delegate, names)
     local function cpucompile(kernelFunctions)
 
         local function makecpufunc(func)
+            print("\nInside makecpufunc: the func")
             print(func) --debug
-            -- local terra cpufunc(pd: &PlanData) : float
-            --     var sum : float
-            --     sum = 0.0f
-            --     for x = 0, [problemSpec.functions[1].typ.ispace.dims[1].size] do
-            --         for y = 0, [problemSpec.functions[1].typ.ispace.dims[2].size] do
-            --             sum = sum + func(x,y, @pd)
-            --         end
-            --     end
-            --     -- sum = 0.0f
-            --     return sum
-            -- end
-            -- TODO insert proper loop bounds
+
             local terra cpufunc(pd: &PlanData) : float
                 var sum : float
                 sum = 0.0f
-                for x = 10, 13 do
-                    for y = 10, 13 do
-                        C.printf('func(x,y): %f\n', func(x,y,@pd))
-                        sum = sum + func(x, y, @pd)
+                for x = 0, [problemSpec.functions[1].typ.ispace.dims[1].size] do
+                    for y = 0, [problemSpec.functions[1].typ.ispace.dims[2].size] do
+                        -- var thevalue  = func(x,y,@pd)
+                        -- sum = sum + thevalue
+                        func(x,y,@pd)
                     end
                 end
                 -- sum = 0.0f
