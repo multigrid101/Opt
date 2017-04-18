@@ -469,48 +469,48 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
         --     end
         -- end
 
-        -- terra kernels.PCGStep2(pd : PlanData)
-        --     var betaNum = opt_float(0.0f) 
-        --     var q = opt_float(0.0f) -- Only used if LM
-        --     var idx : Index
-        --     if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
-        --         -- sum over block results to compute denominator of alpha
-        --         var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
-        --         var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
+        terra kernels.PCGStep2(x:int, y:int, pd : PlanData)
+            var betaNum = opt_float(0.0f) 
+            var q = opt_float(0.0f) -- Only used if LM
+            var idx : Index
+            if idx:initFromCPUParams(x,y) and not fmap.exclude(idx,pd.parameters) then
+                -- sum over block results to compute denominator of alpha
+                var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
+                var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
 
-        --         -- update step size alpha
-        --         var alpha = opt_float(0.0f)
-        --         alpha = alphaNumerator/alphaDenominator 
+                -- update step size alpha
+                var alpha = opt_float(0.0f)
+                alpha = alphaNumerator/alphaDenominator 
 
-        --         var delta = pd.delta(idx)+alpha*pd.p(idx)       -- do a descent step
-        --         pd.delta(idx) = delta
+                var delta = pd.delta(idx)+alpha*pd.p(idx)       -- do a descent step
+                pd.delta(idx) = delta
 
-        --         var r = pd.r(idx)-alpha*pd.Ap_X(idx)				-- update residuum
-        --         pd.r(idx) = r										-- store for next kernel call
+                var r = pd.r(idx)-alpha*pd.Ap_X(idx)				-- update residuum
+                pd.r(idx) = r										-- store for next kernel call
 
-        --         var pre = pd.preconditioner(idx)
-        --         if not problemSpec.usepreconditioner then
-        --             pre = opt_float(1.0f)
-        --         end
+                var pre = pd.preconditioner(idx)
+                if not problemSpec.usepreconditioner then
+                    pre = opt_float(1.0f)
+                end
         
-        --         var z = pre*r										-- apply pre-conditioner M^-1
-        --         pd.z(idx) = z;										-- save for next kernel call
+                var z = pre*r										-- apply pre-conditioner M^-1
+                pd.z(idx) = z;										-- save for next kernel call
 
-        --         betaNum = z:dot(r)									-- compute x-th term of the numerator of beta
+                betaNum = z:dot(r)									-- compute x-th term of the numerator of beta
 
-        --         if [problemSpec:UsesLambda()] then
-        --             -- computeQ    
-        --             -- Right side is -2 of CERES versions, left is just negative version, 
-        --             --  so after the dot product, just need to multiply by 2 to recover value identical to CERES  
-        --             q = 0.5*(delta:dot(r + pd.b(idx))) 
-        --         end
-        --     end
+                -- if [problemSpec:UsesLambda()] then -- TODO not used at the moment, implement it
+                --     -- computeQ    
+                --     -- Right side is -2 of CERES versions, left is just negative version, 
+                --     --  so after the dot product, just need to multiply by 2 to recover value identical to CERES  
+                --     q = 0.5*(delta:dot(r + pd.b(idx))) 
+                -- end
+            end
             
-        --     unknownWideReduction(idx,betaNum,pd.scanBetaNumerator)
-        --     if [problemSpec:UsesLambda()] then
-        --         unknownWideReduction(idx,q,pd.q)
-        --     end
-        -- end
+            unknownWideReductionCPU(idx,betaNum,pd.scanBetaNumerator)
+            -- if [problemSpec:UsesLambda()] then -- TODO not used at the moment, implement it
+            --     unknownWideReduction(idx,q,pd.q)
+            -- end
+        end
 
         -- terra kernels.PCGStep2_1stHalf(pd : PlanData)
         --     var idx : Index
@@ -1155,25 +1155,26 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
                         -- end
                     end
 
-    --                 -- only does something if initialization_parameters.use_cusparse is true
-    --                 cusparseInner(pd)
+                    -- only does something if initialization_parameters.use_cusparse is true
+                    cusparseInner(pd)
 
-    --                 if multistep_alphaDenominator_compute then
+    --                 if multistep_alphaDenominator_compute then -- TODO not used at the moment, implement it
     --                     gpu.PCGStep1_Finish(pd)
     --                 end
                                     
     --                 C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))
+                    @pd.scanBetaNumerator = 0.0
                                     
-    --                 if [problemSpec:UsesLambda()] and ((lIter + 1) % residual_reset_period) == 0 then
+                    if [problemSpec:UsesLambda()] and ((lIter + 1) % residual_reset_period) == 0 then -- TODO not used at the moment, implement it
     --                     gpu.PCGStep2_1stHalf(pd)
     --                     gpu.computeAdelta(pd)
     --                     if isGraph then
     --                         gpu.computeAdelta_Graph(pd)
     --                     end
     --                     gpu.PCGStep2_2ndHalf(pd)
-    --                 else
-    --                     gpu.PCGStep2(pd)
-    --                 end
+                    else
+                        gpu.PCGStep2(pd)
+                    end
 
     --                 gpu.PCGStep3(pd)
 
