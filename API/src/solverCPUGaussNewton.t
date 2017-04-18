@@ -555,18 +555,18 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
         -- end
 
 
-        -- terra kernels.PCGStep3(pd : PlanData)			
-        --     var idx : Index
-        --     if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+        terra kernels.PCGStep3(x:int, y:int, pd : PlanData)			
+            var idx : Index
+            if idx:initFromCPUParams(x,y) and not fmap.exclude(idx,pd.parameters) then
             
-        --         var rDotzNew : opt_float = pd.scanBetaNumerator[0]	-- get new numerator
-        --         var rDotzOld : opt_float = pd.scanAlphaNumerator[0]	-- get old denominator
+                var rDotzNew : opt_float = pd.scanBetaNumerator[0]	-- get new numerator
+                var rDotzOld : opt_float = pd.scanAlphaNumerator[0]	-- get old denominator
 
-        --         var beta : opt_float = opt_float(0.0f)
-        --         beta = rDotzNew/rDotzOld
-        --         pd.p(idx) = pd.z(idx)+beta*pd.p(idx)			    -- update decent direction
-        --     end
-        -- end
+                var beta : opt_float = opt_float(0.0f)
+                beta = rDotzNew/rDotzOld
+                pd.p(idx) = pd.z(idx)+beta*pd.p(idx)			    -- update decent direction
+            end
+        end
         
         -- terra kernels.PCGLinearUpdate(pd : PlanData)
         --     var idx : Index
@@ -1176,7 +1176,7 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
                         gpu.PCGStep2(pd)
                     end
 
-    --                 gpu.PCGStep3(pd)
+                    gpu.PCGStep3(pd)
 
     --                 -- save new rDotz for next iteration
     --                 C.cudaMemcpy(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float), C.cudaMemcpyDeviceToDevice)	
