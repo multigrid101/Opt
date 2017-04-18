@@ -739,7 +739,7 @@ function ImageType:terratype() -- returns a type 'Image' which depends on some p
     --     cd(C.cudaMemset([&opaque](data), 0, self:totalbytes()))
     --     self:initFromGPUptr(data)
     -- end
-    terra Image:initGPU()
+    terra Image:initGPU() -- NOTE: this one is executed by the makePlan function in solver.t when calling initGPU
             self.data = [&vectortype](C.malloc(self:totalbytes()))
             C.memset(self.data,0,self:totalbytes())
     end
@@ -2029,7 +2029,7 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
     if verboseAD then
         generatedfn:printpretty(false, false)
     end
-    print('The generated cost function:')
+    print('\nInside createfunction: The generated function:')
     print(generatedfn) -- debug
     return generatedfn
 end
@@ -2795,10 +2795,11 @@ end
 
 -- spec = opt.problemSpecFromFile("testinput.t")
 -- fmapcost = spec.functions[1].functionmap.cost
--- fmapexclude = sec.functions[1].functionmap.exclude
+-- fmapexclude = spec.functions[1].functionmap.exclude
 
 -- print('\nThe fmap.exclude function:')
--- print(fmapexclude)
+-- print(fmapexclude.fromterra)
+-- for k,v in pairs(fmapexclude) do print(k,v) end
 -- a = Index.initFromCUDAParams
 
 

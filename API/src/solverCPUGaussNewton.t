@@ -309,6 +309,13 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
     local delegate = {} -- wird spaeter an 'makeGPUfunctions' uebergeben, sonst keine Verwendung
 
     function delegate.CenterFunctions(UnknownIndexSpace,fmap)
+        -- print("\nInside delegate.CenterFunctions: the fmap") -- debug stuff
+        -- for k,v in pairs(fmap) do print(k,v) end
+        -- print("\nInside delegate.CenterFunctions: the fmap.exclude")
+        -- -- for k,v in pairs(fmap.exclude) do print(k,v) end
+        -- print(fmap.exclude.fromterra)
+
+
         local kernels = {}
         local unknownElement = UnknownType:VectorTypeForIndexSpace(UnknownIndexSpace)
         local Index = UnknownIndexSpace:indextype()
@@ -331,17 +338,20 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
             return x*x
         end
 
+        -- TODO need to add proper GPU/CPU support here
         local terra guardedInvert(p : unknownElement)
             escape 
                 if initialization_parameters.guardedInvertType == GuardedInvertType.CERES then
+                -- if false then
                     emit quote
                              var invp = p
                              for i = 0, invp:size() do
-                                 invp(i) = [opt_float](1.f) / square(opt_float(1.f) + util.gpuMath.sqrt(invp(i)))
+                                 invp(i) = [opt_float](1.f) / square(opt_float(1.f) + util.cpuMath.sqrt(invp(i)))
                              end
                              return invp
                          end
                 elseif initialization_parameters.guardedInvertType == GuardedInvertType.MODIFIED_CERES then
+                -- elseif false then
                     emit quote
                              var invp = p
                              for i = 0, invp:size() do
@@ -350,6 +360,7 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
                              return invp
                          end
                 elseif initialization_parameters.guardedInvertType == GuardedInvertType.EPSILON_ADD then
+                -- elseif false then
                     emit quote
                              var invp = p
                              for i = 0, invp:size() do
@@ -369,43 +380,46 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
             return result
         end
 
-        -- terra kernels.PCGInit1(x:int, y:int, pd : PlanData)
-        --     var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
+        terra kernels.PCGInit1(x:int, y:int, pd : PlanData)
+            var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
         
-        --     var idx : Index
-        --     if idx:initFromCPUParams(x,y) then
+            var idx : Index
+            if idx:initFromCPUParams(x,y) then
         
-        --         -- residuum = J^T x -F - A x delta_0  => J^T x -F, since A x x_0 == 0                            
-        --         var residuum : unknownElement = 0.0f
-        --         var pre : unknownElement = 0.0f	
+                -- residuum = J^T x -F - A x delta_0  => J^T x -F, since A x x_0 == 0                            
+                var residuum : unknownElement = 0.0f
+                var pre : unknownElement = 0.0f	
             
-        --         if not fmap.exclude(idx,pd.parameters) then -- TODO what is fmap.exclude???
+                if not fmap.exclude(idx,pd.parameters) then -- TODO QUES what is fmap.exclude???
                 
-        --             pd.delta(idx) = opt_float(0.0f)   
+                    pd.delta(idx) = opt_float(0.0f)   
                 
-        --             residuum, pre = fmap.evalJTF(idx, pd.parameters)
-        --             residuum = -residuum
-        --             pd.r(idx) = residuum
+                    residuum, pre = fmap.evalJTF(idx, pd.parameters)
+                    residuum = -residuum
+                    pd.r(idx) = residuum
                 
-        --             if not problemSpec.usepreconditioner then
-        --                 pre = opt_float(1.0f)
-        --             end
-        --         end        
+                    if not problemSpec.usepreconditioner then
+                        pre = opt_float(1.0f)
+                    end
+                end        
             
-        --         if (not fmap.exclude(idx,pd.parameters)) and (not isGraph) then		
-        --             pre = guardedInvert(pre)
-        --             var p = pre*residuum	-- apply pre-conditioner M^-1			   
-        --             pd.p(idx) = p
+                if (not fmap.exclude(idx,pd.parameters)) and (not isGraph) then		
+                    pre = 0.0
+                    pre = guardedInvert(pre)
+                    var p = pre*residuum	-- apply pre-conditioner M^-1			   
+                    pd.p(idx) = p
                 
-        --             d = residuum:dot(p) 
-        --         end
+                    d = residuum:dot(p) 
+                end
             
-        --         pd.preconditioner(idx) = pre
-        --     end 
-        --     if not isGraph then
-        --         unknownWideReductionCPU(idx,d,pd.scanAlphaNumerator)
-        --     end
-        -- end
+                -- pd.preconditioner(idx) = pre
+            end 
+            -- TODO why is this not escaped? having 'isgraph' as a global var is not nice
+            
+            if not isGraph then
+                unknownWideReductionCPU(idx,d,pd.scanAlphaNumerator)
+            end
+        end
         
         -- terra kernels.PCGInit1_Finish(pd : PlanData)	--only called for graphs
         --     var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
@@ -429,20 +443,20 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
         --     unknownWideReduction(idx,d,pd.scanAlphaNumerator)
         -- end
 
-        -- terra kernels.PCGStep1(pd : PlanData)
-        --     var d : opt_float = opt_float(0.0f)
-        --     var idx : Index
-        --     if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
-        --         var tmp : unknownElement = 0.0f
-        --          -- A x p_k  => J^T x J x p_k 
-        --         tmp = fmap.applyJTJ(idx, pd.parameters, pd.p, pd.CtC)
-        --         pd.Ap_X(idx) = tmp					 -- store for next kernel call
-        --         d = pd.p(idx):dot(tmp)			 -- x-th term of denominator of alpha
-        --     end
-        --     if not [multistep_alphaDenominator_compute] then
-        --         unknownWideReduction(idx,d,pd.scanAlphaDenominator)
-        --     end
-        -- end
+        terra kernels.PCGStep1(x:int, y:int, pd : PlanData)
+            var d : opt_float = opt_float(0.0f)
+            var idx : Index
+            if idx:initFromCPUParams(x,y) and not fmap.exclude(idx,pd.parameters) then
+                var tmp : unknownElement = 0.0f
+                 -- A x p_k  => J^T x J x p_k 
+                tmp = fmap.applyJTJ(idx, pd.parameters, pd.p, pd.CtC)
+                pd.Ap_X(idx) = tmp					 -- store for next kernel call
+                d = pd.p(idx):dot(tmp)			 -- x-th term of denominator of alpha
+            end
+            if not [multistep_alphaDenominator_compute] then
+                unknownWideReductionCPU(idx,d,pd.scanAlphaDenominator)
+            end
+        end
 
         -- if multistep_alphaDenominator_compute then
         --     terra kernels.PCGStep1_Finish(pd : PlanData)
@@ -879,9 +893,9 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
     --     return r
     -- end
 
-    -- local cusparseInner,cusparseOuter
+    local cusparseInner,cusparseOuter
 
-    -- if initialization_parameters.use_cusparse then
+    if initialization_parameters.use_cusparse then -- TODO this branch is not used at the moment, need to implement it
     --     terra cusparseOuter(pd : &PlanData)
     --         var [parametersSym] = &pd.parameters
     --         --logSolver("saving J...\n")
@@ -996,10 +1010,11 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
     --             pd.timer:endEvent(nil,endJT)
     --         end
     --     end
-    -- else
-    --     terra cusparseInner(pd : &PlanData) end
-    --     terra cusparseOuter(pd : &PlanData) end
-    -- end
+    else
+    -- TODO QUES what do these do? why are they empty here and not empty when use_cusparse is true?
+        terra cusparseInner(pd : &PlanData) end
+        terra cusparseOuter(pd : &PlanData) end
+    end
 
     -- from here on: define init, step, etc, which make up the main body of the solver
     -- local terra init(data_ : &opaque, params_ : &&opaque)
@@ -1013,11 +1028,12 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
        pd.timer:init()
        pd.timer:startEvent("overall",nil,&pd.endSolver) -- TODO this uses some cuda stuff, need to remove this or else it throws error
        [util.initParameters(`pd.parameters,problemSpec,params_,true)]
-       -- var [parametersSym] = &pd.parameters
+       var [parametersSym] = &pd.parameters
        -- escape
-       --     if initialization_parameters.use_cusparse then
+       --     if initialization_parameters.use_cusparse then -- TODO need to change this stuff, at the moment this branch is not used
        --         emit quote
        --                  if pd.J_csrValA == nil then
+                            -- TODO why are all these allocations in init, allocations are now spread over init and makeplan
                             -- cd(CUsp.cusparseCreateMatDescr( &pd.desc ))
                             -- cd(CUsp.cusparseSetMatType( pd.desc,CUsp.CUSPARSE_MATRIX_TYPE_GENERAL ))
                             -- cd(CUsp.cusparseSetMatIndexBase( pd.desc,CUsp.CUSPARSE_INDEX_BASE_ZERO ))
@@ -1089,43 +1105,55 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
     --             C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset TODO so why not just move it to PCGInit1????
     --             C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
     --             C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
+                C.printf("\ninside step: before initializing alpha and beta\n")
+                @pd.scanAlphaNumerator = 0.0 -- TODO maybe move this elsewhere, see also the commented-out section above
+                @pd.scanAlphaDenominator = 0.0
+                @pd.scanBetaNumerator = 0.0
+                C.printf("inside step: after initializing alpha and beta\n")
 
-                -- gpu.PCGInit1(pd)
-    --             if isGraph then
+                C.printf("\ninside step: before PCGInit1\n")
+                gpu.PCGInit1(pd)
+    --             if isGraph then -- TODO needs to be implemented
     --                     gpu.PCGInit1_Graph(pd)	
     --                     gpu.PCGInit1_Finish(pd)	
     --             end
+                C.printf("inside step: after PCGInit1\n")
 
-    --             escape 
-    --                 if problemSpec:UsesLambda() then
-    --                     emit quote
-    --                         C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))
-    --                         C.cudaMemset(pd.q, 0, sizeof(opt_float))
-    --                         if [initialization_parameters.jacobiScaling == JacobiScalingType.ONCE_PER_SOLVE] and pd.solverparameters.nIter == 0 then
-    --                             gpu.PCGSaveSSq(pd)
-    --                         end
-    --                         gpu.PCGComputeCtC(pd)
-    --                         gpu.PCGComputeCtC_Graph(pd)
-    --                         -- This also computes Q
-    --                         gpu.PCGFinalizeDiagonal(pd)
-    --                         Q0 = fetchQ(pd)
-    --                          end
-    --                     end
-    --                 end
+                -- escape 
+                --     if problemSpec:UsesLambda() then -- TODO not used at the moment (I think), need to implement it
+                --         emit quote
+                --             C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))
+                --             C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))
+                --             C.cudaMemset(pd.q, 0, sizeof(opt_float))
+                --             if [initialization_parameters.jacobiScaling == JacobiScalingType.ONCE_PER_SOLVE] and pd.solverparameters.nIter == 0 then
+                --                 gpu.PCGSaveSSq(pd)
+                --             end
+                --             gpu.PCGComputeCtC(pd)
+                --             gpu.PCGComputeCtC_Graph(pd)
+                --             -- This also computes Q
+                --             gpu.PCGFinalizeDiagonal(pd)
+                --             Q0 = fetchQ(pd)
+                --              end
+                --         end
+                --     end
 
-    --             cusparseOuter(pd)
+                cusparseOuter(pd)
 
-    --             for lIter = 0, pd.solverparameters.lIterations do				
+                -- for lIter = 0, pd.solverparameters.lIterations do -- TODO uncomment this
+                for lIter = 0, 1 do -- TODO need to use line above, this one is only for debugging
+                C.printf("\nHello from from inner solver iteration start\n")
 
-    --                 C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))
+    --                 C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float)) -- TODO may move somewhere else?
+                    @pd.scanAlphaDenominator = 0.0 -- TODO may move somewhere else?
     --                 C.cudaMemset(pd.q, 0, sizeof(opt_float))
+                    @pd.q = 0.0
 
-    --                 if not initialization_parameters.use_cusparse then
-    --                     gpu.PCGStep1(pd)
-    --                     if isGraph then
-    --                             gpu.PCGStep1_Graph(pd)
-    --                     end
-    --                 end
+                    if not initialization_parameters.use_cusparse then
+                        gpu.PCGStep1(pd)
+                        -- if isGraph then -- TODO implement it
+                        --         gpu.PCGStep1_Graph(pd)
+                        -- end
+                    end
 
     --                 -- only does something if initialization_parameters.use_cusparse is true
     --                 cusparseInner(pd)
@@ -1162,7 +1190,8 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
     --                     end
     --                     Q0 = Q1
     --                 end
-    --             end
+                C.printf("Hello from from inner solver iteration end\n")
+                end
                         
     --             var model_cost_change : opt_float
 
@@ -1294,29 +1323,38 @@ return function(problemSpec) -- this problem-spec is whatever ProblemSpecAD:Cost
             pd.plan.cost = cost 
             pd.plan.setsolverparameter = setSolverParameter
 
-            -- pd.delta:initGPU()
-            -- pd.r:initGPU()
-            -- pd.b:initGPU()
-            -- pd.Adelta:initGPU()
-            -- pd.z:initGPU()
-            -- pd.p:initGPU()
-            -- pd.Ap_X:initGPU()
-            -- pd.CtC:initGPU()
-            -- pd.SSq:initGPU()
-            -- pd.preconditioner:initGPU()
-            -- pd.g:initGPU()
-            -- pd.prevX:initGPU()
+            C.printf('\nInside makePlan, before initGPU\n')
+            pd.delta:initGPU()
+            pd.r:initGPU()
+            pd.b:initGPU()
+            pd.Adelta:initGPU()
+            pd.z:initGPU()
+            pd.p:initGPU()
+            pd.Ap_X:initGPU()
+            pd.CtC:initGPU()
+            pd.SSq:initGPU()
+            pd.preconditioner:initGPU()
+            pd.g:initGPU()
+            pd.prevX:initGPU()
+            C.printf('Inside makePlan, after initGPU\n')
 
             initializeSolverParameters(&pd.solverparameters)
             
             [util.initPrecomputedImages(`pd.parameters,problemSpec)]	
             -- C.cudaMalloc([&&opaque](&(pd.scanAlphaNumerator)), sizeof(opt_float))
+            pd.scanAlphaNumerator = [&opt_float](C.malloc(sizeof(opt_float)))
             -- C.cudaMalloc([&&opaque](&(pd.scanBetaNumerator)), sizeof(opt_float))
+            pd.scanBetaNumerator = [&opt_float](C.malloc(sizeof(opt_float)))
             -- C.cudaMalloc([&&opaque](&(pd.scanAlphaDenominator)), sizeof(opt_float))
+            pd.scanAlphaDenominator = [&opt_float](C.malloc(sizeof(opt_float)))
             -- C.cudaMalloc([&&opaque](&(pd.modelCost)), sizeof(opt_float))
+            pd.modelCost = [&opt_float](C.malloc(sizeof(opt_float)))
             
             -- C.cudaMalloc([&&opaque](&(pd.scratch)), sizeof(opt_float))
+            pd.scratch = [&opt_float](C.malloc(sizeof(opt_float)))
             -- C.cudaMalloc([&&opaque](&(pd.q)), sizeof(opt_float))
+            pd.q = [&opt_float](C.malloc(sizeof(opt_float)))
+
             pd.J_csrValA = nil
             pd.JTJ_csrRowPtrA = nil
 
