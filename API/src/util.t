@@ -2,6 +2,7 @@ local pascalOrBetterGPU = false
 local S = require("std")
 require("precision")
 local util = {}
+local c = require('config')
 
 util.C = terralib.includecstring [[
 #include <stdio.h>
@@ -351,7 +352,7 @@ terra isprefix(pre : rawstring, str : rawstring) : bool
     return isprefix(pre+1,str+1)
 end
 terra Timer:evaluate()
-	if ([_opt_verbosity > 0]) then
+	if ([c._opt_verbosity > 0]) then
 		var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
 		var aggregateTimingNames = [Array(rawstring)].salloc():init()
 		for i = 0,self.timingInfo:size() do
