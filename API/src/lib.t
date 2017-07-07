@@ -1,3 +1,5 @@
+local ad = require('ad')
+
 return function(P)
     local terms = terralib.newlist()
 
