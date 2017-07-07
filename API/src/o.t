@@ -326,8 +326,8 @@ end
 
 -- TODO put these two somewhere else
 -- TODO if these functions are part of 'A', why aren't they defined there?
-function A.CenteredFunction:__tostring() return tostring(self.ispace) end
-function A.GraphFunction:__tostring() return tostring(self.graphname) end
+function A.CenteredFunction:__tostring() return 'CenteredFunction(ispace=' ..tostring(self.ispace) .. ')' end
+function A.GraphFunction:__tostring() return 'GraphFunction(graphname=' ..tostring(self.graphname) .. ')' end
 
 -- TODO what is ft?
 -- puts 'ft' and 'functions' into an 'A.ProblemFunctions' and inserts that into self.functions
@@ -382,7 +382,7 @@ function ProblemSpec:UsesLambda() return self.problemkind:match("LM") ~= nil end
 -- in this file but todim() seems to be dead code
 
 
-function Dim:__tostring() return "Dim("..self.name..")" end
+function Dim:__tostring() return "Dim(name="..self.name..")" end
 
 -- TODO who uses this? grep can't find anything
 function opt.Dim(name, idx)
@@ -409,7 +409,7 @@ function IndexSpace:init()
     self._string = self.dims:map(function(x) return x.name end):concat("_")
 end
 
-function IndexSpace:__tostring() return self._string end
+function IndexSpace:__tostring() return 'IndexSpace(_string=' .. self._string .. ')' end
 
 function IndexSpace:ZeroOffset()
     if self._zerooffset then return self._zerooffset end
@@ -1142,21 +1142,21 @@ problemPlan = terralib.cast({int,&uint32,&&opt.Plan} -> {}, problemPlan)
 
 ------------------------------- Weird random Objects start
 -- TODO make more meaningful groups
-function Offset:__tostring() return string.format("(%s)",self.data:map(tostring):concat(",")) end
-function GraphElement:__tostring() return ("%s_%s"):format(tostring(self.graph), self.element) end
+function Offset:__tostring() return string.format("Offset: (%s)",self.data:map(tostring):concat(",")) end
+function GraphElement:__tostring() return ("GraphElement: %s_%s"):format(tostring(self.graph), self.element) end
 
 function VarDef:asvar() return ad.v[self] end
 
 function ImageAccess:__tostring()
-    local r = ("%s_%s_%s"):format(self.image.name,tostring(self.index),self.channel)
+    local r = ("ImageAccess: %s_%s_%s"):format(self.image.name,tostring(self.index),self.channel)
     if self:shape() ~= ad.scalar then
         r = r .. ("_%s"):format(tostring(self:shape()))
     end
     return r
 end
-function BoundsAccess:__tostring() return ("bounds_%s_%s"):format(tostring(self.min),self.min == self.max and "p" or tostring(self.max)) end
+function BoundsAccess:__tostring() return ("BoundsAccess: bounds_%s_%s"):format(tostring(self.min),self.min == self.max and "p" or tostring(self.max)) end
 function IndexValue:__tostring() return ({[0] = "i","j","k"})[self.dim] end
-function ParamValue:__tostring() return "param_"..self.name end
+function ParamValue:__tostring() return "ParamValue(name="..self.name .. ')' end
 
 function ImageAccess:shape() return self._shape end -- implementing AD's API for keys
 
@@ -1201,9 +1201,6 @@ function ProblemSpecAD:UsePreconditioner(v)
 end
 
 function ProblemSpecAD:Image(name,typ,dims,idx,isunknown)
-    print("START Inside ProblemSpecAD:Image(...)")
-    print('\nisunknown:')
-    print(isunknown)
    if not terralib.types.istype(typ) then
         typ, dims, idx, isunknown = opt_float, typ, dims, idx --shift arguments left
     end
@@ -1213,7 +1210,6 @@ function ProblemSpecAD:Image(name,typ,dims,idx,isunknown)
     self.P:Image(name,typ,ispace,idx,isunknown)
     local r = Image(name,self.P:ImageType(typ,ispace),not util.isvectortype(typ),isunknown and A.UnknownLocation or A.StateLocation)
     self.nametoimage[name] = r
-    print("START Inside ProblemSpecAD:Image(...)")
     return r
 end
 function ProblemSpecAD:Unknown(name,typ,dims,idx) 
@@ -1244,7 +1240,8 @@ function ProblemSpecAD:ImageWithName(name)
 end
 
 -- TODO put with Image stuff
-function Image:__tostring() return self.name end
+-- changed by SO to return more descriptive string
+function Image:__tostring() return 'Image(name=' .. self.name .. ')' end
 
 local function bboxforexpression(ispace,exp)
     local usesbounds = false
@@ -1304,7 +1301,7 @@ function ProblemSpecAD:ComputedImage(name,dims,exp)
 end
 
 -- TODO put with Graph stuff
-function Graph:__tostring() return self.name end
+function Graph:__tostring() return 'Graph: ' .. self.name end
 
 function ProblemSpecAD:Graph(name,idx,...)
     self.P:Graph(name,idx,...)
@@ -2191,6 +2188,8 @@ end
 
 -- TODO move to ProblemSpecAD stuff
 function ProblemSpecAD:AddFunctions(functionspecs) -- takes fspecs, compiles them and stores compiled functions in self.P.functions
+        print('\n\n\n')
+        print('START Inside ProblemSpecAD:AddFunctions()')
     local kind_to_functionmap = {}
     local kinds = List()
     for i,fs in ipairs(functionspecs) do -- group by unique function kind to pass to ProblemSpec:Functions call
@@ -2202,6 +2201,10 @@ function ProblemSpecAD:AddFunctions(functionspecs) -- takes fspecs, compiles the
         end
         assert(not fm[fs.name],"function already defined!")
         fm[fs.name] = self:CompileFunctionSpec(fs) -- takes a FunctionSpec and turns it into a "functionmap"
+        print('\n')
+        print('START The compiled functionspec')
+        printt(fm[fs.name])
+        print('END The compiled functionspec')
         if fm.derivedfrom and fs.derivedfrom then
             assert(fm.derivedfrom == fs.derivedfrom, "not same energy spec?")
         end
@@ -2211,6 +2214,8 @@ function ProblemSpecAD:AddFunctions(functionspecs) -- takes fspecs, compiles the
         local fm = kind_to_functionmap[k]
         self.P:Functions(k,fm)
     end
+        print('END Inside ProblemSpecAD:AddFunctions()')
+        print('\n\n\n')
 end
 
 
@@ -2365,6 +2370,7 @@ local function createjtjcentered(PS,ES)
     P_hat = ad.polysimplify(P_hat)
     dprint("JTJ[poly] = ", ad.tostrings(P_hat))
     local r = ad.Vector(unpack(P_hat))
+    -- FunctionSpec(kind, name, argument, results, ...)
     local result = A.FunctionSpec(ES.kind,"applyJTJ", List {"P", "CtC"}, List{r}, EMPTY,ES)
     return result
 end
@@ -2759,7 +2765,7 @@ function ProblemSpecAD:Cost(...)
     -- name = applyJtJ
     -- result = let .. in ... end
     -- arguments = {...}
-    -- printt(functionspecs)
+    printt(functionspecs)
     print('END Inside ProblemSpecAD:Cost(), the functionspecs')
     print('\n\n\n')
     
