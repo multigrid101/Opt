@@ -1,5 +1,15 @@
 opt = {} --anchor it in global namespace, otherwise it can be collected
 
+TRACE = true -- TODO added by SO to turn on/off lots of print-statements required to understand how the code works
+function printt(thing)
+  print('the name of the thing:')
+  if TRACE then
+    print(thing)
+  end
+  print('the thing as table:')
+  for k,v in pairs(thing) do print(k,v) end
+end
+
 
 -- TODO need to remove the following later, I need them at the moment in order to load o.t into the repl
 -- _opt_verbosity = 1
@@ -148,7 +158,7 @@ struct opt.Plan(S.Object) {
     data : &opaque
 } 
 
--- TODO What does 'opaque type' mean?
+-- TODO What does 'opaque type' mean? -> equivalent to 'void' in C
 struct opt.Problem {} -- just used as an opaque type, pointers are actually just the ID
 -- TODO this is almost C API, may move to bottom?
 local function problemDefine(filename, kind, pid)
@@ -156,7 +166,7 @@ local function problemDefine(filename, kind, pid)
     problems[problemmetadata.id] = problemmetadata
     pid[0] = problemmetadata.id
 end
-problemDefine = terralib.cast({rawstring, rawstring, &int} -> {}, problemDefine)
+problemDefine = terralib.cast({rawstring, rawstring, &int} -> {}, problemDefine) --> required to tturn lua-function into terra function
 
 -- TODO just a shortcut for convenience, should go to an appropriate section at top of file or maybe even with Array in util.t
 local List = terralib.newlist
@@ -243,8 +253,8 @@ end
 -- TODO who uses this? grep can't find anything
 -- --> ProblemSpecAD redirects to this
 function ProblemSpec:UsePreconditioner(v)
-	self:Stage "inputs"
-	self.usepreconditioner = v
+        self:Stage "inputs"
+        self.usepreconditioner = v
 end
 
 -- TODO only called from within ProblemSpec, make private somehow
@@ -269,14 +279,14 @@ function ImageParam:terratype() return self.imagetype:terratype() end
 -- TODO who uses this? grep can't find anything
 function ProblemSpec:MaxStencil()
     self:Stage "functions"
-	return self.maxStencil
+        return self.maxStencil
 end
 
 
 -- TODO who uses this? grep can't find anything
 function ProblemSpec:Stencil(stencil) -- sets stencil to max of current and new stencil 
     self:Stage "inputs"
-	self.maxStencil = math.max(stencil, self.maxStencil)
+        self.maxStencil = math.max(stencil, self.maxStencil)
 end
 
 
@@ -329,16 +339,16 @@ function ProblemSpec:Functions(ft, functions)
             v:gettype() -- check they typecheck now
         end
     end
-    
+
     -- support by-hand interface
     if type(ft) == "string" then
         ft = A.GraphFunction(ft)
     elseif IndexSpace:isclassof(ft) then
         ft = A.CenteredFunction(ft)
     end
-    
+
     assert(A.FunctionKind:isclassof(ft))
-    
+
     if ft.kind == "GraphFunction" then
         local idx = assert(self.names[ft.graphname],"graph not defined")
         assert(self.parameters[idx].kind == "GraphParam","expected a valid graph name")
@@ -417,7 +427,7 @@ function IndexSpace:indextype()
     assert(#dims > 0, "index space must have at least 1 dimension")
     local struct Index {}
     self._terratype = Index
-    
+
     local params,params2 = List(),List()
     local fieldnames = List()
     for i = 1,#dims do
@@ -428,6 +438,9 @@ function IndexSpace:indextype()
         Index.entries:insert { n, int }
     end
 
+    -- explanation: let's say X is of type index with X.d0 = 5 and X.d1 = 3. Then
+    -- X(1,2) returns another (anonymous) value of type index with d0=5+1=6 and
+    -- d1=3+2=5
     terra Index.metamethods.__apply(self : &Index, [params])
         var rhs : Index
         escape
@@ -455,6 +468,8 @@ function IndexSpace:indextype()
         return [genoffset(self)]
     end
 
+    -- this function is local to here and only used during the generation of the
+    -- following terra-functions
     local function genbounds(self,bmins,bmaxs)
         local valid
         for i = 1, #dims do
@@ -476,9 +491,9 @@ function IndexSpace:indextype()
         return valid
     end
     terra Index:InBounds() return [ genbounds(self) ] end
-    
+
     terra Index:InBoundsExpanded([params],[params2]) return [ genbounds(self,params,params2) ] end
-    
+
     if #dims <= 3 then
         local dimnames = "xyz"
         terra Index:initFromCUDAParams() : bool -- add 'x', 'y' and 'z' field to the index
@@ -596,8 +611,8 @@ function ImageType:terratype()
     local textured,pitched = self:usestexture()
     local Index = self.ispace:indextype()
     function Image.metamethods.__typename()
-	  return string.format("Image(%s,%s,%d)",tostring(self.scalartype),tostring(self.ispace),channelcount)
-	end
+          return string.format("Image(%s,%s,%d)",tostring(self.scalartype),tostring(self.ispace),channelcount)
+        end
 
     local VT = &vector(scalartype,channelcount)    
     -- reads
@@ -695,11 +710,11 @@ function ImageType:terratype()
     else
         terra Image:setGPUptr(ptr : &uint8) self.data = [&vectortype](ptr) end
     end
-	terra Image:initFromGPUptr( ptr : &uint8 )
+        terra Image:initFromGPUptr( ptr : &uint8 )
             self.data = nil
             self:setGPUptr(ptr)
         end
-	terra Image:initGPU()
+        terra Image:initGPU()
             var data : &uint8
             cd(C.cudaMalloc([&&opaque](&data), self:totalbytes()))
             cd(C.cudaMemset([&opaque](data), 0, self:totalbytes()))
@@ -867,7 +882,7 @@ local function tovalidimagetype(typ)
 end
 
 -- TODO move to ProblemSpec stuff
--- TODO who is using this??? grep doesn't find anything
+-- TODO who is using this??? grep doesn't find anything --> used e.g. in ProblemSpecAD:Image(...)
 function ProblemSpec:ImageType(typ,ispace)
     local scalartype,channelcount = tovalidimagetype(typ,"expected a number or an array of numbers")
     assert(scalartype,"expected a number or an array of numbers")
@@ -900,7 +915,7 @@ function ProblemSpec:Graph(name, idx, ...)
     self:Stage "inputs"
     local GraphType = terralib.types.newstruct(name)
     GraphType.entries:insert ( {"N",int32} )
-    
+
     local mm = GraphType.metamethods
     mm.idx = idx -- the index into the graph size table
     mm.elements = terralib.newlist()
@@ -922,17 +937,57 @@ errorPrint = rawget(_G,"errorPrint") or print
 -- TODO this is (almost) the C API, so move down
 function opt.problemSpecFromFile(filename)
     local file, errorString = terralib.loadfile(filename)
+    print('\n\n\n')
+    print('START the file inside opt.problemSpecFromFile')
+    print(file)
+    print('END the file inside opt.problemSpecFromFile')
+    print('\n\n\n')
     if not file then
         error(errorString, 0)
     end
-    local P = ad.ProblemSpec() -- ad.ProblemSpec() is defined in this file somewhere below, seems to mostly return a ProblemSpecAD instance
+    local P = ad.ProblemSpec() -- ad.ProblemSpec() is defined in this file somewhere below, seems to mostly return a ProblemSpecAD instance that is more or less uninitialized
+    print('\n\n\n')
+    print('START inside opt.problemSpecFromFile: result of ad.problemSpec()')
+    printt(P)
+    print('\n')
+    print('the extraarguments')
+    printt(  P.extraarguments)
+    print('\n')
+    print('the P')
+    printt(  P.P)
+    print('\n')
+    print('the P.parameters')
+    printt(  P.P.parameters)
+    print('\n')
+    print('the P.functions')
+    printt(  P.P.functions)
+    print('\n')
+    print('the excludeexps')
+    printt(  P.excludeexps)
+    print('\n')
+    print('the nametoimage')
+    printt(  P.nametoimage)
+    print('\n')
+    print('the precomputed')
+    printt(  P.precomputed)
+    print('END inside opt.problemSpecFromFile: result of ad.problemSpec()')
+    print('\n\n\n')
+    print('\n\n\n')
+    print('START the libinstance inside opt.problemSpecFromFile')
     local libinstance = optlib(P)
-    setfenv(file,libinstance)
+    printt(libinstance)
+    print('END the libinstance inside opt.problemSpecFromFile')
+    print('\n\n\n')
+    setfenv(file,libinstance) -- makes e.g. Energy() etc. known to the input file but not e.g. Unknown() (where does that come from???). Answer: libinstance has an __index metamethod that looks up e.g. Dim() in opt, ad modules AND in 'P' from above, which is a ProblemSpecAD instance --> language definition spread over source code, wtf?
+    print('\n\n\n')
+    print('START the result inside opt.problemSpecFromFile')
     local result = file()
-    if ProblemSpec:isclassof(result) then
+    print('END the result inside opt.problemSpecFromFile')
+    print('\n\n\n')
+    if ProblemSpec:isclassof(result) then -- NOTE: this branch is not used for image_warping.t, code seems to skip it
         return result
     end
-    return libinstance.Result() -- returns P:Cost(...)
+    return libinstance.Result() -- returns P:Cost(unpack(terms)), where terms is a list that collects everything passed to Energy(), i.e. it executes ProblemSpecAD:Cost(...)
 end
 
 -- TODO this is (almost) the C API, so move down
@@ -943,8 +998,136 @@ local function problemPlan(id, dimensions, pplan)
         opt.dimensions = dimensions
         opt.math = problemmetadata.kind:match("GPU") and util.gpuMath or util.cpuMath
         opt.problemkind = problemmetadata.kind
+        print(problemmetadata.kind) -- e.g. 'gaussNewtonGPU' (as string)
         local b = terralib.currenttimeinseconds()
         local tbl = opt.problemSpecFromFile(problemmetadata.filename) -- tbl seems to be ProblemSpec in solver***.t, seems to be more or less whatever ProblemSpecAD:Cost() returns
+
+        -- print('\n')
+        -- print('START inside problemPlan(): result of opt.problemSpecFromFile()')
+        -- printt(tbl)
+        -- print('details:')
+        -- printt(tbl.parameters)
+        -- print('\n')
+        -- printt(tbl.energyspecs)
+        -- print('\n')
+        -- print('the _UnknownType')
+        -- printt(tbl._UnknownType)
+        -- print('\n')
+        -- print('the _UnknownType.ispacesizes')
+        -- printt(tbl._UnknownType.ispacesizes)
+        -- print('\n')
+        -- print('the _UnknownType.ispaces')
+        -- printt(tbl._UnknownType.ispaces)
+        -- print('\n')
+        -- print('the _UnknownType._terratype')
+        -- printt(tbl._UnknownType._terratype)
+        -- print('\n')
+        -- print('the _UnknownType._terratype.methods')
+        -- printt(tbl._UnknownType._terratype.methods)
+        -- print('\n')
+        -- print('the _UnknownType._terratype.cachedlayout')
+        -- printt(tbl._UnknownType._terratype.cachedlayout)
+        -- print('\n')
+        -- print('the _UnknownType._terratype.cachedlayout.entries')
+        -- printt(tbl._UnknownType._terratype.cachedlayout.entries)
+        -- print('\n')
+        -- print('the _UnknownType._terratype.cachedlayout.entries 1')
+        -- printt(tbl._UnknownType._terratype.cachedlayout.entries[1])
+        -- print('\n')
+        -- print('the _UnknownType._terratype.cachedlayout.entries 2')
+        -- printt(tbl._UnknownType._terratype.cachedlayout.entries[2])
+        -- print('\n')
+        -- print('the _UnknownType._terratype.cachedlayout.keytoindex')
+        -- printt(tbl._UnknownType._terratype.cachedlayout.keytoindex)
+        -- print('\n')
+        -- print('the _UnknownType._terratype.entries')
+        -- printt(tbl._UnknownType._terratype.entries)
+        -- print('\n')
+        -- print('the _UnknownType._terratype.entries 1')
+        -- printt(tbl._UnknownType._terratype.entries[1])
+        -- print('\n')
+        -- print('the _UnknownType._terratype.entries 1.2')
+        -- printt(tbl._UnknownType._terratype.entries[1][2])
+        -- print('\n')
+        -- print('the _UnknownType._terratype.entries 2')
+        -- printt(tbl._UnknownType._terratype.entries[2])
+        -- print('\n')
+        -- print('the _UnknownType._terratype.cachedentries')
+        -- printt(tbl._UnknownType._terratype.cachedentries)
+        -- print('\n')
+        -- print('the _UnknownType._terratype.cachedentries 1')
+        -- printt(tbl._UnknownType._terratype.cachedentries[1])
+        -- print('\n')
+        -- print('the _UnknownType._terratype.anchor')
+        -- printt(tbl._UnknownType._terratype.anchor)
+        -- print('\n')
+        -- print('the _UnknownType._terratype.metamethods')
+        -- printt(tbl._UnknownType._terratype.metamethods)
+        -- print('\n')
+        -- print('the _UnknownType.ispacetoimages')
+        -- printt(tbl._UnknownType.ispacetoimages)
+        -- print('\n')
+        -- print('the _UnknownType.images')
+        -- printt(tbl._UnknownType.images)
+        -- print('\n')
+        -- print('the _UnknownType.images 1')
+        -- printt(tbl._UnknownType.images[1])
+        -- print('\n')
+        -- print('the _UnknownType.images 2')
+        -- printt(tbl._UnknownType.images[2])
+        -- print('\n')
+        -- print('the ProblemParameters')
+        -- printt(tbl.ProblemParameters)
+        -- print('\n')
+        -- print('the ProblemParameters.methods')
+        -- printt(tbl.ProblemParameters.methods)
+        -- print('\n')
+        -- print('the ProblemParameters.cachedlayout')
+        -- printt(tbl.ProblemParameters.cachedlayout)
+        -- print('\n')
+        -- print('the ProblemParameters.cachedlayout.entries')
+        -- printt(tbl.ProblemParameters.cachedlayout.entries)
+        -- for k = 1,6 do
+        --   print('\n')
+        --   print('the ProblemParameters.cachedlayout.entries ' .. tostring(k))
+        --   printt(tbl.ProblemParameters.cachedlayout.entries[k])
+        --   printt(tbl.ProblemParameters.cachedlayout.entries[k].type)
+        -- end
+        -- print('\n')
+        -- print('the ProblemParameters.cachedlayout.keytoindex')
+        -- printt(tbl.ProblemParameters.cachedlayout.keytoindex)
+        -- print('\n')
+        -- print('the ProblemParameters.entries')
+        -- printt(tbl.ProblemParameters.entries)
+        -- for k = 1,6 do
+        --   print('\n')
+        --   print('the ProblemParameters.entries ' .. tostring(k))
+        --   printt(tbl.ProblemParameters.entries[k])
+        -- end
+        -- print('\n')
+        -- print('the ProblemParameters.cachedentries')
+        -- printt(tbl.ProblemParameters.cachedentries)
+        -- print('\n')
+        -- print('the ProblemParameters.anchor')
+        -- printt(tbl.ProblemParameters.anchor)
+        -- print('\n')
+        -- print('the ProblemParameters.metamethods')
+        -- printt(tbl.ProblemParameters.metamethods)
+        -- print('\n')
+        -- print('the functions')
+        -- printt(tbl.functions)
+        -- print('\n')
+        -- print('the functions 1')
+        -- printt(tbl.functions[1])
+        -- -- print('\n')
+        -- -- print('the functions[1].functionmap')
+        -- -- printt(tbl.functions[1].functionmap)
+        -- print('\n')
+        -- print('the names')
+        -- printt(tbl.names)
+        -- print('END inside problemPlan(): result of opt.problemSpecFromFile()')
+        -- print('\n\n\n\n')
+
         assert(ProblemSpec:isclassof(tbl))
         local result = compilePlan(tbl,problemmetadata.kind)
         local e = terralib.currenttimeinseconds()
@@ -992,10 +1175,10 @@ function ImageAccess:gradient()
     return emptygradient
  end
 ------------------------------- Weird random Objects end
- 
+
 -- TODO if this is **ad**.blabla, then shouldn't it be in 'ad.t'?
 function ad.Index(d) return IndexValue(d,0):asvar() end
- 
+
 
 -- TODO if this is **ad**.blabla, then shouldn't it be in 'ad.t'?
 function ad.ProblemSpec()
@@ -1014,12 +1197,15 @@ end
 -- TODO find out how this relates to ProblemSpec, opt.ProblemSpec, etc. and make meaningful groups
 function ProblemSpecAD:UsesLambda() return self.P:UsesLambda() end
 function ProblemSpecAD:UsePreconditioner(v)
-	self.P:UsePreconditioner(v)
+        self.P:UsePreconditioner(v)
 end
 
 function ProblemSpecAD:Image(name,typ,dims,idx,isunknown)
-    if not terralib.types.istype(typ) then
-        typ,dims,idx,isunknown = opt_float,typ,dims,idx --shift arguments left
+    print("START Inside ProblemSpecAD:Image(...)")
+    print('\nisunknown:')
+    print(isunknown)
+   if not terralib.types.istype(typ) then
+        typ, dims, idx, isunknown = opt_float, typ, dims, idx --shift arguments left
     end
     isunknown = isunknown and true or false
     local ispace = toispace(dims)
@@ -1027,9 +1213,12 @@ function ProblemSpecAD:Image(name,typ,dims,idx,isunknown)
     self.P:Image(name,typ,ispace,idx,isunknown)
     local r = Image(name,self.P:ImageType(typ,ispace),not util.isvectortype(typ),isunknown and A.UnknownLocation or A.StateLocation)
     self.nametoimage[name] = r
+    print("START Inside ProblemSpecAD:Image(...)")
     return r
 end
-function ProblemSpecAD:Unknown(name,typ,dims,idx) return self:Image(name,typ,dims,idx,true) end
+function ProblemSpecAD:Unknown(name,typ,dims,idx) 
+return self:Image(name,typ,dims,idx,true) -- 'true' tells opt that this is an unknown, see also ProblemSpecAD:Image(...)
+end
 
 function ProblemSpecAD:UnknownArgument(argpos)
     if not self.extraarguments[argpos] then
@@ -2522,10 +2711,21 @@ end
 
 -- TODO put with other ProblemSpecAD stuff
 function ProblemSpecAD:Cost(...)
-    local terms = extractresidualterms(...)
+    local terms = extractresidualterms(...) -- seems to hold 'let ... in ... end' statements that represent the residual terms
+    print('\n\n\n')
+    print('START Inside ProblemSpecAD:Cost(), the terms')
+    -- printt(terms)
+    print('END Inside ProblemSpecAD:Cost(), the terms')
+    print('\n\n\n')
+
     
     local functionspecs = List()
-    local energyspecs = toenergyspecs(terms)
+    local energyspecs = toenergyspecs(terms) -- wraps the terms inside an 'EnergySpec' object
+    print('\n\n\n')
+    print('START Inside ProblemSpecAD:Cost(), the energyspecs')
+    -- printt(energyspecs)
+    print('END Inside ProblemSpecAD:Cost(), the energyspecs')
+    print('\n\n\n')
     for _,energyspec in ipairs(energyspecs) do
         functionspecs:insert(createcost(energyspec))          
         if energyspec.kind.kind == "CenteredFunction" then
@@ -2553,8 +2753,17 @@ function ProblemSpecAD:Cost(...)
         local class = classifyexpression(exclude)
         functionspecs:insert(A.FunctionSpec(class, "exclude", EMPTY,List{exclude}, EMPTY))
     end
+    print('\n\n\n')
+    print('START Inside ProblemSpecAD:Cost(), the functionspecs')
+    -- functionspecs holds a FunctionSpec object for each function (e.g. applyJtJ) with the following fields (only partial list)
+    -- name = applyJtJ
+    -- result = let .. in ... end
+    -- arguments = {...}
+    -- printt(functionspecs)
+    print('END Inside ProblemSpecAD:Cost(), the functionspecs')
+    print('\n\n\n')
     
-    self:AddFunctions(functionspecs) -- add 'functions' field to self.P
+    self:AddFunctions(functionspecs) -- turns functionspecs into proper terra functions and adds them to self.P
     self.P.energyspecs = energyspecs
     return self.P
 end
