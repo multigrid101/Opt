@@ -1130,6 +1130,10 @@ local function problemPlan(id, dimensions, pplan)
 
         assert(ProblemSpec:isclassof(tbl))
         local result = compilePlan(tbl,problemmetadata.kind)
+        print('\n')
+        print('The result of compilePlan() inside problemPlan()')
+        printt(result)
+
         local e = terralib.currenttimeinseconds()
         print("compile time: ",e - b)
         allPlans:insert(result)
