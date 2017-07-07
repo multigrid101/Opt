@@ -52,7 +52,7 @@ function Shape:fromreduction()
     return Shape(List{unpack(self.keys,1,#self.keys-1)})
 end
 function Shape:__tostring()
-    return "Shape: {"..table.concat(self.keys:map(tostring),",").."}"
+    return "{"..table.concat(self.keys:map(tostring),",").."}"
 end
 
 local nextid = 0
@@ -82,7 +82,7 @@ function Exp:shape()
     assert(Shape:isclassof(self.shape_),"not a shape?")
     return self.shape_
 end
-function Const:__tostring() return 'Const(v=' ..  tostring(self.v) .. ')' end
+function Const:__tostring() return tostring(self.v) end
 
 function Var:init()
     local key = self.key_
@@ -308,7 +308,7 @@ function Apply:simplified()
 end
 
 function ExpVector:size() return #self.data end
-function ExpVector:__tostring() return "ExpVector(data={"..ad.tostrings(self.data).."})" end
+function ExpVector:__tostring() return "{"..ad.tostrings(self.data).."}" end
 function ExpVector:__index(key)
     if type(key) == "number" then
         assert(key >= 0 and key < #self.data, "index out of bounds")
@@ -458,7 +458,7 @@ function Op:propagatetype(args) --returns a 2: <returntype>, <castedargumenttype
 end
 
 
-function Op:__tostring() return 'Op: ' .. self.name end
+function Op:__tostring() return self.name end
 
 local mo = {"add","sub","mul","div", "pow"}
 for i,o in ipairs(mo) do
@@ -659,7 +659,7 @@ end
 ad.tostrings = expstostring
 Exp.__tostring = nil -- force overrides to happen
 function Exp:__tostring()
-    return 'Exp(' ..  expstostring(terralib.newlist{self}) .. ')'
+    return expstostring(terralib.newlist{self})
 end
 
 function Exp:d(v)
