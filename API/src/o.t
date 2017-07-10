@@ -1185,6 +1185,7 @@ function ad.Index(d) return IndexValue(d,0):asvar() end
 
 
 -- TODO if this is **ad**.blabla, then shouldn't it be in 'ad.t'?
+-- only used one time by opt.problemSpecFromFile
 function ad.ProblemSpec()
     local ps = ProblemSpecAD()
     ps.P,ps.nametoimage,ps.precomputed,ps.extraarguments,ps.excludeexps = opt.ProblemSpec(), {}, List(), List(), List()
@@ -2728,6 +2729,7 @@ function ProblemSpecAD:Cost(...)
     print('\n\n\n')
     print('START Inside ProblemSpecAD:Cost(), the energyspecs')
     -- printt(energyspecs)
+    -- printt(energyspecs[1].kind.ispace.dims)
     print('END Inside ProblemSpecAD:Cost(), the energyspecs')
     print('\n\n\n')
     for _,energyspec in ipairs(energyspecs) do
