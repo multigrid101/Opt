@@ -153,6 +153,47 @@ function A.CenteredFunction:__tostring() return tostring(self.ispace) end
 function A.GraphFunction:__tostring() return tostring(self.graphname) end
 --------------------------- END GraphFunction ----------------------------
 
+
+-------------------- More weird random stuff start
+function opt.InBounds(...)
+    local offset = Offset(List{...})
+	return BoundsAccess(offset,offset):asvar()
+end
+function opt.InBoundsExpanded(...)
+    local args = {...}
+    local expand = args[#args]
+    args[#args] = nil
+    local min,max = List(),List()
+    for i,a in ipairs(args) do
+        min[i],max[i] = a - expand, a + expand
+    end
+    return BoundsAccess(Offset(min),Offset(max)):asvar()
+end
+function BoundsAccess:type() return bool end --implementing AD's API for keys
+
+
+function VarDef:shift(o) return self end
+function BoundsAccess:shift(o)
+    return BoundsAccess(self.min:shift(o),self.max:shift(o))
+end
+function ImageAccess:shift(o)
+    assert(Offset:isclassof(self.index), "cannot shift graph accesses!")
+    return ImageAccess(self.image,self:shape(),self.index:shift(o),self.channel)
+end
+function ImageAccess:shape() return self._shape end -- implementing AD's API for keys
+
+function IndexValue:shift(o)
+    return IndexValue(self.dim,self.shift_ + assert(o.data[self.dim+1],"dim of index not in shift"))
+end
+
+local function shiftexp(exp,o)
+    local function rename(a)
+        return ad.v[a:shift(o)]
+    end
+    return exp:rename(rename)
+end 
+-------------------- More weird random stuff end
+
 --------------------------------------- Offset start
 function Offset:IsZero()
     for i,o in ipairs(self.data) do
