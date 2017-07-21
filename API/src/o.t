@@ -430,6 +430,10 @@ function IndexSpace:ZeroOffset()
     return self._zerooffset
 end
 
+function IndexSpace:getDimensionality()
+    return #dims
+end
+
 function IndexSpace:indextype()
     if self._terratype then return self._terratype end
     local dims = self.dims
@@ -539,8 +543,7 @@ end
 -- TODO only used once and within ImageType, make private
 function ImageType:usestexture() -- texture, 2D texture
     local c = self.channelcount
-    if use_bindless_texture and self.scalartype == float and 
-       (c == 1 or c == 2 or c == 4) then
+    if use_bindless_texture and self.scalartype == float and (c == 1 or c == 2 or c == 4) then
        if use_pitched_memory and #self.ispace.dims == 2 then
             local floatstride = self.ispace.dims[1].size*c
             local m = floatstride % 32

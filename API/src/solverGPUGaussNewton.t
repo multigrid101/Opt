@@ -1,5 +1,7 @@
 local S = require("std")
 local util = require("util")
+local conf = require('config')
+local backend = conf.backend
 require("precision")
 
 local ffi = require("ffi")
@@ -322,6 +324,13 @@ return function(problemSpec)
         local kernels = {}
         local unknownElement = UnknownType:VectorTypeForIndexSpace(UnknownIndexSpace)
         local Index = UnknownIndexSpace:indextype()
+        local kernelArglist = backend.getKernelArglist(Index)
+
+        print('\n\n\n')
+        print('START inside delegate.CenterFunctions: The kernel arglist')
+        printt(kernelArglist)
+        print('END inside delegate.CenterFunctions: The kernel arglist')
+        print('\n\n\n')
 
         print('\n\n\n')
         print('START inside delegate.CenterFunctions: The index-type')
@@ -379,11 +388,11 @@ return function(problemSpec)
             return result
         end
 
-        terra kernels.PCGInit1(pd : PlanData)
+        terra kernels.PCGInit1(pd : PlanData, [kernelArglist])
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
         
             var idx : Index
-            if idx:initFromCUDAParams() then
+            if idx:initFromCUDAParams([kernelArglist]) then
         
                 -- residuum = J^T x -F - A x delta_0  => J^T x -F, since A x x_0 == 0                            
                 var residuum : unknownElement = 0.0f
@@ -418,10 +427,10 @@ return function(problemSpec)
             end
         end
         
-        terra kernels.PCGInit1_Finish(pd : PlanData)	--only called for graphs (i.e. if graphs are used)
+        terra kernels.PCGInit1_Finish(pd : PlanData, [kernelArglist])	--only called for graphs (i.e. if graphs are used)
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
             var idx : Index
-            if idx:initFromCUDAParams() then
+            if idx:initFromCUDAParams([kernelArglist]) then
                 var residuum = pd.r(idx)			
                 var pre = pd.preconditioner(idx)
             
@@ -440,10 +449,10 @@ return function(problemSpec)
             unknownWideReduction(idx,d,pd.scanAlphaNumerator)
         end
 
-        terra kernels.PCGStep1(pd : PlanData)
+        terra kernels.PCGStep1(pd : PlanData, [kernelArglist])
             var d : opt_float = opt_float(0.0f)
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 var tmp : unknownElement = 0.0f
                  -- A x p_k  => J^T x J x p_k 
                 tmp = fmap.applyJTJ(idx, pd.parameters, pd.p, pd.CtC)
@@ -456,21 +465,21 @@ return function(problemSpec)
         end
 
         if multistep_alphaDenominator_compute then
-            terra kernels.PCGStep1_Finish(pd : PlanData)
+            terra kernels.PCGStep1_Finish(pd : PlanData, [kernelArglist])
                 var d : opt_float = opt_float(0.0f)
                 var idx : Index
-                if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                     d = pd.p(idx):dot(pd.Ap_X(idx))           -- x-th term of denominator of alpha
                 end
                 unknownWideReduction(idx,d,pd.scanAlphaDenominator)
             end
         end
 
-        terra kernels.PCGStep2(pd : PlanData)
+        terra kernels.PCGStep2(pd : PlanData, [kernelArglist])
             var betaNum = opt_float(0.0f) 
             var q = opt_float(0.0f) -- Only used if LM
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 -- sum over block results to compute denominator of alpha
                 var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
                 var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
@@ -509,9 +518,9 @@ return function(problemSpec)
             end
         end
 
-        terra kernels.PCGStep2_1stHalf(pd : PlanData)
+        terra kernels.PCGStep2_1stHalf(pd : PlanData, [kernelArglist])
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
                 var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
                 -- update step size alpha
@@ -520,11 +529,11 @@ return function(problemSpec)
             end
         end
 
-        terra kernels.PCGStep2_2ndHalf(pd : PlanData)
+        terra kernels.PCGStep2_2ndHalf(pd : PlanData, [kernelArglist])
             var betaNum = opt_float(0.0f) 
             var q = opt_float(0.0f) 
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 -- Recompute residual
                 var Ax = pd.Adelta(idx)
                 var b = pd.b(idx)
@@ -552,9 +561,9 @@ return function(problemSpec)
         end
 
 
-        terra kernels.PCGStep3(pd : PlanData)			
+        terra kernels.PCGStep3(pd : PlanData, [kernelArglist])			
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
             
                 var rDotzNew : opt_float = pd.scanBetaNumerator[0]	-- get new numerator
                 var rDotzOld : opt_float = pd.scanAlphaNumerator[0]	-- get old denominator
@@ -565,38 +574,38 @@ return function(problemSpec)
             end
         end
         
-        terra kernels.PCGLinearUpdate(pd : PlanData)
+        terra kernels.PCGLinearUpdate(pd : PlanData, [kernelArglist])
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 pd.parameters.X(idx) = pd.parameters.X(idx) + pd.delta(idx)
             end
         end	
         
-        terra kernels.revertUpdate(pd : PlanData)
+        terra kernels.revertUpdate(pd : PlanData, [kernelArglist])
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 pd.parameters.X(idx) = pd.prevX(idx)
             end
         end	
 
-        terra kernels.computeAdelta(pd : PlanData)
+        terra kernels.computeAdelta(pd : PlanData, [kernelArglist])
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 pd.Adelta(idx) = fmap.applyJTJ(idx, pd.parameters, pd.delta, pd.CtC)
             end
         end
 
-        terra kernels.savePreviousUnknowns(pd : PlanData)
+        terra kernels.savePreviousUnknowns(pd : PlanData, [kernelArglist])
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 pd.prevX(idx) = pd.parameters.X(idx)
             end
         end 
 
-        terra kernels.computeCost(pd : PlanData)
+        terra kernels.computeCost(pd : PlanData, [kernelArglist])
             var cost : opt_float = opt_float(0.0f)
             var idx : Index
-            if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 var params = pd.parameters
                 cost = fmap.cost(idx, params)
             end
@@ -608,13 +617,13 @@ return function(problemSpec)
         end
 
         if not fmap.dumpJ then
-            terra kernels.saveJToCRS(pd : PlanData)
+            terra kernels.saveJToCRS(pd : PlanData, [kernelArglist])
             end
         else
             terra kernels.saveJToCRS(pd : PlanData)
                 var idx : Index
                 var [parametersSym] = &pd.parameters
-                if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                     [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,idx,pd)]
                 end
             end
@@ -622,35 +631,35 @@ return function(problemSpec)
         
 
         if fmap.precompute then
-            terra kernels.precompute(pd : PlanData)
+            terra kernels.precompute(pd : PlanData, [kernelArglist])
                 var idx : Index
-                if idx:initFromCUDAParams() then
+                if idx:initFromCUDAParams([kernelArglist]) then
                    fmap.precompute(idx,pd.parameters)
                 end
             end
         end
 
         if problemSpec:UsesLambda() then
-            terra kernels.PCGComputeCtC(pd : PlanData)
+            terra kernels.PCGComputeCtC(pd : PlanData, [kernelArglist])
                 var idx : Index
-                if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then 
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then 
                     var CtC = fmap.computeCtC(idx, pd.parameters)
                     pd.CtC(idx) = CtC    
                 end 
             end
 
-            terra kernels.PCGSaveSSq(pd : PlanData)
+            terra kernels.PCGSaveSSq(pd : PlanData, [kernelArglist])
                 var idx : Index
-                if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then 
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then 
                     pd.SSq(idx) = pd.preconditioner(idx)       
                 end 
             end
 
-            terra kernels.PCGFinalizeDiagonal(pd : PlanData)
+            terra kernels.PCGFinalizeDiagonal(pd : PlanData, [kernelArglist])
                 var idx : Index
                 var d = opt_float(0.0f)
                 var q = opt_float(0.0f)
-                if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then 
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then 
                     var unclampedCtC = pd.CtC(idx)
                     var invS_iiSq : unknownElement = opt_float(1.0f)
                     if [initialization_parameters.jacobiScaling == JacobiScalingType.ONCE_PER_SOLVE] then
@@ -681,10 +690,10 @@ return function(problemSpec)
                 unknownWideReduction(idx,d,pd.scanAlphaNumerator)
             end
 
-            terra kernels.computeModelCost(pd : PlanData)            
+            terra kernels.computeModelCost(pd : PlanData, [kernelArglist])            
                 var cost : opt_float = opt_float(0.0f)
                 var idx : Index
-                if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                     var params = pd.parameters              
                     cost = fmap.modelcost(idx, params, pd.delta)
                 end
@@ -706,10 +715,17 @@ return function(problemSpec)
 
         -- by SO start
         local Index = graphIndexSpace:indextype()
+        local kernelArglist = backend.getKernelArglist(graphIndexSpace)
         print('\n\n\n')
         print('START inside delegate.GraphFunctions: The index-type')
         Index:printpretty()
         print('END inside delegate.GraphFunctions: The index-type')
+        print('\n\n\n')
+
+        print('\n\n\n')
+        print('START inside delegate.CenterFunctions: The kernel arglist')
+        printt(kernelArglist)
+        print('END inside delegate.CenterFunctions: The kernel arglist')
         print('\n\n\n')
         -- by SO end
 
@@ -756,7 +772,7 @@ return function(problemSpec)
             -- var tIdx = 0
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
-            if tIdx:initFromCUDAParams() then
+            if tIdx:initFromCUDAParams([kernelArglist]) then
                 fmap.evalJTF(tIdx.d0, pd.parameters, pd.r, pd.preconditioner)
             end
         end    
@@ -776,12 +792,12 @@ return function(problemSpec)
         --         unknownWideReduction(idx,d,pd.scanAlphaDenominator)
         --     end
         -- end
-        terra kernels.PCGStep1_Graph(pd : PlanData)
+        terra kernels.PCGStep1_Graph(pd : PlanData, [kernelArglist])
             var d = opt_float(0.0f)
             -- var tIdx = 0 
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
-            if tIdx:initFromCUDAParams() then
+            if tIdx:initFromCUDAParams([kernelArglist]) then
                d = d + fmap.applyJTJ(tIdx.d0, pd.parameters, pd.p, pd.Ap_X)
             end 
             if not [multistep_alphaDenominator_compute] then
@@ -792,11 +808,11 @@ return function(problemSpec)
             end
         end
 
-        terra kernels.computeAdelta_Graph(pd : PlanData)
+        terra kernels.computeAdelta_Graph(pd : PlanData, [kernelArglist])
             -- var tIdx = 0 
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
-            if tIdx:initFromCUDAParams() then
+            if tIdx:initFromCUDAParams([kernelArglist]) then
                 fmap.applyJTJ(tIdx.d0, pd.parameters, pd.delta, pd.Adelta)
             end
         end
@@ -815,12 +831,12 @@ return function(problemSpec)
         --         util.atomicAdd(pd.scratch, cost)
         --     end
         -- end
-        terra kernels.computeCost_Graph(pd : PlanData)
+        terra kernels.computeCost_Graph(pd : PlanData, [kernelArglist])
             var cost : opt_float = opt_float(0.0f)
             -- var tIdx = 0
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
-            if tIdx:initFromCUDAParams() then
+            if tIdx:initFromCUDAParams([kernelArglist]) then
                 cost = fmap.cost(tIdx.d0, pd.parameters)
             end 
             cost = util.warpReduce(cost)
@@ -830,15 +846,15 @@ return function(problemSpec)
         end
 
         if not fmap.dumpJ then
-            terra kernels.saveJToCRS_Graph(pd : PlanData)
+            terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist])
             end
         else
-            terra kernels.saveJToCRS_Graph(pd : PlanData)
+            terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist])
                 -- var tIdx = 0
                 var [parametersSym] = &pd.parameters
                 -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
               var tIdx : Index
-              if tIdx:initFromCUDAParams() then
+              if tIdx:initFromCUDAParams([kernelArglist]) then
                     -- [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,tIdx,pd)]-- original
                     var asdf = tIdx.d0
                     [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,asdf,pd)]
@@ -847,17 +863,21 @@ return function(problemSpec)
         end
 
         if problemSpec:UsesLambda() then
-            terra kernels.PCGComputeCtC_Graph(pd : PlanData)
-                var tIdx = 0
-                if util.getValidGraphElement(pd,[graphname],&tIdx) then
+            terra kernels.PCGComputeCtC_Graph(pd : PlanData, [kernelArglist])
+                -- var tIdx = 0
+                -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
+              var tIdx : Index
+              if tIdx:initFromCUDAParams([kernelArglist]) then
                     fmap.computeCtC(tIdx, pd.parameters, pd.CtC)
                 end
             end    
 
-            terra kernels.computeModelCost_Graph(pd : PlanData)          
+            terra kernels.computeModelCost_Graph(pd : PlanData, [kernelArglist]) 
                 var cost : opt_float = opt_float(0.0f)
-                var tIdx = 0
-                if util.getValidGraphElement(pd,[graphname],&tIdx) then
+                -- var tIdx = 0
+                -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
+              var tIdx : Index
+              if tIdx:initFromCUDAParams([kernelArglist]) then
                     cost = fmap.modelcost(tIdx, pd.parameters, pd.delta)
                 end 
                 cost = util.warpReduce(cost)
