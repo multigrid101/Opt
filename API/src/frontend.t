@@ -153,6 +153,92 @@ function A.CenteredFunction:__tostring() return tostring(self.ispace) end
 function A.GraphFunction:__tostring() return tostring(self.graphname) end
 --------------------------- END GraphFunction ----------------------------
 
+local function extractresidualterms(...)
+    local exp = terralib.newlist {}
+    for i = 1, select("#",...) do
+        local e = select(i,...)
+        if ad.ExpVector:isclassof(e) then
+            for i,t in ipairs(e:expressions()) do
+                t = assert(ad.toexp(t), "expected an ad expression")
+                exp:insert(t)
+            end
+        else
+            exp:insert((assert(ad.toexp(e), "expected an ad expression")))
+        end
+    end
+    return exp
+end
+
+local function bboxforexpression(ispace,exp)
+    local usesbounds = false
+    local bmin,bmax = ispace:ZeroOffset(),ispace:ZeroOffset()
+    exp:visit(function(a)
+        if ImageAccess:isclassof(a) then
+            assert(Offset:isclassof(a.index,"bbox not defined for graphs"))
+            if a.image.gradientimages then
+                local shiftedbbox = a.image.bbox:shift(a.index)
+                bmin,bmax = bmin:Min(shiftedbbox.min),bmax:Max(shiftedbbox.max)
+            else
+                bmin,bmax = bmin:Min(a.index),bmax:Max(a.index)
+            end
+        elseif BoundsAccess:isclassof(a) then
+            usesbounds = true
+        end
+    end)
+    if usesbounds then 
+        bmin,bmax = ispace:ZeroOffset(),ispace:ZeroOffset()
+    end
+    return BoundsAccess(bmin,bmax)
+end
+
+local function classifyexpression(exp) -- what index space, or graph is this thing mapped over
+    local classification
+    local seenunknown = {}
+    local unknownaccesses = terralib.newlist()
+    local function addunknown(u)
+        if not seenunknown[u] then
+            unknownaccesses:insert(u)
+            seenunknown[u] = true
+        end
+    end
+    exp:visit(function(a)
+        if ImageAccess:isclassof(a) then -- assume image X is unknown
+            if a.image.location == A.UnknownLocation then
+                addunknown(a)
+            elseif a.image.gradientimages then
+                for i,im in ipairs(a.image.gradientimages) do
+                    assert(Offset:isclassof(a.index),"NYI - precomputed with graphs")
+                    addunknown(im.unknown:shift(a.index))
+                end
+            end
+            local aclass = Offset:isclassof(a.index) and A.CenteredFunction(a.image.type.ispace) or A.GraphFunction(a.index.graph.name)
+            assert(nil == classification or aclass == classification, "residual contains image reads from multiple domains")
+            classification = aclass
+        end
+    end)
+    local template = A.ResidualTemplate(exp,unknownaccesses)
+    if not classification then
+        error("residual must actually use some image")
+    end
+    if classification.kind == "CenteredFunction" then
+        exp:visit(function(a)
+            if BoundsAccess:isclassof(a) and #a.min.data ~= #classification.ispace.dims then
+                error(string.format("%s does not match index space %s",a,classification.ispace.dims))
+            end
+        end)
+        -- by default zero-out any residual computation that uses out-of-bounds things
+        -- users can opt for per-residual custom behavior using the InBounds checks
+        local bbox = bboxforexpression(classification.ispace,exp)
+        template.expression = ad.select(bbox:asvar(),exp,0)
+    end
+    return classification,template
+end
+
+-- TODO Important function, move downwards
+local function toenergyspecs(Rs)    
+    local kinds,kind_to_templates = MapAndGroupBy(Rs,classifyexpression)
+    return kinds:map(function(k) return A.EnergySpec(k,kind_to_templates[k]) end)
+end
 
 -------------------- More weird random stuff start
 function opt.InBounds(...)
@@ -445,7 +531,17 @@ function opt.problemSpecFromFile(filename)
     -- return libinstance.Result() -- returns P:Cost(unpack(terms)), where terms is a list that collects everything passed to Energy(), i.e. it executes ProblemSpecAD:Cost(...)
     -- original code end
 
-    local functionspecs = libinstance.Result()
+    local theterms = libinstance.getTerms() -- returns 'terms'
+    local terms = extractresidualterms(unpack(theterms)) -- seems to hold 'let ... in ... end' statements that represent the residual terms
+    print('\n\n\n')
+    print('START Inside ProblemSpecAD:Cost(), the terms')
+    -- printt(terms)
+    print('END Inside ProblemSpecAD:Cost(), the terms')
+    print('\n\n\n')
+
+    
+    local energyspecs = toenergyspecs(terms) -- wraps the terms inside an 'EnergySpec' object
+    local functionspecs = P:Cost(energyspecs)
     return functionspecs
 end
 
@@ -478,7 +574,7 @@ function ProblemSpecAD:Image(name,typ,dims,idx,isunknown)
     self.P:Image(name,typ,ispace,idx,isunknown)
     local r = Image(name,self.P:ImageType(typ,ispace),not util.isvectortype(typ),isunknown and A.UnknownLocation or A.StateLocation)
     self.nametoimage[name] = r
-    print("START Inside ProblemSpecAD:Image(...)")
+    print("END Inside ProblemSpecAD:Image(...)")
     return r
 end
 function ProblemSpecAD:Unknown(name,typ,dims,idx) 
@@ -561,75 +657,76 @@ end
 
 -- CREATE STUFF START
 -- TODO find out what this does and put in some file that states the purpose
-local function bboxforexpression(ispace,exp)
-    local usesbounds = false
-    local bmin,bmax = ispace:ZeroOffset(),ispace:ZeroOffset()
-    exp:visit(function(a)
-        if ImageAccess:isclassof(a) then
-            assert(Offset:isclassof(a.index,"bbox not defined for graphs"))
-            if a.image.gradientimages then
-                local shiftedbbox = a.image.bbox:shift(a.index)
-                bmin,bmax = bmin:Min(shiftedbbox.min),bmax:Max(shiftedbbox.max)
-            else
-                bmin,bmax = bmin:Min(a.index),bmax:Max(a.index)
-            end
-        elseif BoundsAccess:isclassof(a) then
-            usesbounds = true
-        end
-    end)
-    if usesbounds then 
-        bmin,bmax = ispace:ZeroOffset(),ispace:ZeroOffset()
-    end
-    return BoundsAccess(bmin,bmax)
-end
+-- local function bboxforexpression(ispace,exp)
+--     local usesbounds = false
+--     local bmin,bmax = ispace:ZeroOffset(),ispace:ZeroOffset()
+--     exp:visit(function(a)
+--         if ImageAccess:isclassof(a) then
+--             assert(Offset:isclassof(a.index,"bbox not defined for graphs"))
+--             if a.image.gradientimages then
+--                 local shiftedbbox = a.image.bbox:shift(a.index)
+--                 bmin,bmax = bmin:Min(shiftedbbox.min),bmax:Max(shiftedbbox.max)
+--             else
+--                 bmin,bmax = bmin:Min(a.index),bmax:Max(a.index)
+--             end
+--         elseif BoundsAccess:isclassof(a) then
+--             usesbounds = true
+--         end
+--     end)
+--     if usesbounds then 
+--         bmin,bmax = ispace:ZeroOffset(),ispace:ZeroOffset()
+--     end
+--     return BoundsAccess(bmin,bmax)
+-- end
 
-local function classifyexpression(exp) -- what index space, or graph is this thing mapped over
-    local classification
-    local seenunknown = {}
-    local unknownaccesses = terralib.newlist()
-    local function addunknown(u)
-        if not seenunknown[u] then
-            unknownaccesses:insert(u)
-            seenunknown[u] = true
-        end
-    end
-    exp:visit(function(a)
-        if ImageAccess:isclassof(a) then -- assume image X is unknown
-            if a.image.location == A.UnknownLocation then
-                addunknown(a)
-            elseif a.image.gradientimages then
-                for i,im in ipairs(a.image.gradientimages) do
-                    assert(Offset:isclassof(a.index),"NYI - precomputed with graphs")
-                    addunknown(im.unknown:shift(a.index))
-                end
-            end
-            local aclass = Offset:isclassof(a.index) and A.CenteredFunction(a.image.type.ispace) or A.GraphFunction(a.index.graph.name)
-            assert(nil == classification or aclass == classification, "residual contains image reads from multiple domains")
-            classification = aclass
-        end
-    end)
-    local template = A.ResidualTemplate(exp,unknownaccesses)
-    if not classification then
-        error("residual must actually use some image")
-    end
-    if classification.kind == "CenteredFunction" then
-        exp:visit(function(a)
-            if BoundsAccess:isclassof(a) and #a.min.data ~= #classification.ispace.dims then
-                error(string.format("%s does not match index space %s",a,classification.ispace.dims))
-            end
-        end)
-        -- by default zero-out any residual computation that uses out-of-bounds things
-        -- users can opt for per-residual custom behavior using the InBounds checks
-        local bbox = bboxforexpression(classification.ispace,exp)
-        template.expression = ad.select(bbox:asvar(),exp,0)
-    end
-    return classification,template
-end
--- TODO Important function, move downwards
-local function toenergyspecs(Rs)    
-    local kinds,kind_to_templates = MapAndGroupBy(Rs,classifyexpression)
-    return kinds:map(function(k) return A.EnergySpec(k,kind_to_templates[k]) end)
-end
+-- local function classifyexpression(exp) -- what index space, or graph is this thing mapped over
+--     local classification
+--     local seenunknown = {}
+--     local unknownaccesses = terralib.newlist()
+--     local function addunknown(u)
+--         if not seenunknown[u] then
+--             unknownaccesses:insert(u)
+--             seenunknown[u] = true
+--         end
+--     end
+--     exp:visit(function(a)
+--         if ImageAccess:isclassof(a) then -- assume image X is unknown
+--             if a.image.location == A.UnknownLocation then
+--                 addunknown(a)
+--             elseif a.image.gradientimages then
+--                 for i,im in ipairs(a.image.gradientimages) do
+--                     assert(Offset:isclassof(a.index),"NYI - precomputed with graphs")
+--                     addunknown(im.unknown:shift(a.index))
+--                 end
+--             end
+--             local aclass = Offset:isclassof(a.index) and A.CenteredFunction(a.image.type.ispace) or A.GraphFunction(a.index.graph.name)
+--             assert(nil == classification or aclass == classification, "residual contains image reads from multiple domains")
+--             classification = aclass
+--         end
+--     end)
+--     local template = A.ResidualTemplate(exp,unknownaccesses)
+--     if not classification then
+--         error("residual must actually use some image")
+--     end
+--     if classification.kind == "CenteredFunction" then
+--         exp:visit(function(a)
+--             if BoundsAccess:isclassof(a) and #a.min.data ~= #classification.ispace.dims then
+--                 error(string.format("%s does not match index space %s",a,classification.ispace.dims))
+--             end
+--         end)
+--         -- by default zero-out any residual computation that uses out-of-bounds things
+--         -- users can opt for per-residual custom behavior using the InBounds checks
+--         local bbox = bboxforexpression(classification.ispace,exp)
+--         template.expression = ad.select(bbox:asvar(),exp,0)
+--     end
+--     return classification,template
+-- end
+
+-- -- TODO Important function, move downwards
+-- local function toenergyspecs(Rs)    
+--     local kinds,kind_to_templates = MapAndGroupBy(Rs,classifyexpression)
+--     return kinds:map(function(k) return A.EnergySpec(k,kind_to_templates[k]) end)
+-- end
 
 --given that the residual at (0,0) uses the variables in 'unknownsupport',
 --what is the set of residuals will use variable X(0,0).
@@ -1056,35 +1153,35 @@ function createprecomputed(self,precomputedimages)
     return precomputes
 end
 
-local function extractresidualterms(...)
-    local exp = terralib.newlist {}
-    for i = 1, select("#",...) do
-        local e = select(i,...)
-        if ad.ExpVector:isclassof(e) then
-            for i,t in ipairs(e:expressions()) do
-                t = assert(ad.toexp(t), "expected an ad expression")
-                exp:insert(t)
-            end
-        else
-            exp:insert((assert(ad.toexp(e), "expected an ad expression")))
-        end
-    end
-    return exp
-end
+-- local function extractresidualterms(...)
+--     local exp = terralib.newlist {}
+--     for i = 1, select("#",...) do
+--         local e = select(i,...)
+--         if ad.ExpVector:isclassof(e) then
+--             for i,t in ipairs(e:expressions()) do
+--                 t = assert(ad.toexp(t), "expected an ad expression")
+--                 exp:insert(t)
+--             end
+--         else
+--             exp:insert((assert(ad.toexp(e), "expected an ad expression")))
+--         end
+--     end
+--     return exp
+-- end
 -- CREATE STUFF END
 
 -- TODO put with other ProblemSpecAD stuff
-function ProblemSpecAD:Cost(...)
-    local terms = extractresidualterms(...) -- seems to hold 'let ... in ... end' statements that represent the residual terms
-    print('\n\n\n')
-    print('START Inside ProblemSpecAD:Cost(), the terms')
-    -- printt(terms)
-    print('END Inside ProblemSpecAD:Cost(), the terms')
-    print('\n\n\n')
+function ProblemSpecAD:Cost(energyspecs)
+    -- local terms = extractresidualterms(...) -- seems to hold 'let ... in ... end' statements that represent the residual terms
+    -- print('\n\n\n')
+    -- print('START Inside ProblemSpecAD:Cost(), the terms')
+    -- -- printt(terms)
+    -- print('END Inside ProblemSpecAD:Cost(), the terms')
+    -- print('\n\n\n')
 
     
     local functionspecs = List()
-    local energyspecs = toenergyspecs(terms) -- wraps the terms inside an 'EnergySpec' object
+    -- local energyspecs = toenergyspecs(terms) -- wraps the terms inside an 'EnergySpec' object
     print('\n\n\n')
     print('START Inside ProblemSpecAD:Cost(), the energyspecs')
     printt(energyspecs)
@@ -1123,7 +1220,7 @@ function ProblemSpecAD:Cost(...)
     -- name = applyJtJ
     -- result = let .. in ... end
     -- arguments = {...}
-    -- printt(functionspecs)
+    printt(functionspecs)
     print('END Inside ProblemSpecAD:Cost(), the functionspecs')
     print('\n\n\n')
     
