@@ -323,6 +323,12 @@ return function(problemSpec)
         local unknownElement = UnknownType:VectorTypeForIndexSpace(UnknownIndexSpace)
         local Index = UnknownIndexSpace:indextype()
 
+        print('\n\n\n')
+        print('START inside delegate.CenterFunctions: The index-type')
+        Index:printpretty()
+        print('END inside delegate.CenterFunctions: The index-type')
+        print('\n\n\n')
+
         local unknownWideReduction = macro(function(idx,val,reductionTarget) return quote -- TODO QUES why does this macro have 'idx' as an argument???
                                                                                         val = util.warpReduce(val)
                                                                                         if (util.laneid() == 0) then                
@@ -700,6 +706,11 @@ return function(problemSpec)
 
         -- by SO start
         local Index = graphIndexSpace:indextype()
+        print('\n\n\n')
+        print('START inside delegate.GraphFunctions: The index-type')
+        Index:printpretty()
+        print('END inside delegate.GraphFunctions: The index-type')
+        print('\n\n\n')
         -- by SO end
 
         -- FOR COMPARISON WITH GRAPH VERSION

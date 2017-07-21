@@ -22,12 +22,14 @@ end
 -- opt.dimensions[1] = 2000
 
 
+local conf = require('config')
 
 
 local S = require("std")
 local ffi = require("ffi")
 local util = require("util")
 local optlib = require("lib")
+local backend = conf.backend
 ad = require("ad")
 require("precision")
 local A = ad.classes
@@ -436,7 +438,7 @@ function IndexSpace:indextype()
     self._terratype = Index
 
     local params,params2 = List(),List()
-    local fieldnames = List()
+    local fieldnames = List() -- ['d0', 'd1', 'd2', ... ]
     for i = 1,#dims do
         local n = "d"..tostring(i-1)
         params:insert(symbol(int,n))
@@ -445,7 +447,7 @@ function IndexSpace:indextype()
         Index.entries:insert { n, int }
     end
 
-    -- explanation: let's say X is of type index with X.d0 = 5 and X.d1 = 3. Then
+    -- explanation: let's say X is of type Index with X.d0 = 5 and X.d1 = 3. Then
     -- X(1,2) returns another (anonymous) value of type index with d0=5+1=6 and
     -- d1=3+2=5
     terra Index.metamethods.__apply(self : &Index, [params])
@@ -462,6 +464,7 @@ function IndexSpace:indextype()
 
     -- TODO only used in following function, make local there
     -- this seems to convert an (x,y) index to a linear index
+    -- --> can't make local because it's a lua func inside a terra-func
     local function genoffset(self)
         local s = 1
         local offset = `self.d0
@@ -501,29 +504,31 @@ function IndexSpace:indextype()
 
     terra Index:InBoundsExpanded([params],[params2]) return [ genbounds(self,params,params2) ] end
 
-    if #dims <= 3 then
-        local dimnames = "xyz"
-        terra Index:initFromCUDAParams() : bool -- add 'x', 'y' and 'z' field to the index
-            escape
-                local lhs,rhs = terralib.newlist(),terralib.newlist()
-                local valid = `true
-                for i = 1,#dims do
-                    local name = dimnames:sub(i,i)
-                    local l = `self.[fieldnames[i]]
-                    local r = `blockDim.[name] * blockIdx.[name] + threadIdx.[name]
-                    lhs:insert(l)
-                    rhs:insert(r)
-                    valid = `valid and l < [dims[i].size]
-                end
-                emit quote
-                    [lhs] = [rhs]
-                    return valid
-                end
-            end  
-        end
-        print(Index) -- debug
-        for k,v in pairs(Index.methods)  do print(k,v) end -- debug
-    end
+    -- if #dims <= 3 then
+    --     local dimnames = "xyz"
+    --     terra Index:initFromCUDAParams() : bool -- add 'x', 'y' and 'z' field to the index
+    --         escape
+    --             local lhs,rhs = terralib.newlist(),terralib.newlist()
+    --             local valid = `true
+    --             for i = 1,#dims do
+    --                 local name = dimnames:sub(i,i)
+    --                 local l = `self.[fieldnames[i]]
+    --                 local r = `blockDim.[name] * blockIdx.[name] + threadIdx.[name]
+    --                 lhs:insert(l)
+    --                 rhs:insert(r)
+    --                 valid = `valid and l < [dims[i].size]
+    --             end
+    --             emit quote
+    --                 [lhs] = [rhs]
+    --                 return valid
+    --             end
+    --         end  
+    --     end
+    --     print(Index) -- debug
+    --     for k,v in pairs(Index.methods)  do print(k,v) end -- debug
+    -- end
+    local dimnames = "xyz"
+    Index.methods.initFromCUDAParams = backend.makeIndexInitializer(Index, dims, dimnames, fieldnames)
     return Index
 end
 ----------------------------------- IndexSpace END ---------------------------------------
