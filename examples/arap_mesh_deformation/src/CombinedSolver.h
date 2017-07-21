@@ -27,8 +27,10 @@ class CombinedSolver : public CombinedSolverBase
             m_combinedSolverParameters = params;
 
 			unsigned int N = (unsigned int)mesh->n_vertices();
+			unsigned int numedges = (unsigned int)mesh->n_edges(); // by SO
 
-            m_dims = { N };
+            /* m_dims = { N }; */ //original
+            m_dims = { N, numedges }; //by SO
             m_vertexPosFloat3           = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
             m_anglesFloat3              = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
             m_vertexPosFloat3Urshape    = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);

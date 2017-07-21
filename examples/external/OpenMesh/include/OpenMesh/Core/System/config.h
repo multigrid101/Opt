@@ -64,8 +64,9 @@
 
 // ----------------------------------------------------------------------------
 
-#define OM_VERSION 0x50000
-//#define OM_VERSION 0x40200
+
+#define OM_VERSION 0x60300
+//#define OM_VERSION 0x50100
 
 // only defined, if it is a beta version
 //#define OM_VERSION_BETA 4
@@ -100,6 +101,11 @@
 #endif
 
 typedef unsigned int uint;
+
+#if ((defined(_MSC_VER) && (_MSC_VER >= 1900)) || __cplusplus > 199711L || defined(__GXX_EXPERIMENTAL_CXX0X__))
+#define OM_HAS_HASH
+#endif
+
 //=============================================================================
 #endif // OPENMESH_CONFIG_H defined
 //=============================================================================

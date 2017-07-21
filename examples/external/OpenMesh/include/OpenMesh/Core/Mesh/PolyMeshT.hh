@@ -192,10 +192,21 @@ public:
       Use them to assign two meshes of \b equal type.
       If the mesh types vary, use PolyMeshT::assign() instead. */
 
-   // --- creation ---
+  // --- creation ---
+
+  /**
+   * \brief Adds a new default-initialized vertex.
+   *
+   * \sa new_vertex(const Point&), new_vertex_dirty()
+   */
   inline VertexHandle new_vertex()
   { return Kernel::new_vertex(); }
 
+  /**
+   * \brief Adds a new vertex initialized to a custom position.
+   *
+   * \sa new_vertex(), new_vertex_dirty()
+   */
   inline VertexHandle new_vertex(const Point& _p)
   {
     VertexHandle vh(Kernel::new_vertex());
@@ -203,8 +214,31 @@ public:
     return vh;
   }
 
+  /**
+   * Same as new_vertex(const Point&) but never shrinks, only enlarges the
+   * vertex property vectors.
+   *
+   * If you are rebuilding a mesh that you erased with ArrayKernel::clean() or
+   * ArrayKernel::clean_keep_reservation() using this method instead of
+   * new_vertex(const Point &) saves reallocation and reinitialization of
+   * property memory.
+   *
+   * \sa new_vertex(const Point &)
+   */
+  inline VertexHandle new_vertex_dirty(const Point& _p)
+  {
+    VertexHandle vh(Kernel::new_vertex_dirty());
+    this->set_point(vh, _p);
+    return vh;
+  }
+
+  /// Alias for new_vertex(const Point&).
   inline VertexHandle add_vertex(const Point& _p)
   { return new_vertex(_p); }
+
+  /// Alias for new_vertex_dirty().
+  inline VertexHandle add_vertex_dirty(const Point& _p)
+  { return new_vertex_dirty(_p); }
 
   // --- normal vectors ---
 
@@ -248,7 +282,7 @@ public:
 
   /// Update normal for halfedge _heh
   void update_normal(HalfedgeHandle _heh, const double _feature_angle = 0.8)
-  { this->set_normal(_heh, calc_halfedge_normal(_heh)); }
+  { this->set_normal(_heh, calc_halfedge_normal(_heh,_feature_angle)); }
 
   /** \brief Update normal vectors for all halfedges.
    *
@@ -520,6 +554,13 @@ public:
   inline void split(EdgeHandle _eh, VertexHandle _vh)
   { Kernel::split_edge(_eh, _vh); }
   
+private:
+  struct PointIs3DTag {};
+  struct PointIsNot3DTag {};
+  Normal calc_face_normal_impl(FaceHandle, PointIs3DTag) const;
+  Normal calc_face_normal_impl(FaceHandle, PointIsNot3DTag) const;
+  Normal calc_face_normal_impl(const Point&, const Point&, const Point&, PointIs3DTag) const;
+  Normal calc_face_normal_impl(const Point&, const Point&, const Point&, PointIsNot3DTag) const;
 };
 
 /**
@@ -566,7 +607,6 @@ template<typename LHS, typename KERNEL>
 const LHS mesh_cast(const PolyMeshT<KERNEL> *rhs) {
     return MeshCast<LHS, const PolyMeshT<KERNEL>*>::cast(rhs);
 }
-
 
 //=============================================================================
 } // namespace OpenMesh
