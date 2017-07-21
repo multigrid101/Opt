@@ -1,7 +1,7 @@
 local S = require("std")
 local util = require("util")
 local conf = require('config')
-local backend = conf.backend
+local backend = require(conf.backend)
 require("precision")
 
 local ffi = require("ffi")

@@ -3,6 +3,7 @@ local S = require("std")
 require("precision")
 local util = {}
 local c = require('config')
+local backend = require(c.backend)
 
 util.C = terralib.includecstring [[
 #include <stdio.h>
@@ -653,175 +654,92 @@ end)
 -- TODO where is this used? grep can't find anything
 local positionForValidLane = util.positionForValidLane
 
--- TODO choose better name and put with other general purpose stuff
--- TODO this seems to be re-defined in solver AND o.t
-local cd = macro(function(apicall) 
-    local apicallstr = tostring(apicall)
-    local filename = debug.getinfo(1,'S').source
-    return quote
-        var str = [apicallstr]
-        var r = apicall
-        if r ~= 0 then  
-            C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
-            C.printf("In call: %s", str)
-            C.printf("In file: %s\n", filename)
-            C.exit(r)
-        end
-    in
-        r
-    end end)
+-- -- TODO choose better name and put with other general purpose stuff
+-- -- TODO this seems to be re-defined in solver AND o.t
+-- local cd = macro(function(apicall) 
+--     local apicallstr = tostring(apicall)
+--     local filename = debug.getinfo(1,'S').source
+--     return quote
+--         var str = [apicallstr]
+--         var r = apicall
+--         if r ~= 0 then  
+--             C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
+--             C.printf("In call: %s", str)
+--             C.printf("In file: %s\n", filename)
+--             C.exit(r)
+--         end
+--     in
+--         r
+--     end end)
 
 
--- TODO only used in next function, so make local there
-local checkedLaunch = macro(function(kernelName, apicall)
-    local apicallstr = tostring(apicall)
-    local filename = debug.getinfo(1,'S').source
-    return quote
-        var name = [kernelName]
-        var r = apicall
-        if r ~= 0 then  
-            C.printf("Kernel %s, Cuda reported error %d: %s\n", name, r, C.cudaGetErrorString(r))
-            C.exit(r)
-        end
-    in
-        r
-    end end)
+-- -- TODO only used in next function, so make local there
+-- local checkedLaunch = macro(function(kernelName, apicall)
+--     local apicallstr = tostring(apicall)
+--     local filename = debug.getinfo(1,'S').source
+--     return quote
+--         var name = [kernelName]
+--         var r = apicall
+--         if r ~= 0 then  
+--             C.printf("Kernel %s, Cuda reported error %d: %s\n", name, r, C.cudaGetErrorString(r))
+--             C.exit(r)
+--         end
+--     in
+--         r
+--     end end)
 
--- TODO only used with compiler functions below, group appropriately or find better way to inject this "global" variable
-local GRID_SIZES = { {256,1,1}, {16,16,1}, {8,8,4} }
+-- -- TODO only used with compiler functions below, group appropriately or find better way to inject this "global" variable
+-- -- local GRID_SIZES = c.GRID_SIZES
 
 
--- TODO put in extra file for compiler stuff
-local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
-    kernelName = kernelName.."_"..tostring(ft)
-    local kernelparams = compiledKernel:gettype().parameters
-    local params = terralib.newlist {}
-    for i = 3,#kernelparams do --skip GPU launcher and PlanData
-        params:insert(symbol(kernelparams[i]))
-    end
-    local function createLaunchParameters(pd)
-        if ft.kind == "CenteredFunction" then
-            local ispace = ft.ispace
-            local exps = terralib.newlist()
-            for i = 1,3 do
-               local dim = #ispace.dims >= i and ispace.dims[i].size or 1
-                local bs = GRID_SIZES[#ispace.dims][i]
-                exps:insert(dim)
-                exps:insert(bs)
-            end
-            return exps
-        else
-            return {`pd.parameters.[ft.graphname].N,256,1,1,1,1}
-        end
-    end
-    local terra GPULauncher(pd : &PlanData, [params])
-        var xdim,xblock,ydim,yblock,zdim,zblock = [ createLaunchParameters(pd) ]
+-- -- TODO put in extra file for compiler stuff
+-- local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
+--     kernelName = kernelName.."_"..tostring(ft)
+--     local kernelparams = compiledKernel:gettype().parameters
+--     local params = terralib.newlist {}
+--     for i = 3,#kernelparams do --skip GPU launcher and PlanData
+--         params:insert(symbol(kernelparams[i]))
+--     end
+--     local function createLaunchParameters(pd)
+--         if ft.kind == "CenteredFunction" then
+--             local ispace = ft.ispace
+--             local exps = terralib.newlist()
+--             for i = 1,3 do
+--                local dim = #ispace.dims >= i and ispace.dims[i].size or 1
+--                 local bs = GRID_SIZES[#ispace.dims][i]
+--                 exps:insert(dim)
+--                 exps:insert(bs)
+--             end
+--             return exps
+--         else
+--             return {`pd.parameters.[ft.graphname].N,256,1,1,1,1}
+--         end
+--     end
+--     local terra GPULauncher(pd : &PlanData, [params])
+--         var xdim,xblock,ydim,yblock,zdim,zblock = [ createLaunchParameters(pd) ]
             
-        var launch = terralib.CUDAParams { (xdim - 1) / xblock + 1, (ydim - 1) / yblock + 1, (zdim - 1) / zblock + 1, 
-                                            xblock, yblock, zblock, 
-                                            0, nil }
-        var stream : C.cudaStream_t = nil
-        var endEvent : C.cudaEvent_t 
-        if ([_opt_collect_kernel_timing]) then
-            pd.timer:startEvent(kernelName,nil,&endEvent)
-        end
+--         var launch = terralib.CUDAParams { (xdim - 1) / xblock + 1, (ydim - 1) / yblock + 1, (zdim - 1) / zblock + 1, 
+--                                             xblock, yblock, zblock, 
+--                                             0, nil }
+--         var stream : C.cudaStream_t = nil
+--         var endEvent : C.cudaEvent_t 
+--         if ([_opt_collect_kernel_timing]) then
+--             pd.timer:startEvent(kernelName,nil,&endEvent)
+--         end
 
-        checkedLaunch(kernelName, compiledKernel(&launch, @pd, params))
+--         checkedLaunch(kernelName, compiledKernel(&launch, @pd, params))
         
-        if ([_opt_collect_kernel_timing]) then
-            pd.timer:endEvent(nil,endEvent)
-        end
+--         if ([_opt_collect_kernel_timing]) then
+--             pd.timer:endEvent(nil,endEvent)
+--         end
 
-        cd(C.cudaGetLastError())
-    end
-    return GPULauncher
-end
+--         cd(C.cudaGetLastError())
+--     end
+--     return GPULauncher
+-- end
 
 -- TODO put in extra file for compiler pipeline stuff
-function util.makeGPUFunctions(problemSpec, PlanData, delegate, names) -- same  problemSpec as in solver.t
-
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions:')
-    for k,v in pairs(problemSpec.functions) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[1]:')
-    for k,v in pairs(problemSpec.functions[1]) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[1].typ:')
-    for k,v in pairs(problemSpec.functions[1].typ) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[2]:')
-    for k,v in pairs(problemSpec.functions[2]) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[2].typ:')
-    for k,v in pairs(problemSpec.functions[2].typ) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[2].typ.__index:')
-    for k,v in pairs(problemSpec.functions[2].typ.__index) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec:')
-    for k,v in pairs(problemSpec.functions[1].typ.ispace.dims) do print(k,v) end
-    for k,v in pairs(problemSpec.functions[1].typ.ispace.dims[1]) do print(k,v) end
-
-    -- step 1: compile the actual cuda kernels
-    local kernelFunctions = {}
-    local key = tostring(os.time())
-    local function getkname(name,ft)
-        return string.format("%s_%s_%s",name,tostring(ft),key)
-    end
-    
-    for _,problemfunction in ipairs(problemSpec.functions) do -- problemfunction is of type ProblemFunction, see grammar in o.t
-        if problemfunction.typ.kind == "CenteredFunction" then
-           local ispace = problemfunction.typ.ispace
-           local dimcount = #ispace.dims
-	       assert(dimcount <= 3, "cannot launch over images with more than 3 dims")
-           local ks = delegate.CenterFunctions(ispace,problemfunction.functionmap) -- ks are the kernelfunctions as shown in gaussNewtonGPU.t
-           for name,func in pairs(ks) do
-             -- print(name,func) -- debug
-                kernelFunctions[getkname(name,problemfunction.typ)] = { kernel = func , annotations = { {"maxntidx", GRID_SIZES[dimcount][1]}, {"maxntidy", GRID_SIZES[dimcount][2]}, {"maxntidz", GRID_SIZES[dimcount][3]}, {"minctasm",1} } }
-           end
-        else
-            local graphname = problemfunction.typ.graphname
-            local ispace = problemfunction.typ.ispace -- by SO
-            -- local ks = delegate.GraphFunctions(graphname,problemfunction.functionmap) -- original
-            local ks = delegate.GraphFunctions(graphname, problemfunction.functionmap,nil, ispace) -- by SO
-            for name,func in pairs(ks) do            
-                kernelFunctions[getkname(name,problemfunction.typ)] = { kernel = func , annotations = { {"maxntidx", 256}, {"minctasm",1} } }
-            end
-        end
-    end
-    
-    -- print('\nIn makeGPUFunctions:') -- debug
-    -- for k,v in pairs(kernelFunctions) do print(k,v) end
-    local kernels = terralib.cudacompile(kernelFunctions, false)
-    -- print('\ncompiled cuda kernels')
-    -- for k,v in pairs(kernels) do print(k,v) end -- end
-    
-    -- step 2: generate wrapper functions around each named thing
-    local grouplaunchers = {}
-    for _,name in ipairs(names) do
-        local args
-        local launches = terralib.newlist()
-        for _,problemfunction in ipairs(problemSpec.functions) do
-            local kname = getkname(name,problemfunction.typ)
-            local kernel = kernels[kname]
-            if kernel then -- some domains do not have an associated kernel, (see _Finish kernels in GN which are only defined for 
-                local launcher = makeGPULauncher(PlanData, name, problemfunction.typ, kernel)
-                -- print(launcher) -- debug
-                if not args then
-                    args = launcher:gettype().parameters:map(symbol)
-                end
-                launches:insert(`launcher(args))
-            else
-                --print("not found: "..name.." for "..tostring(problemfunction.typ))
-            end
-        end
-        local fn
-        if not args then
-            fn = macro(function() return `{} end) -- dummy function for blank groups occur for things like precompute and _Graph when they are not present
-        else
-            fn = terra([args]) launches end
-            fn:setname(name)
-            fn:gettype()
-        end
-        grouplaunchers[name] = fn 
-    end
-    -- for k,v in pairs(grouplaunchers) do print(k,v) end -- debug
-    return grouplaunchers
-end
+util.makeGPUFunctions = backend.makeWrappedFunctions
 
 -- --------------------------------- CPU --------------------------------------
 

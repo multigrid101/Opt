@@ -29,7 +29,7 @@ local S = require("std")
 local ffi = require("ffi")
 local util = require("util")
 local optlib = require("lib")
-local backend = conf.backend
+local backend = require(conf.backend)
 ad = require("ad")
 require("precision")
 local A = ad.classes
