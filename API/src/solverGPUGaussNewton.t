@@ -113,7 +113,8 @@ return function(problemSpec)
         if ES.kind.kind == "CenteredFunction" then
             return ES.kind.ispace:cardinality()
         else
-            return `parametersSym.[ES.kind.graphname].N
+            -- return `parametersSym.[ES.kind.graphname].N -- original
+            return ES.kind.ispace:cardinality() -- by SO
         end
     end
 
@@ -261,7 +262,10 @@ return function(problemSpec)
         local base_rowidx = energyspec_to_rowidx_offset_exp[ES]
         local base_residual = energyspec_to_residual_offset_exp[ES]
         local idx_offset
-        if idx.type == int then
+        print('ASDFASDFASDFASDFASDFASDF')
+        print(idx.type)
+        print(idx)
+        if idx.type == int or idx.type == int32 then
             idx_offset = idx
         else    
             idx_offset = `idx:tooffset()
@@ -408,7 +412,7 @@ return function(problemSpec)
             end
         end
         
-        terra kernels.PCGInit1_Finish(pd : PlanData)	--only called for graphs
+        terra kernels.PCGInit1_Finish(pd : PlanData)	--only called for graphs (i.e. if graphs are used)
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
             var idx : Index
             if idx:initFromCUDAParams() then
@@ -690,22 +694,84 @@ return function(problemSpec)
         return kernels
     end -- return and 'end' from function 'delegate.CenterFunctions()'
 	
-    function delegate.GraphFunctions(graphname,fmap,ES)
+    function delegate.GraphFunctions(graphname,fmap,ES, graphIndexSpace)
         --print("ES-graph",fmap.derivedfrom)
         local kernels = {}
 
+        -- by SO start
+        local Index = graphIndexSpace:indextype()
+        -- by SO end
+
+        -- FOR COMPARISON WITH GRAPH VERSION
+        -- terra kernels.PCGInit1(pd : PlanData)
+        --     var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
+        
+        --     var idx : Index
+        --     if idx:initFromCUDAParams() then
+        
+        --         -- residuum = J^T x -F - A x delta_0  => J^T x -F, since A x x_0 == 0                            
+        --         var residuum : unknownElement = 0.0f
+        --         var pre : unknownElement = 0.0f	
+            
+        --         if not fmap.exclude(idx,pd.parameters) then 
+                
+        --             pd.delta(idx) = opt_float(0.0f)   
+                
+        --             residuum, pre = fmap.evalJTF(idx, pd.parameters)
+        --             residuum = -residuum
+        --             pd.r(idx) = residuum
+                
+        --             -- TODO problemSpec is more or less global scope, try to find a more elegant solution without relying on global state
+        --             if not problemSpec.usepreconditioner then
+        --                 pre = opt_float(1.0f)
+        --             end
+        --         end        
+            
+        --         if (not fmap.exclude(idx,pd.parameters)) and (not isGraph) then		
+        --             pre = guardedInvert(pre)
+        --             var p = pre*residuum	-- apply pre-conditioner M^-1			   
+        --             pd.p(idx) = p
+                
+        --             d = residuum:dot(p) 
+        --         end
+            
+        --         pd.preconditioner(idx) = pre
+        --     end 
+        --     if not isGraph then -- TODO why does this exist if there is an extra version of this function for Graphs --> because graph kernels are run in ADDITION to to normal kernels (see step())... but then how can they use the same fmap.evalJTF
+        --         unknownWideReduction(idx,d,pd.scanAlphaNumerator)
+        --     end
+        -- end
         terra kernels.PCGInit1_Graph(pd : PlanData)
-            var tIdx = 0
-            if util.getValidGraphElement(pd,[graphname],&tIdx) then
-                fmap.evalJTF(tIdx, pd.parameters, pd.r, pd.preconditioner)
+            -- var tIdx = 0
+            -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
+            var tIdx : Index
+            if tIdx:initFromCUDAParams() then
+                fmap.evalJTF(tIdx.d0, pd.parameters, pd.r, pd.preconditioner)
             end
         end    
 
+        -- FOR COMPARISON WITH GRAPH VERSION
+        -- terra kernels.PCGStep1(pd : PlanData)
+        --     var d : opt_float = opt_float(0.0f)
+        --     var idx : Index
+        --     if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+        --         var tmp : unknownElement = 0.0f
+        --          -- A x p_k  => J^T x J x p_k 
+        --         tmp = fmap.applyJTJ(idx, pd.parameters, pd.p, pd.CtC)
+        --         pd.Ap_X(idx) = tmp					 -- store for next kernel call
+        --         d = pd.p(idx):dot(tmp)			 -- x-th term of denominator of alpha
+        --     end
+        --     if not [multistep_alphaDenominator_compute] then
+        --         unknownWideReduction(idx,d,pd.scanAlphaDenominator)
+        --     end
+        -- end
         terra kernels.PCGStep1_Graph(pd : PlanData)
             var d = opt_float(0.0f)
-            var tIdx = 0 
-            if util.getValidGraphElement(pd,[graphname],&tIdx) then
-               d = d + fmap.applyJTJ(tIdx, pd.parameters, pd.p, pd.Ap_X)
+            -- var tIdx = 0 
+            -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
+            var tIdx : Index
+            if tIdx:initFromCUDAParams() then
+               d = d + fmap.applyJTJ(tIdx.d0, pd.parameters, pd.p, pd.Ap_X)
             end 
             if not [multistep_alphaDenominator_compute] then
                 d = util.warpReduce(d)
@@ -716,17 +782,35 @@ return function(problemSpec)
         end
 
         terra kernels.computeAdelta_Graph(pd : PlanData)
-            var tIdx = 0 
-            if util.getValidGraphElement(pd,[graphname],&tIdx) then
-                fmap.applyJTJ(tIdx, pd.parameters, pd.delta, pd.Adelta)
+            -- var tIdx = 0 
+            -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
+            var tIdx : Index
+            if tIdx:initFromCUDAParams() then
+                fmap.applyJTJ(tIdx.d0, pd.parameters, pd.delta, pd.Adelta)
             end
         end
 
+        -- FOR COMPARISON WITH GRAPH VERSION
+        -- terra kernels.computeCost(pd : PlanData)
+        --     var cost : opt_float = opt_float(0.0f)
+        --     var idx : Index
+        --     if idx:initFromCUDAParams() and not fmap.exclude(idx,pd.parameters) then
+        --         var params = pd.parameters
+        --         cost = fmap.cost(idx, params)
+        --     end
+
+        --     cost = util.warpReduce(cost)
+        --     if (util.laneid() == 0) then
+        --         util.atomicAdd(pd.scratch, cost)
+        --     end
+        -- end
         terra kernels.computeCost_Graph(pd : PlanData)
             var cost : opt_float = opt_float(0.0f)
-            var tIdx = 0
-            if util.getValidGraphElement(pd,[graphname],&tIdx) then
-                cost = fmap.cost(tIdx, pd.parameters)
+            -- var tIdx = 0
+            -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
+            var tIdx : Index
+            if tIdx:initFromCUDAParams() then
+                cost = fmap.cost(tIdx.d0, pd.parameters)
             end 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
@@ -739,10 +823,14 @@ return function(problemSpec)
             end
         else
             terra kernels.saveJToCRS_Graph(pd : PlanData)
-                var tIdx = 0
+                -- var tIdx = 0
                 var [parametersSym] = &pd.parameters
-                if util.getValidGraphElement(pd,[graphname],&tIdx) then
-                    [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,tIdx,pd)]
+                -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
+              var tIdx : Index
+              if tIdx:initFromCUDAParams() then
+                    -- [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,tIdx,pd)]-- original
+                    var asdf = tIdx.d0
+                    [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,asdf,pd)]
                 end
             end
         end
@@ -977,7 +1065,10 @@ return function(problemSpec)
        var pd = [&PlanData](data_)
        pd.timer:init()
        pd.timer:startEvent("overall",nil,&pd.endSolver)
+
+       -- THIS LINE ASSIGNS e.g. THE number of edges of a graph to graph.N (which is later used for bounds checking)
        [util.initParameters(`pd.parameters,problemSpec,params_,true)]
+
        var [parametersSym] = &pd.parameters
        escape
            if initialization_parameters.use_cusparse then
@@ -1029,6 +1120,7 @@ return function(problemSpec)
        gpu.precompute(pd)
        pd.prevCost = computeCost(pd)
     end
+    print(init)
 
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra cleanup(pd : &PlanData)

@@ -179,22 +179,23 @@ IndexSpace = (Dim* dims) unique
 Index = Offset(number* data) unique
       | GraphElement(any graph, string element) unique
 ImageType = (IndexSpace ispace, TerraType scalartype, number channelcount) unique
+GraphType = (IndexSpace ispace) unique
 ImageLocation = ArgumentLocation(number idx) | UnknownLocation | StateLocation
 Image = (string name, ImageType type, boolean scalar, ImageLocation location)
 ImageVector = (Image* images)
 ProblemParam = ImageParam(ImageType imagetype, boolean isunknown)
              | ScalarParam(TerraType type)
-             | GraphParam(TerraType type)
+             | GraphParam(TerraType type, IndexSpace ispace)
              attributes (string name, any idx)
 
 VarDef =  ImageAccess(Image image,  Shape _shape, Index index, number channel) unique
        | BoundsAccess(Offset min, Offset max) unique
        | IndexValue(number dim, number shift_) unique
        | ParamValue(string name,TerraType type) unique
-Graph = (string name)
+Graph = (string name, GraphType type)
 
 FunctionKind = CenteredFunction(IndexSpace ispace) unique
-             | GraphFunction(string graphname) unique
+             | GraphFunction(string graphname, IndexSpace ispace) unique
 
 ResidualTemplate = (Exp expression, ImageAccess* unknowns)
 EnergySpec = (FunctionKind kind, ResidualTemplate* residuals)
@@ -298,16 +299,22 @@ function ProblemSpec:newparameter(p) -- adds new parameter
 end
 
 -- TODO name not equal to functionality
-function ProblemSpec:ParameterType() -- returns types of problemparameters
+function ProblemSpec:ParameterType() -- returns self.ProblemParameters, which is a terra struct that holds the terratypes of all prblemparameters, such as 'UrShape', 'Mask', etc.
+        print('0')
     self:Stage "functions"
     if not self.ProblemParameters then
         self.ProblemParameters = terralib.types.newstruct("ProblemParameters")
+        print('1')
         self.ProblemParameters.entries:insert { "X" , self:UnknownType():terratype() }
+        print('2')
         for i,p in ipairs(self.parameters) do
             local n,t = p.name,p:terratype()
+        print('3')
             if not p.isunknown then self.ProblemParameters.entries:insert { n, t } end
+        print('4')
         end
     end
+        print('5')
     return self.ProblemParameters
 end
 
@@ -911,13 +918,13 @@ function ProblemSpec:Unknown(name,typ,ispace,idx) return self:Image(name,typ,isp
 
 
 -- TODO move to ProblemSpec stuff
-function ProblemSpec:Graph(name, idx, ...)
+function ProblemSpec:Graph(name, ispace, ...)
     self:Stage "inputs"
     local GraphType = terralib.types.newstruct(name)
     GraphType.entries:insert ( {"N",int32} )
 
     local mm = GraphType.metamethods
-    mm.idx = idx -- the index into the graph size table
+    mm.idx = toispace(ispace) -- the index space (numedges of the graph)
     mm.elements = terralib.newlist()
     for i = 1, select("#",...),3 do
         local name,dims,didx = select(i,...) --TODO: we don't bother to track the dimensions of these things now
@@ -926,7 +933,8 @@ function ProblemSpec:Graph(name, idx, ...)
         GraphType.entries:insert {name, &Index}
         mm.elements:insert( { name = name, type = Index, idx = assert(tonumber(didx))} )
     end
-    self:newparameter(GraphParam(GraphType,name,idx))
+    -- 999 below is just a dummy argument
+    self:newparameter(GraphParam(GraphType, toispace(ispace),name,6))
 end
 
 -- TODO next two lines only used in 'problemPlan()', two functions below, so make local there
@@ -974,14 +982,14 @@ function opt.problemSpecFromFile(filename)
     print('\n\n\n')
     print('\n\n\n')
     print('START the libinstance inside opt.problemSpecFromFile')
-    local libinstance = optlib(P)
+    local libinstance = optlib(P) -- no side-effects in here, P remains the same
     printt(libinstance)
     print('END the libinstance inside opt.problemSpecFromFile')
     print('\n\n\n')
     setfenv(file,libinstance) -- makes e.g. Energy() etc. known to the input file but not e.g. Unknown() (where does that come from???). Answer: libinstance has an __index metamethod that looks up e.g. Dim() in opt, ad modules AND in 'P' from above, which is a ProblemSpecAD instance --> language definition spread over source code, wtf?
     print('\n\n\n')
     print('START the result inside opt.problemSpecFromFile')
-    local result = file()
+    local result = file() -- SIDE EFFECTS IN HERE (e.g. Unknown() registers a ProblemParam in self.P.parameters
     print('END the result inside opt.problemSpecFromFile')
     print('\n\n\n')
     if ProblemSpec:isclassof(result) then -- NOTE: this branch is not used for image_warping.t, code seems to skip it
@@ -1002,11 +1010,19 @@ local function problemPlan(id, dimensions, pplan)
         local b = terralib.currenttimeinseconds()
         local tbl = opt.problemSpecFromFile(problemmetadata.filename) -- tbl seems to be ProblemSpec in solver***.t, seems to be more or less whatever ProblemSpecAD:Cost() returns
 
-        -- print('\n')
-        -- print('START inside problemPlan(): result of opt.problemSpecFromFile()')
+        print('\n\n\n')
+        print('START inside problemPlan(): result of opt.problemSpecFromFile()')
         -- printt(tbl)
         -- print('details:')
-        -- printt(tbl.parameters)
+        print('\n')
+        print('tbl.parameters')
+        printt(tbl.parameters)
+        print('\n')
+        print('tbl.parameters[7].type')
+        printt(tbl.parameters[7].type)
+        print('\n')
+        print('tbl.parameters[7].type.entries')
+        printt(tbl.parameters[7].type.entries)
         -- print('\n')
         -- printt(tbl.energyspecs)
         -- print('\n')
@@ -1125,8 +1141,8 @@ local function problemPlan(id, dimensions, pplan)
         -- print('\n')
         -- print('the names')
         -- printt(tbl.names)
-        -- print('END inside problemPlan(): result of opt.problemSpecFromFile()')
-        -- print('\n\n\n\n')
+        print('END inside problemPlan(): result of opt.problemSpecFromFile()')
+        print('\n\n\n\n')
 
         assert(ProblemSpec:isclassof(tbl))
         local result = compilePlan(tbl,problemmetadata.kind)
@@ -1218,7 +1234,7 @@ function ProblemSpecAD:Image(name,typ,dims,idx,isunknown)
     self.P:Image(name,typ,ispace,idx,isunknown)
     local r = Image(name,self.P:ImageType(typ,ispace),not util.isvectortype(typ),isunknown and A.UnknownLocation or A.StateLocation)
     self.nametoimage[name] = r
-    print("START Inside ProblemSpecAD:Image(...)")
+    print("END Inside ProblemSpecAD:Image(...)")
     return r
 end
 function ProblemSpecAD:Unknown(name,typ,dims,idx) 
@@ -1311,9 +1327,11 @@ end
 -- TODO put with Graph stuff
 function Graph:__tostring() return self.name end
 
-function ProblemSpecAD:Graph(name,idx,...)
-    self.P:Graph(name,idx,...)
-    local g = Graph(name)
+-- function ProblemSpecAD:Graph(name,idx,...)-- original
+function ProblemSpecAD:Graph(name,ispace,...) -- by SO
+    -- self.P:Graph(name,idx,...)--original
+    self.P:Graph(name,ispace,...) -- by SO
+    local g = Graph(name, A.GraphType(toispace(ispace)))
     for i = 1, select("#",...),3 do
         local name,dims,didx = select(i,...)
         local ge = GraphElement(g,name) 
@@ -1519,7 +1537,7 @@ function Condition:Union(rhs)
 end
 ------------------------------------------- Condition end
 
--- really long (~ 700 l.o.c.) function, that turns a FunctionSpec into a function that can be used later (e.g. evalJTF)
+-- really long (~ 700 l.o.c.) function, that turns a FunctionSpec into a terra-function that can be used later (e.g. evalJTF)
 -- TODO put this in extra file
 local function createfunction(problemspec,name,Index,arguments,results,scatters) 
     results = removeboundaries(results)
@@ -2189,6 +2207,7 @@ local noscatters = terralib.newlist()
 
 -- TODO move to ProblemSpecAD stuff
 -- TODO somehow, this does not work from REPL, so make minimum example and create issue.
+-- TODO this method does not re
 function ProblemSpecAD:CompileFunctionSpec(functionspec)
     local Index = functionspec.kind.kind == "GraphFunction" and int or functionspec.kind.ispace:indextype()
     return createfunction(self,functionspec.name,Index,functionspec.arguments,functionspec.results,functionspec.scatters)
@@ -2240,7 +2259,7 @@ local function classifyexpression(exp) -- what index space, or graph is this thi
                     addunknown(im.unknown:shift(a.index))
                 end
             end
-            local aclass = Offset:isclassof(a.index) and A.CenteredFunction(a.image.type.ispace) or A.GraphFunction(a.index.graph.name)
+            local aclass = Offset:isclassof(a.index) and A.CenteredFunction(a.image.type.ispace) or A.GraphFunction(a.index.graph.name, a.index.graph.type.ispace)
             assert(nil == classification or aclass == classification, "residual contains image reads from multiple domains")
             classification = aclass
         end
@@ -2321,7 +2340,7 @@ local function createjtjcentered(PS,ES)
     --local Pre = PS:UnknownArgument(3)
     local P_hat_c = {}
     local conditions = terralib.newlist()
-    for rn,residual in ipairs(ES.residuals) do
+    for rn,residual in ipairs(ES.residuals) do -- loop over TEMPLATES
         local F,unknownsupport = residual.expression,residual.unknowns
         lprintf(0,"\n\n\n\n\n##################################################")
         lprintf(0,"r%d = %s",rn,F)
@@ -2329,7 +2348,7 @@ local function createjtjcentered(PS,ES)
             local unknown = PS:ImageWithName(unknownname) 
             local x = unknown(ispace:ZeroOffset(),chan)
             local residuals = residualsincludingX00(unknownsupport,unknown,chan)
-            for _,r in ipairs(residuals) do
+            for _,r in ipairs(residuals) do -- loop over ACTUAL RESIDUALS
                 local rexp = shiftexp(F,r)
                 local condition,drdx00 = ad.splitcondition(rexp:d(x))
                 lprintf(1,"instance:\ndr%d_%s/dx00[%d] = %s",rn,tostring(r),chan,tostring(drdx00))
@@ -2719,7 +2738,7 @@ function ProblemSpecAD:Cost(...)
     local terms = extractresidualterms(...) -- seems to hold 'let ... in ... end' statements that represent the residual terms
     print('\n\n\n')
     print('START Inside ProblemSpecAD:Cost(), the terms')
-    -- printt(terms)
+    printt(terms)
     print('END Inside ProblemSpecAD:Cost(), the terms')
     print('\n\n\n')
 
@@ -2728,14 +2747,14 @@ function ProblemSpecAD:Cost(...)
     local energyspecs = toenergyspecs(terms) -- wraps the terms inside an 'EnergySpec' object
     print('\n\n\n')
     print('START Inside ProblemSpecAD:Cost(), the energyspecs')
-    -- printt(energyspecs)
+    -- printt(energyspecs[2].kind)
     -- printt(energyspecs[1].kind.ispace.dims)
     print('END Inside ProblemSpecAD:Cost(), the energyspecs')
     print('\n\n\n')
     for _,energyspec in ipairs(energyspecs) do
         functionspecs:insert(createcost(energyspec))          
         if energyspec.kind.kind == "CenteredFunction" then
-            functionspecs:insert(createjtjcentered(self,energyspec))
+            functionspecs:insert(createjtjcentered(self,energyspec)) -- create*** seems to only READ from 'self'
             functionspecs:insert(createjtfcentered(self,energyspec))
             functionspecs:insert(createdumpjcentered(self,energyspec))
             
@@ -2771,6 +2790,11 @@ function ProblemSpecAD:Cost(...)
     
     self:AddFunctions(functionspecs) -- turns functionspecs into proper terra functions and adds them to self.P
     self.P.energyspecs = energyspecs
+    print('\n\n\n')
+    print('START Inside ProblemSpecAD:Cost(), the functions')
+    printt(self.P.functions[2].functionmap)
+    print('END Inside ProblemSpecAD:Cost(), the functions')
+    print('\n\n\n')
     return self.P
 end
 

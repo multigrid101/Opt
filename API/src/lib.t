@@ -1,6 +1,6 @@
 local ad = require('ad')
 
-return function(P)
+return function(P) -- P is of type ProblemSpecAD
     local terms = terralib.newlist()
 
     local L = {}
@@ -12,6 +12,9 @@ return function(P)
     end
 
     function L.Result() return P:Cost(unpack(terms)) end
+
+    function L.getTerms() return terms end -- new by SO
+
     function L.All(v)
         local r = 1
         for i = 0,v:size() - 1 do

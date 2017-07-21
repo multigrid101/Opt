@@ -593,7 +593,8 @@ util.initParameters = function(self, ProblemSpec, params, isInit)
         else
             local rhs
             if entry.kind == "GraphParam" then
-                local graphinits = terralib.newlist { `@[&int](params[entry.idx]) }
+                -- local graphinits = terralib.newlist { `@[&int](params[entry.idx]) } -- original
+                local graphinits = terralib.newlist { entry.ispace:cardinality() } -- by SO
                 for i,e in ipairs(entry.type.metamethods.elements) do
                     graphinits:insert( `[&e.type](params[e.idx]) )
                 end
@@ -640,14 +641,14 @@ util.getValidUnknown = macro(function(pd,pw,ph)
 end)
 
 -- TODO only used in Graph kernels, so put there
-util.getValidGraphElement = macro(function(pd,graphname,idx)
-	graphname = graphname:asvalue()
-	return quote
-		@idx = blockDim.x * blockIdx.x + threadIdx.x
-	in
-		 @idx < pd.parameters.[graphname].N 
-	end
-end)
+-- util.getValidGraphElement = macro(function(pd,graphname,idx)
+-- 	graphname = graphname:asvalue()
+-- 	return quote
+-- 		@idx = blockDim.x * blockIdx.x + threadIdx.x
+-- 	in
+-- 		 @idx < pd.parameters.[graphname].N 
+-- 	end
+-- end)
 
 -- TODO where is this used? grep can't find anything
 local positionForValidLane = util.positionForValidLane
@@ -739,8 +740,19 @@ end
 -- TODO put in extra file for compiler pipeline stuff
 function util.makeGPUFunctions(problemSpec, PlanData, delegate, names) -- same  problemSpec as in solver.t
 
-    print('\nproblemSpec:')
-    -- for k,v in pairs(problemSpec.functions[1].typ) do print(k,v) end --debug 
+    print('\nInside util.makeGPUFunctions: The problemSpec.functions:')
+    for k,v in pairs(problemSpec.functions) do print(k,v) end --debug 
+    print('\nInside util.makeGPUFunctions: The problemSpec.functions[1]:')
+    for k,v in pairs(problemSpec.functions[1]) do print(k,v) end --debug 
+    print('\nInside util.makeGPUFunctions: The problemSpec.functions[1].typ:')
+    for k,v in pairs(problemSpec.functions[1].typ) do print(k,v) end --debug 
+    print('\nInside util.makeGPUFunctions: The problemSpec.functions[2]:')
+    for k,v in pairs(problemSpec.functions[2]) do print(k,v) end --debug 
+    print('\nInside util.makeGPUFunctions: The problemSpec.functions[2].typ:')
+    for k,v in pairs(problemSpec.functions[2].typ) do print(k,v) end --debug 
+    print('\nInside util.makeGPUFunctions: The problemSpec.functions[2].typ.__index:')
+    for k,v in pairs(problemSpec.functions[2].typ.__index) do print(k,v) end --debug 
+    print('\nInside util.makeGPUFunctions: The problemSpec:')
     for k,v in pairs(problemSpec.functions[1].typ.ispace.dims) do print(k,v) end
     for k,v in pairs(problemSpec.functions[1].typ.ispace.dims[1]) do print(k,v) end
 
@@ -763,7 +775,9 @@ function util.makeGPUFunctions(problemSpec, PlanData, delegate, names) -- same  
            end
         else
             local graphname = problemfunction.typ.graphname
-            local ks = delegate.GraphFunctions(graphname,problemfunction.functionmap)
+            local ispace = problemfunction.typ.ispace -- by SO
+            -- local ks = delegate.GraphFunctions(graphname,problemfunction.functionmap) -- original
+            local ks = delegate.GraphFunctions(graphname, problemfunction.functionmap,nil, ispace) -- by SO
             for name,func in pairs(ks) do            
                 kernelFunctions[getkname(name,problemfunction.typ)] = { kernel = func , annotations = { {"maxntidx", 256}, {"minctasm",1} } }
             end
