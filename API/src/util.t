@@ -1,8 +1,8 @@
-local pascalOrBetterGPU = false
 local S = require("std")
 require("precision")
 local util = {}
 local c = require('config')
+local pascalOrBetterGPU = c.pascalOrBetterGPU
 local backend = require(c.backend)
 
 util.C = terralib.includecstring [[
@@ -78,33 +78,54 @@ local Vectors = {}
 --  TODO what does this to? Answer: it seems that util.Vector (below) defines a vector-template. Whenever a template is instantiated, the instantiation is registeredd in 'Vectors'.
 function util.isvectortype(t) return Vectors[t] end
 
--- TODO what does this to? seems to be used only in o.t
+-- defines a terra-type that represents an element with N scalar components, e.g.
+    -- local struct opt_float3 { 
+    --     data : float[3] -- when called with 'float'
+    -- }
+
+    -- local struct opt_float3 { 
+    --     data : double[3] -- when called with 'double'
+    -- }
+    
+    -- call with e.g. util.Vector(float,3) --> opt_float3
 util.Vector = terralib.memoize(function(typ,N)
     N = assert(tonumber(N),"expected a number")
     local ops = { "__sub","__add","__mul","__div" }
+
     local struct VecType { 
         data : typ[N]
     }
+
     Vectors[VecType] = true
-    VecType.metamethods.type, VecType.metamethods.N = typ,N
+
+    -- used later to to turn e.g. opt_float3 into scalartype = double, channelcount = 3 (see tovalidimagetype() in o.t)
+    VecType.metamethods.type, VecType.metamethods.N = typ ,N
+
     VecType.metamethods.__typename = function(self) return ("%s_%d"):format(tostring(self.metamethods.type),self.metamethods.N) end
-    for i, op in ipairs(ops) do
+
+    for i, op in ipairs(ops) do -- add VecType.metamethods.__add, etc.
+
+        -- create a version of e.g. 'add()'
+        -- add(vector,vector), add(vector,scalar), add(scalar,vector), etc.
         local i = symbol(int,"i")
         local function template(ae,be)
             return quote
                 var c : VecType
                 for [i] = 0,N do
-                    c.data[i] = operator(op,ae,be)
+                    c.data[i] = operator(op,ae,be) -- becomes e.g.: c.data[i] = ae + be
                 end
                 return c
             end
         end
-        local terra opvv(a : VecType, b : VecType) [template(`a.data[i],`b.data[i])]  end
-        local terra opsv(a : typ, b : VecType) [template(`a,`b.data[i])]  end
-        local terra opvs(a : VecType, b : typ) [template(`a.data[i],`b)]  end
+        local terra opvv(a : VecType, b : VecType) [template(`a.data[i],`b.data[i])]  end -- vector-vector
+        local terra opsv(a : typ, b : VecType) [template(`a,`b.data[i])]  end -- vector-scalar
+        local terra opvs(a : VecType, b : typ) [template(`a.data[i],`b)]  end -- scalar-vector
         
+        -- put all versions of e.g. 'add' into a single, overloaded definition
         local doop
-        if terralib.overloadedfunction then
+        -- terralib.overloadedfunction() creates a function that has several definitions,
+        -- similar to multiple dispatch in julia. See API reference of terra for more information.
+        if terralib.overloadedfunction then -- check if this terra-implementation knows overloaded functions
             doop = terralib.overloadedfunction("doop",{opvv,opsv,opvs})
         else
             doop = opvv
@@ -114,6 +135,7 @@ util.Vector = terralib.memoize(function(typ,N)
         
        VecType.metamethods[op] = doop
     end
+
     terra VecType.metamethods.__unm(self : VecType)
         var c : VecType
         for i = 0,N do
@@ -121,6 +143,7 @@ util.Vector = terralib.memoize(function(typ,N)
         end
         return c
     end
+
     terra VecType:abs()
        var c : VecType
        for i = 0,N do
@@ -133,6 +156,7 @@ util.Vector = terralib.memoize(function(typ,N)
        end
        return c
     end
+
     terra VecType:sum()
        var c : typ = 0
        for i = 0,N do
@@ -140,6 +164,7 @@ util.Vector = terralib.memoize(function(typ,N)
        end
        return c
     end
+
     terra VecType:dot(b : VecType)
         var c : typ = 0
         for i = 0,N do
@@ -147,6 +172,7 @@ util.Vector = terralib.memoize(function(typ,N)
         end
         return c
     end
+
     terra VecType:max()
         var c : typ = 0
         if N > 0 then
@@ -159,9 +185,11 @@ util.Vector = terralib.memoize(function(typ,N)
         end
         return c
     end
-	terra VecType:size()
+
+    terra VecType:size()
         return N
     end
+
     terra VecType.methods.FromConstant(x : typ)
         var c : VecType
         for i = 0,N do
@@ -169,13 +197,16 @@ util.Vector = terralib.memoize(function(typ,N)
         end
         return c
     end
+
     VecType.metamethods.__apply = macro(function(self,idx) return `self.data[idx] end)
+
     VecType.metamethods.__cast = function(from,to,exp)
         if from:isarithmetic() and to == VecType then
             return `VecType.FromConstant(exp)
         end
         error(("unknown vector conversion %s to %s"):format(tostring(from),tostring(to)))
     end
+
     return VecType
 end)
 
@@ -416,29 +447,29 @@ end
 --------------------------- Timing stuff end
 
 
--- TODO what is this? Used in this file and solvers, put in appropriate place
--- TODO is this cuda-specific
-local terra laneid()
-    var laneid : int;
-    laneid = terralib.asm(int,"mov.u32 $0, %laneid;","=r", true)
-    return laneid;
-end
-util.laneid = laneid
+-- -- landeid() is the 'local' id of a thread within a warp
+-- local terra laneid()
+--     var laneid : int;
+--     laneid = terralib.asm(int,"mov.u32 $0, %laneid;","=r", true)
+--     return laneid;
+-- end
+util.laneid = backend.laneid
 
 -- TODO only one usage below, so maybe make local there
 __syncthreads = cudalib.nvvm_barrier0
 
 
--- TODO do we need this declaration or can we leave it out?
--- TODO only one usage below, so maybe put in extra file or local to usage (or in separate file with usage)
+-- TODO do we need this declaration or can we leave it out? <-- need it due to if-statement
+-- atomicAdd() START
+-- __shfl_down() START
 local __shfl_down 
-
 if opt_float == float then
 
-    local terra atomicAdd(sum : &float, value : float)
-    	terralib.asm(terralib.types.unit,"red.global.add.f32 [$0],$1;","l,f", true, sum, value)
-    end
-    util.atomicAdd = atomicAdd
+    -- local terra atomicAdd(sum : &float, value : float)
+    -- 	terralib.asm(terralib.types.unit,"red.global.add.f32 [$0],$1;","l,f", true, sum, value)
+    -- end
+    -- util.atomicAdd = atomicAdd
+    util.atomicAdd = backend.atomicAdd
 
     terra __shfl_down(v : float, delta : uint, width : int)
     	var ret : float;
@@ -481,30 +512,31 @@ else
         return u.b;
     end
 
-    if pascalOrBetterGPU then
-        local terra atomicAdd(sum : &double, value : double)
-            var address_as_i : uint64 = [uint64] (sum);
-            terralib.asm(terralib.types.unit,"red.global.add.f64 [$0],$1;","l,d", true, address_as_i, value)
-        end
-        util.atomicAdd = atomicAdd
-    else
-        local terra atomicAdd(sum : &double, value : double)
-            var address_as_i : &uint64 = [&uint64] (sum);
-            var old : uint64 = address_as_i[0];
-            var assumed : uint64;
+    -- if pascalOrBetterGPU then
+    --     local terra atomicAdd(sum : &double, value : double)
+    --         var address_as_i : uint64 = [uint64] (sum);
+    --         terralib.asm(terralib.types.unit,"red.global.add.f64 [$0],$1;","l,d", true, address_as_i, value)
+    --     end
+    --     util.atomicAdd = atomicAdd
+    -- else
+    --     local terra atomicAdd(sum : &double, value : double)
+    --         var address_as_i : &uint64 = [&uint64] (sum);
+    --         var old : uint64 = address_as_i[0];
+    --         var assumed : uint64;
 
-            repeat
-                assumed = old;
-                old = terralib.asm(uint64,"atom.global.cas.b64 $0,[$1],$2,$3;", 
-                    "=l,l,l,l", true, address_as_i, assumed, 
-                    __double_as_ull( value + __ull_as_double(assumed) )
-                    );
-            until assumed == old;
+    --         repeat
+    --             assumed = old;
+    --             old = terralib.asm(uint64,"atom.global.cas.b64 $0,[$1],$2,$3;", 
+    --                 "=l,l,l,l", true, address_as_i, assumed, 
+    --                 __double_as_ull( value + __ull_as_double(assumed) )
+    --                 );
+    --         until assumed == old;
 
-            return __ull_as_double(old);
-        end
-        util.atomicAdd = atomicAdd
-    end
+    --         return __ull_as_double(old);
+    --     end
+    --     util.atomicAdd = atomicAdd
+    -- end
+    util.atomicAdd = backend.atomicAdd
 
     terra __shfl_down(v : double, delta : uint, width : int)
         var ret : uint2Double;
@@ -517,6 +549,8 @@ else
         return ret.d;
     end
 end
+-- atomicAdd() END
+-- __shfl_down() END
 
 -- Using the "Kepler Shuffle", see http://devblogs.nvidia.com/parallelforall/faster-parallel-reductions-kepler/
 -- TODO used also in solver, so find appropriate place
@@ -536,8 +570,9 @@ util.warpReduce = warpReduce
 -- Straightforward implementation of: http://devblogs.nvidia.com/parallelforall/faster-parallel-reductions-kepler/
 -- sdata must be a block of 128 bytes of shared memory we are free to trash
 -- TODO this and above seems to be cuda-specific, so put in appropriate location
+-- TODO does not seem to be used anywhere, so no need to refactor for now
 local terra blockReduce(val : opt_float, sdata : &opt_float, threadIdx : int, threadsPerBlock : uint)
-	var lane = laneid()
+	var lane = util.laneid()
   	var wid = threadIdx / 32 -- TODO: check if this is right for 2D domains
 
   	val = warpReduce(val); -- Each warp performs partial reduction

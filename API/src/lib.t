@@ -37,8 +37,10 @@ return function(P) -- P is of type ProblemSpecAD
     L.Not = ad.not_
     
     function L.UsePreconditioner(...) return P:UsePreconditioner(...) end
-    -- alas for Image/Array
-    function L.Array(...) return P:Image(...) end
+
+    -- alias for Image/Array
+    function L.Array(...) return P:Image(...) end -- returns ProblemSpecAD:Image()
+
     function L.ComputedArray(...) return P:ComputedImage(...) end
 
     function L.Matrix3x3Mul(matrix,v)

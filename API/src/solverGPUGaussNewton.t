@@ -24,6 +24,9 @@ local initialization_parameters = {
     guardedInvertType = GuardedInvertType.CERES,
     jacobiScaling = JacobiScalingType.ONCE_PER_SOLVE
 }
+if initialization_parameters.use_cusparse == true and backend.name ~= 'CUDA' then
+  error('use_cusparse cannot be true for non-cuda backend')
+end
 
 local solver_parameter_defaults = {
     residual_reset_period = 10,
@@ -93,8 +96,8 @@ local FLOAT_EPSILON = `[opt_float](0.00000001f)
 -- GAUSS NEWTON (or LEVENBERG-MARQUADT)
 -- takes the problem-specification as input. That makes sense, since the generated solver is problem-specific
 return function(problemSpec) 
-    local UnknownType = problemSpec:UnknownType()
-    local TUnknownType = UnknownType:terratype()	
+    local UnknownType = problemSpec:UnknownType() -- UnknownType is a lua-object that represents a lua-type
+    local TUnknownType = UnknownType:terratype() -- TUnknownType is a lua-object (terra-struct) that represents a terra-type
     -- start of the unknowns that correspond to this image
     -- for each entry there are a constant number of unknowns
     -- corresponds to the col dim of the J matrix
@@ -264,9 +267,6 @@ return function(problemSpec)
         local base_rowidx = energyspec_to_rowidx_offset_exp[ES]
         local base_residual = energyspec_to_residual_offset_exp[ES]
         local idx_offset
-        print('ASDFASDFASDFASDFASDFASDF')
-        print(idx.type)
-        print(idx)
         if idx.type == int or idx.type == int32 then
             idx_offset = idx
         else    
@@ -894,7 +894,7 @@ return function(problemSpec)
     -- problemSpec is input to the current function, there seem to be no modifications, only accesses
     -- PlanData is a struct built above. it seems to be the only input to all the kernel-functions that are accumulated in 'delegate'. The only access to it seems to be in 'MakePlan' at the
        -- end of this file to PlanData.alloc(). PlanData seems to be sort-of like a 'class', and 'alloc()' in 'MakePlan()' creates an instance of this class.
-    local gpu = util.makeGPUFunctions(problemSpec, PlanData, delegate, {"PCGInit1",
+    local gpu = util.makeGPUFunctions(problemSpec, PlanData, delegate, {"PCGInit1", -- redirects to a backend-specific function
                                                                     "PCGInit1_Finish",
                                                                     "PCGComputeCtC",
                                                                     "PCGFinalizeDiagonal",
@@ -924,20 +924,24 @@ return function(problemSpec)
 
     -- TODO all of the below seem to be helper functions, put in appropriate place
     local terra computeCost(pd : &PlanData) : opt_float
-        C.cudaMemset(pd.scratch, 0, sizeof(opt_float))
+        -- C.cudaMemset(pd.scratch, 0, sizeof(opt_float))
+        backend.memsetDevice(pd.scratch, 0, sizeof(opt_float))
         gpu.computeCost(pd)
         gpu.computeCost_Graph(pd)
         var f : opt_float
-        C.cudaMemcpy(&f, pd.scratch, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
+        -- C.cudaMemcpy(&f, pd.scratch, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
+        backend.memcpyDevice2Host(&f, pd.scratch, sizeof(opt_float))
         return f
     end
 
     local terra computeModelCost(pd : &PlanData) : opt_float
-        C.cudaMemset(pd.modelCost, 0, sizeof(opt_float))
+        -- C.cudaMemset(pd.modelCost, 0, sizeof(opt_float))
+        backend.memsetDevice(pd.modelCost, 0, sizeof(opt_float))
         gpu.computeModelCost(pd)
         gpu.computeModelCost_Graph(pd)
         var f : opt_float
-        C.cudaMemcpy(&f, pd.modelCost, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
+        -- C.cudaMemcpy(&f, pd.modelCost, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
+        backend.memcpyDevice2Host(&f, pd.modelCost, sizeof(opt_float))
         return f
     end
 
@@ -945,7 +949,8 @@ return function(problemSpec)
 
     local terra fetchQ(pd : &PlanData) : opt_float
         var f : opt_float
-        C.cudaMemcpy(&f, pd.q, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
+        -- C.cudaMemcpy(&f, pd.q, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
+        backend.memcpyDevice2Host(&f, pd.q, sizeof(opt_float))
         return f
     end
 
@@ -964,7 +969,8 @@ return function(problemSpec)
 
     local terra GetToHost(ptr : &opaque, N : int) : &int
         var r = [&int](C.malloc(sizeof(int)*N))
-        C.cudaMemcpy(r,ptr,N*sizeof(int),C.cudaMemcpyDeviceToHost)
+        -- C.cudaMemcpy(r,ptr,N*sizeof(int),C.cudaMemcpyDeviceToHost)
+        backend.memcpyDevice2Host(r,ptr,N*sizeof(int))
         return r
     end
 
@@ -1098,11 +1104,13 @@ return function(problemSpec)
        pd.timer:startEvent("overall",nil,&pd.endSolver)
 
        -- THIS LINE ASSIGNS e.g. THE number of edges of a graph to graph.N (which is later used for bounds checking)
+       -- does not seems to depend on backend
        [util.initParameters(`pd.parameters,problemSpec,params_,true)]
 
        var [parametersSym] = &pd.parameters
        escape
-           if initialization_parameters.use_cusparse then
+           -- TODO QUES what does all this cusparse stuff actually do?
+           if initialization_parameters.use_cusparse then -- This block only makes sense for cuda backend
                emit quote
                         if pd.J_csrValA == nil then
                             cd(CUsp.cusparseCreateMatDescr( &pd.desc ))
@@ -1174,9 +1182,12 @@ return function(problemSpec)
         var Q1 : opt_float
         [util.initParameters(`pd.parameters,problemSpec, params_,false)]
         if pd.solverparameters.nIter < pd.solverparameters.nIterations then
-                C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-                C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-                C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
+                -- C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
+                backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float))
+                -- C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
+                backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float))
+                -- C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
+                backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float))
 
                 gpu.PCGInit1(pd)
                 if isGraph then
@@ -1187,8 +1198,10 @@ return function(problemSpec)
                 escape 
                     if problemSpec:UsesLambda() then
                         emit quote
-                            C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))
-                            C.cudaMemset(pd.q, 0, sizeof(opt_float))
+                            -- C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))
+                            backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float)) -- TODO QUES isn't this a duplicate from a few lines above?
+                            -- C.cudaMemset(pd.q, 0, sizeof(opt_float))
+                            backend.memsetDevice(pd.q, 0, sizeof(opt_float))
                             if [initialization_parameters.jacobiScaling == JacobiScalingType.ONCE_PER_SOLVE] and pd.solverparameters.nIter == 0 then
                                 gpu.PCGSaveSSq(pd)
                             end
@@ -1201,12 +1214,14 @@ return function(problemSpec)
                         end
                     end
 
-                cusparseOuter(pd)
+                cusparseOuter(pd) -- does nothing if use_cusparse == false
 
                 for lIter = 0, pd.solverparameters.lIterations do				
 
-                    C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))
-                    C.cudaMemset(pd.q, 0, sizeof(opt_float))
+                    -- C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))
+                    backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float))
+                    -- C.cudaMemset(pd.q, 0, sizeof(opt_float))
+                    backend.memsetDevice(pd.q, 0, sizeof(opt_float))
 
                     if not initialization_parameters.use_cusparse then
                         gpu.PCGStep1(pd)
@@ -1215,14 +1230,15 @@ return function(problemSpec)
                         end
                     end
 
-                    -- only does anything if initialization_parameters.use_cusparse is true
+                    -- only does something if initialization_parameters.use_cusparse is true
                     cusparseInner(pd)
 
-                    if multistep_alphaDenominator_compute then
+                    if multistep_alphaDenominator_compute then -- true if and only if use_cusparse is true
                         gpu.PCGStep1_Finish(pd)
                     end
                                     
-                    C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))
+                    -- C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))
+                    backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float))
                                     
                     if [problemSpec:UsesLambda()] and ((lIter + 1) % residual_reset_period) == 0 then
                         gpu.PCGStep2_1stHalf(pd)
@@ -1238,7 +1254,8 @@ return function(problemSpec)
                     gpu.PCGStep3(pd)
 
                     -- save new rDotz for next iteration
-                    C.cudaMemcpy(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float), C.cudaMemcpyDeviceToDevice)	
+                    -- C.cudaMemcpy(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float), C.cudaMemcpyDeviceToDevice)	
+                    backend.memcpyDevice(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float))
                     
                     if [problemSpec:UsesLambda()] then
                         Q1 = fetchQ(pd)
@@ -1376,7 +1393,7 @@ return function(problemSpec)
     -- TODO put in extra file 'solverskeleton.t' or something similar (or maybe keep only this and put everything above in solverskeleton.t)
     -- TODO why is all this stuff in "make plan" and not in init? Picture data is initialized in 'init', intermediate data is initialized here.
     local terra makePlan() : &opt.Plan
-            var pd = PlanData.alloc() -- this seems to be sort-of like a constructor call of the "PlanData" class.
+            var pd = PlanData.alloc() -- this seems to be sort-of like a constructor call of the "PlanData" class
             pd.plan.data = pd
             pd.plan.init ,pd.plan.step, pd.plan.cost, pd.plan.setsolverparameter = init, step, cost, setSolverParameter
             pd.delta:initGPU()
@@ -1395,13 +1412,20 @@ return function(problemSpec)
             initializeSolverParameters(&pd.solverparameters)
             
             [util.initPrecomputedImages(`pd.parameters,problemSpec)]	
-            C.cudaMalloc([&&opaque](&(pd.scanAlphaNumerator)), sizeof(opt_float))
-            C.cudaMalloc([&&opaque](&(pd.scanBetaNumerator)), sizeof(opt_float))
-            C.cudaMalloc([&&opaque](&(pd.scanAlphaDenominator)), sizeof(opt_float))
-            C.cudaMalloc([&&opaque](&(pd.modelCost)), sizeof(opt_float))
+            -- C.cudaMalloc([&&opaque](&(pd.scanAlphaNumerator)), sizeof(opt_float))
+            backend.allocateDevice(&(pd.scanAlphaNumerator), sizeof(opt_float))
+            -- C.cudaMalloc([&&opaque](&(pd.scanBetaNumerator)), sizeof(opt_float))
+            backend.allocateDevice(&(pd.scanBetaNumerator), sizeof(opt_float))
+            -- C.cudaMalloc([&&opaque](&(pd.scanAlphaDenominator)), sizeof(opt_float))
+            backend.allocateDevice(&(pd.scanAlphaDenominator), sizeof(opt_float))
+            -- C.cudaMalloc([&&opaque](&(pd.modelCost)), sizeof(opt_float))
+            backend.allocateDevice(&(pd.modelCost), sizeof(opt_float))
             
-            C.cudaMalloc([&&opaque](&(pd.scratch)), sizeof(opt_float))
-            C.cudaMalloc([&&opaque](&(pd.q)), sizeof(opt_float))
+            -- C.cudaMalloc([&&opaque](&(pd.scratch)), sizeof(opt_float))
+            backend.allocateDevice(&(pd.scratch), sizeof(opt_float))
+            -- C.cudaMalloc([&&opaque](&(pd.q)), sizeof(opt_float))
+            backend.allocateDevice(&(pd.q), sizeof(opt_float))
+
             pd.J_csrValA = nil
             pd.JTJ_csrRowPtrA = nil
 

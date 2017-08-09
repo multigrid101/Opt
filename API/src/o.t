@@ -31,7 +31,7 @@ local util = require("util")
 local optlib = require("lib")
 local backend = require(conf.backend)
 ad = require("ad")
-require("precision")
+require("precision") -- sets opt_float to either 'float' or 'double'
 local A = ad.classes
 
 local C = util.C
@@ -42,8 +42,8 @@ local use_split_sums = true
 local use_condition_scheduling = true
 local use_register_minimization = true
 local use_conditionalization = true
-local use_contiguous_allocation = false
-local use_bindless_texture = true and (not use_contiguous_allocation)
+local use_contiguous_allocation = conf.use_contiguous_allocation
+local use_bindless_texture = conf.use_bindless_texture and (not use_contiguous_allocation)
 local use_cost_speculate = false -- takes a lot of time and doesn't do much
 
 if false then
@@ -467,7 +467,7 @@ function IndexSpace:indextype()
     end
 
     -- TODO only used in following function, make local there
-    -- this seems to convert an (x,y) index to a linear index
+    -- this seems to convert e.g. an (x,y) index to a linear index
     -- --> can't make local because it's a lua func inside a terra-func
     local function genoffset(self)
         local s = 1
@@ -484,6 +484,8 @@ function IndexSpace:indextype()
 
     -- this function is local to here and only used during the generation of the
     -- following terra-functions
+    -- Generates a quote of the following form:
+    -- if self.d0 >= xmin and self.d0 < xmax and self.d1 >= ymin and self.d1 < ymax
     local function genbounds(self,bmins,bmaxs)
         local valid
         for i = 1, #dims do
@@ -506,6 +508,10 @@ function IndexSpace:indextype()
     end
     terra Index:InBounds() return [ genbounds(self) ] end
 
+    -- example Definition:
+    -- terra Index.InBoundsExpanded(self : &Index$1,$d0 : int32,$d0$1 : int32) : bool
+    --   return (@self).d0 >= -$d0 and (@self).d0 < 1152 - $d0$1
+    -- end
     terra Index:InBoundsExpanded([params],[params2]) return [ genbounds(self,params,params2) ] end
 
     -- if #dims <= 3 then
@@ -542,6 +548,9 @@ end
 
 -- TODO only used once and within ImageType, make private
 function ImageType:usestexture() -- texture, 2D texture
+    if backend.name ~= 'CUDA' and use_bindless_texture == true then -- error if attempting to use texture-stuff with any backend other than cuda
+      error('Cannot Use texture with non-cuda Backend!!!')
+    end
     local c = self.channelcount
     if use_bindless_texture and self.scalartype == float and (c == 1 or c == 2 or c == 4) then
        if use_pitched_memory and #self.ispace.dims == 2 then
@@ -611,26 +620,32 @@ end
 
 function ImageType:ElementType() return util.Vector(self.scalartype,self.channelcount) end
 
--- TODO only used in function below, so maybe make private?
+-- TODO QUES: why do we need this special case?
 function ImageType:LoadAsVector() return self.channelcount == 2 or self.channelcount == 4 end
+
 function ImageType:terratype()
     if self._terratype then return self._terratype end
-    local scalartype = self.scalartype
-    local vectortype = self:ElementType()
+    local scalartype = self.scalartype -- is float or double for e.g. opt_float3
+    local vectortype = self:ElementType() -- returns util.Vector(scalartype,channelcount), e.g. opt_float3
     local struct Image {
-        data : &vectortype
-        tex  : C.cudaTextureObject_t;
+        data : &vectortype -- e.g. &float, &double, &opt_float3, ...
+        tex  : C.cudaTextureObject_t; -- <-- this member is not required unless GPU is used.
     }
     self._terratype = Image
-    local channelcount = self.channelcount
-    local textured,pitched = self:usestexture()
+    local channelcount = self.channelcount -- is 3 for opt_float3
+    local textured, pitched = self:usestexture() -- for non-cuda, this is false,false or throws error
     local Index = self.ispace:indextype()
+
     function Image.metamethods.__typename()
           return string.format("Image(%s,%s,%d)",tostring(self.scalartype),tostring(self.ispace),channelcount)
-        end
+    end
 
+    -- vector() is a built-in terra function that returns a vector-like type, similar to util.Vector
+    -- TODO QUES why do we need this if we already have util.Vector
     local VT = &vector(scalartype,channelcount)    
+
     -- reads
+    -- Image.metamethods.__apply() START
     if pitched then -- QUES seems to use x,y field of idx
         terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
             var read = terralib.asm([tuple(float,float,float,float)],
@@ -655,7 +670,10 @@ function ImageType:terratype()
             return self.data[idx:tooffset()]
         end
     end
+    -- Image.metamethods.__apply() END
+
     -- writes
+    -- Image.metamethods.__upate() START
     if self:LoadAsVector() then
         terra Image.metamethods.__update(self : &Image, idx : Index, v : vectortype)
             VT(self.data)[idx:tooffset()] = @VT(&v)
@@ -665,8 +683,10 @@ function ImageType:terratype()
             self.data[idx:tooffset()] = v
         end
     end
+    -- Image.metamethods.__update() END
 
-    if scalartype == float or scalartype == double then    
+    if scalartype == float or scalartype == double then -- TODO QUES: can scalartype be anything else???
+    -- TODO are these functions even used? --> seems to be used in generated code that comes out of 'createfunction' 
         terra Image:atomicAddChannel(idx : Index, c : int32, v : scalartype)
             var addr : &scalartype = &self.data[idx:tooffset()].data[c]
             util.atomicAdd(addr,v)
@@ -678,6 +698,8 @@ function ImageType:terratype()
         end
     end
 
+    -- lerp stuff START -- TODO QUES: where is this needed and what does it do? seems a little out-of-date...
+    -- TODO QUES: this duplicates the functionality of the above metamethods definition....
     terra Image:get(idx : Index)
         var v : vectortype = 0.f
         if idx:InBounds() then
@@ -699,19 +721,18 @@ function ImageType:terratype()
             return lerp(u,b,yn)
         end
     end
+    -- lerp stuff END
+
+
     local cardinality = self.ispace:cardinality()
     terra Image:totalbytes() return sizeof(vectortype)*cardinality end
 
-    -- TODO this function is called 'initGPU', but it actually allocates space on CPU. Why?
-    -- TODO there is another initGPU function below that uses cuda. Why are there two versions?
-    terra Image:initGPU()
-            self.data = [&vectortype](C.malloc(self:totalbytes()))
-            C.memset(self.data,0,self:totalbytes())
-    end
+
+    -- setGPUptr START
     if textured then
         local W,H = cardinality,0
         if pitched then
-            W,H = self.ispace.dims[1].size,self.ispace.dims[2].size
+            W, H = self.ispace.dims[1].size, self.ispace.dims[2].size
         end
         terra Image:setGPUptr(ptr : &uint8)
             if [&uint8](self.data) ~= ptr then
@@ -725,16 +746,29 @@ function ImageType:terratype()
     else
         terra Image:setGPUptr(ptr : &uint8) self.data = [&vectortype](ptr) end
     end
-        terra Image:initFromGPUptr( ptr : &uint8 )
-            self.data = nil
-            self:setGPUptr(ptr)
-        end
-        terra Image:initGPU()
-            var data : &uint8
-            cd(C.cudaMalloc([&&opaque](&data), self:totalbytes()))
-            cd(C.cudaMemset([&opaque](data), 0, self:totalbytes()))
-            self:initFromGPUptr(data)
-        end
+    -- setGPUptr END
+
+    terra Image:initFromGPUptr( ptr : &uint8 )
+        self.data = nil
+        self:setGPUptr(ptr) -- short explanation: sets self.data = ptr
+    end
+
+    -- initGPU() START
+    terra Image:initGPU()
+        var data : &uint8
+        -- cd(C.cudaMalloc([&&opaque](&data), self:totalbytes()))
+        cd( backend.allocateDevice(&data, self:totalbytes()) )
+        -- cd(C.cudaMemset([&opaque](data), 0, self:totalbytes()))
+        cd( backend.memsetDevice(data, 0, self:totalbytes()) )
+        self:initFromGPUptr(data) -- (short explanataion): set self.data = data (and cast to appropriate ptr-type)
+    end
+    print(Image.methods.initGPU)
+    -- terra Image:initGPU()
+    --         self.data = [&vectortype](C.malloc(self:totalbytes()))
+    --         C.memset(self.data,0,self:totalbytes())
+    -- end
+    -- initGPU() END
+
     return Image
 end
 ----------------------------------- ImageType END ---------------------------------------
@@ -797,6 +831,13 @@ function UnknownType:UnknownIteratorForIndexSpace(ispace)
 end
 
 function UnknownType:terratype()
+    -- If there are e.g.  two unknowns with names 'pic1' and 'pic2', then the struct 'TUnknownType' has two
+    -- fields (plus maybe some other stuff), namely:
+    -- struct TUnknownType {
+    --   tpic1 : &[self.pic1.imagetype:terratype()] <-- see ImageType:terratype(), prefix 't' indicates that this is terra variable
+    --   tpic2 : &[self.pic2.imagetype:terratype()] <-- see ImageType:terratype()
+    -- }
+
     if self._terratype then return self._terratype end
     self._terratype = terralib.types.newstruct("UnknownType")
     local T = self._terratype
@@ -804,21 +845,31 @@ function UnknownType:terratype()
     for i,ip in ipairs(images) do
         T.entries:insert { ip.name, ip.imagetype:terratype() }
     end
+
+    --- initGPU START
     if use_contiguous_allocation then
         T.entries:insert { "_contiguousallocation", &opaque }
         terra T:initGPU()
             var size = 0
-            escape
+            escape -- calculate total number of bytes required to hold all images in a single array
                 for i,ip in ipairs(images) do
                     emit quote 
                         size = size + self.[ip.name]:totalbytes()
                     end
                 end
             end
-            var data : &uint8
-            cd(C.cudaMalloc([&&opaque](&data), size))
+
+            var data : &uint8 -- allocate and initialize with zero and save pointer to 'self' TODO why 'uint8'?
+            -- cd(C.cudaMalloc([&&opaque](&data), size))
+            cd( backend.allocateDevice(&data, size) )
             self._contiguousallocation = data
-            cd(C.cudaMemset([&opaque](data), 0, size))
+            -- cd(C.cudaMemset([&opaque](data), 0, size))
+            cd( backend.memsetDevice(data, 0,  size) )
+
+            -- set tpic1.data and tpic2.data to the correct location, i.e.
+            -- _contiguousallocation: oooooooooooooooooooooooooooooooooooooooooo <-- large array
+            --                        |               |                          <-- line indicates a pointer
+            --                     tpic1.data      tpic2.data
             size = 0
             escape
                 for i,ip in ipairs(images) do
@@ -831,13 +882,15 @@ function UnknownType:terratype()
         end
     else
         terra T:initGPU()
-            escape
+            escape -- just iterate over tpic1, tpic2 and initialize them
                 for i,ip in ipairs(images) do
                     emit quote self.[ip.name]:initGPU() end
                 end
             end
         end
     end
+    --- initGPU END
+
     for _,ispace in ipairs(self:IndexSpaces()) do   
         local Index = ispace:indextype()
         local ispaceimages = self.ispacetoimages[ispace]
@@ -887,6 +940,8 @@ local function todim(d)
 end
 
 -- TODO make this local to the following function (ProblemSpec:ImageType())
+-- takes e.g. opt_float3 as input (see util.Vector for a definition of opt_float3)
+-- example: tovalidimagetype(opt_float3) --> returns double, 3
 local function tovalidimagetype(typ)
     if not terralib.types.istype(typ) then return nil end
     if util.isvectortype(typ) then
@@ -1230,10 +1285,11 @@ function ProblemSpecAD:UsePreconditioner(v)
 end
 
 function ProblemSpecAD:Image(name,typ,dims,idx,isunknown)
+    -- typ is e.g. opt_float3
     print("START Inside ProblemSpecAD:Image(...)")
     print('\nisunknown:')
     print(isunknown)
-   if not terralib.types.istype(typ) then
+    if not terralib.types.istype(typ) then
         typ, dims, idx, isunknown = opt_float, typ, dims, idx --shift arguments left
     end
     isunknown = isunknown and true or false
@@ -2854,7 +2910,7 @@ function ad.sampledimage(image,imagedx,imagedy)
 end
 -- SampledImage END
 
--- TODO what is this?^^
+-- defines opt_float2, opt_float3, opt_float4, ...
 for i = 2,12 do
     opt["float"..tostring(i)] = util.Vector(float,i)
     opt["double"..tostring(i)] = util.Vector(double,i)
