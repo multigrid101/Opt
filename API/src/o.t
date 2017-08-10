@@ -431,7 +431,8 @@ function IndexSpace:ZeroOffset()
 end
 
 function IndexSpace:getDimensionality()
-    return #dims
+    return #(self.dims)
+    -- return #dims
 end
 
 function IndexSpace:indextype()
@@ -567,21 +568,22 @@ function ImageType:usestexture() -- texture, 2D texture
 end
 
 -- TODO this is re-defined in several files
-local cd = macro(function(apicall) 
-    local apicallstr = tostring(apicall)
-    local filename = debug.getinfo(1,'S').source
-    return quote
-        var str = [apicallstr]
-        var r = apicall
-        if r ~= 0 then  
-            C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
-            C.printf("In call: %s", str)
-            C.printf("In file: %s\n", filename)
-            C.exit(r)
-        end
-    in
-        r
-    end end)
+-- local cd = macro(function(apicall) 
+--     local apicallstr = tostring(apicall)
+--     local filename = debug.getinfo(1,'S').source
+--     return quote
+--         var str = [apicallstr]
+--         var r = apicall
+--         if r ~= 0 then  
+--             C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
+--             C.printf("In call: %s", str)
+--             C.printf("In file: %s\n", filename)
+--             C.exit(r)
+--         end
+--     in
+--         r
+--     end end)
+local cd = backend.cd
 
 -- TODO only used in ImageType:terraype() below, so move there or make private to Imagetype
 local terra wrapBindlessTexture(data : &uint8, channelcount : int, width : int, height : int) : C.cudaTextureObject_t
@@ -754,14 +756,16 @@ function ImageType:terratype()
     end
 
     -- initGPU() START
+    print('ASDFASDFASDF1')
     terra Image:initGPU()
         var data : &uint8
         -- cd(C.cudaMalloc([&&opaque](&data), self:totalbytes()))
-        cd( backend.allocateDevice(&data, self:totalbytes()) )
+        cd( backend.allocateDevice(&data, self:totalbytes(), uint8) )
         -- cd(C.cudaMemset([&opaque](data), 0, self:totalbytes()))
         cd( backend.memsetDevice(data, 0, self:totalbytes()) )
         self:initFromGPUptr(data) -- (short explanataion): set self.data = data (and cast to appropriate ptr-type)
     end
+    print('ASDFASDFASDF2')
     print(Image.methods.initGPU)
     -- terra Image:initGPU()
     --         self.data = [&vectortype](C.malloc(self:totalbytes()))
@@ -861,7 +865,7 @@ function UnknownType:terratype()
 
             var data : &uint8 -- allocate and initialize with zero and save pointer to 'self' TODO why 'uint8'?
             -- cd(C.cudaMalloc([&&opaque](&data), size))
-            cd( backend.allocateDevice(&data, size) )
+            cd( backend.allocateDevice(&data, size, uint8) )
             self._contiguousallocation = data
             -- cd(C.cudaMemset([&opaque](data), 0, size))
             cd( backend.memsetDevice(data, 0,  size) )
@@ -1067,7 +1071,13 @@ local function problemPlan(id, dimensions, pplan)
 
         local problemmetadata = assert(problems[id])
         opt.dimensions = dimensions
-        opt.math = problemmetadata.kind:match("GPU") and util.gpuMath or util.cpuMath
+        -- opt.math = problemmetadata.kind:match("GPU") and util.gpuMath or util.cpuMath
+        -- opt.math = util.cpuMath
+        if backend.name == 'CUDA' then
+          opt.math = util.gpuMath
+        else
+          opt.math = util.cpuMath
+        end
         opt.problemkind = problemmetadata.kind
         print(problemmetadata.kind) -- e.g. 'gaussNewtonGPU' (as string)
         local b = terralib.currenttimeinseconds()
@@ -1210,8 +1220,11 @@ local function problemPlan(id, dimensions, pplan)
         assert(ProblemSpec:isclassof(tbl))
         local result = compilePlan(tbl,problemmetadata.kind)
         print('\n')
-        print('The result of compilePlan() inside problemPlan()')
-        printt(result)
+        print('START The result of compilePlan() inside problemPlan()')
+        -- printt(result)
+        print(result)
+        print('END The result of compilePlan() inside problemPlan()')
+        print('\n')
 
         local e = terralib.currenttimeinseconds()
         print("compile time: ",e - b)
@@ -2951,9 +2964,11 @@ terra opt.PlanFree(plan : &opt.Plan)
 end
 
 terra opt.ProblemInit(plan : &opt.Plan, params : &&opaque) 
+    -- C.printf('doing init\n')
     return plan.init(plan.data, params)
 end
 terra opt.ProblemStep(plan : &opt.Plan, params : &&opaque) : int
+    -- C.printf('doing a step\n')
     return plan.step(plan.data, params) -- this seems to be the 'step' function defined in solverGPUGaussNewton.t
 end
 terra opt.ProblemSolve(plan : &opt.Plan, params : &&opaque)

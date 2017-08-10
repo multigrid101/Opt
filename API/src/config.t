@@ -8,9 +8,11 @@ c.problemkind = 'gaussNewtonCPU'
 c.verboseAD = false
 
 c.backend = 'backend_cuda'
+-- c.backend = 'backend_cpu'
 
 c.use_contiguous_allocation = false
 c.use_bindless_texture = true
+-- c.use_bindless_texture = false
 
 c.GRID_SIZES = { {256,1,1}, {16,16,1}, {8,8,4} } -- only relevant for CUDA
 

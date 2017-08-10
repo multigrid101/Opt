@@ -554,18 +554,19 @@ end
 
 -- Using the "Kepler Shuffle", see http://devblogs.nvidia.com/parallelforall/faster-parallel-reductions-kepler/
 -- TODO used also in solver, so find appropriate place
-local terra warpReduce(val : opt_float) 
+-- local terra warpReduce(val : opt_float) 
 
-  var offset = warpSize >> 1
-  while offset > 0 do 
-    val = val + __shfl_down(val, offset, warpSize);
-    offset =  offset >> 1
-  end
--- Is unrolling worth it?
-  return val;
+--   var offset = warpSize >> 1
+--   while offset > 0 do 
+--     val = val + __shfl_down(val, offset, warpSize);
+--     offset =  offset >> 1
+--   end
+-- -- Is unrolling worth it?
+--   return val;
 
-end
-util.warpReduce = warpReduce
+-- end
+-- util.warpReduce = warpReduce
+util.warpReduce = backend.warpReduce
 
 -- Straightforward implementation of: http://devblogs.nvidia.com/parallelforall/faster-parallel-reductions-kepler/
 -- sdata must be a block of 128 bytes of shared memory we are free to trash
@@ -575,7 +576,7 @@ local terra blockReduce(val : opt_float, sdata : &opt_float, threadIdx : int, th
 	var lane = util.laneid()
   	var wid = threadIdx / 32 -- TODO: check if this is right for 2D domains
 
-  	val = warpReduce(val); -- Each warp performs partial reduction
+  	val = util.warpReduce(val); -- Each warp performs partial reduction
 
   	if (lane==0) then
   		sdata[wid]=val; -- Write reduced value to shared memory
@@ -590,7 +591,7 @@ local terra blockReduce(val : opt_float, sdata : &opt_float, threadIdx : int, th
   	end
 
   	if (wid==0) then
-		val = warpReduce(val); --Final reduce within first warp
+		val = util.warpReduce(val); --Final reduce within first warp
   	end
 end
 util.blockReduce = blockReduce

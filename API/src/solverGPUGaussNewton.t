@@ -46,22 +46,23 @@ local solver_parameter_defaults = {
 
 local multistep_alphaDenominator_compute = initialization_parameters.use_cusparse
 
-local cd = macro(function(apicall) 
-    local apicallstr = tostring(apicall)
-    local filename = debug.getinfo(1,'S').source
-    return quote
-               var str = [apicallstr]
-               var r = apicall
-               if r ~= 0 then  
-                   C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
-                   C.printf("In call: %s", str)
-                   C.printf("In file: %s\n", filename)
-                   C.exit(r)
-               end
-           in
-               r
-           end 
-end)
+-- local cd = macro(function(apicall) 
+--     local apicallstr = tostring(apicall)
+--     local filename = debug.getinfo(1,'S').source
+--     return quote
+--                var str = [apicallstr]
+--                var r = apicall
+--                if r ~= 0 then  
+--                    C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
+--                    C.printf("In call: %s", str)
+--                    C.printf("In file: %s\n", filename)
+--                    C.exit(r)
+--                end
+--            in
+--                r
+--            end 
+-- end)
+local cd = backend.cd
 
 if initialization_parameters.use_cusparse then
     local cusparsepath = "/usr/local/cuda"
@@ -83,6 +84,14 @@ end
 
 
 local gpuMath = util.gpuMath
+-- local gpuMath
+-- if backend.name == 'CUDA' then
+--   gpuMath = util.gpuMath
+-- else
+--   gpuMath = util.cpuMath
+-- end
+  
+
 
 opt.BLOCK_SIZE = 16
 local BLOCK_SIZE =  opt.BLOCK_SIZE
@@ -324,7 +333,7 @@ return function(problemSpec)
         local kernels = {}
         local unknownElement = UnknownType:VectorTypeForIndexSpace(UnknownIndexSpace)
         local Index = UnknownIndexSpace:indextype()
-        local kernelArglist = backend.getKernelArglist(Index)
+        local kernelArglist = backend.getKernelArglist(UnknownIndexSpace)
 
         print('\n\n\n')
         print('START inside delegate.CenterFunctions: The kernel arglist')
@@ -356,7 +365,8 @@ return function(problemSpec)
                     emit quote
                              var invp = p
                              for i = 0, invp:size() do
-                                 invp(i) = [opt_float](1.f) / square(opt_float(1.f) + util.gpuMath.sqrt(invp(i)))
+                                 -- invp(i) = [opt_float](1.f) / square(opt_float(1.f) + util.gpuMath.sqrt(invp(i)))
+                                 invp(i) = [opt_float](1.f) / square(opt_float(1.f) + gpuMath.sqrt(invp(i)))
                              end
                              return invp
                          end
@@ -383,7 +393,8 @@ return function(problemSpec)
         local terra clamp(x : unknownElement, minVal : unknownElement, maxVal : unknownElement) : unknownElement
             var result = x
             for i = 0, result:size() do
-                result(i) = util.gpuMath.fmin(util.gpuMath.fmax(x(i), minVal(i)), maxVal(i))
+                -- result(i) = util.gpuMath.fmin(util.gpuMath.fmax(x(i), minVal(i)), maxVal(i))
+                result(i) = gpuMath.fmin(gpuMath.fmax(x(i), minVal(i)), maxVal(i))
             end
             return result
         end
@@ -620,7 +631,7 @@ return function(problemSpec)
             terra kernels.saveJToCRS(pd : PlanData, [kernelArglist])
             end
         else
-            terra kernels.saveJToCRS(pd : PlanData)
+            terra kernels.saveJToCRS(pd : PlanData, [kernelArglist])
                 var idx : Index
                 var [parametersSym] = &pd.parameters
                 if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
@@ -768,7 +779,9 @@ return function(problemSpec)
         --         unknownWideReduction(idx,d,pd.scanAlphaNumerator)
         --     end
         -- end
-        terra kernels.PCGInit1_Graph(pd : PlanData)
+        -- print(fmap.evalJTF)
+        -- error()
+        terra kernels.PCGInit1_Graph(pd : PlanData, [kernelArglist])
             -- var tIdx = 0
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
@@ -923,11 +936,14 @@ return function(problemSpec)
                                                                     })
 
     -- TODO all of the below seem to be helper functions, put in appropriate place
+    -- print('ASDF123')
+    -- print(kernelArglist)
+    -- print('ASDF123')
     local terra computeCost(pd : &PlanData) : opt_float
         -- C.cudaMemset(pd.scratch, 0, sizeof(opt_float))
         backend.memsetDevice(pd.scratch, 0, sizeof(opt_float))
         gpu.computeCost(pd)
-        gpu.computeCost_Graph(pd)
+        gpu.computeCost_Graph(pd) -- TODO need to uncomment later
         var f : opt_float
         -- C.cudaMemcpy(&f, pd.scratch, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
         backend.memcpyDevice2Host(&f, pd.scratch, sizeof(opt_float))
@@ -1103,61 +1119,61 @@ return function(problemSpec)
        pd.timer:init()
        pd.timer:startEvent("overall",nil,&pd.endSolver)
 
-       -- THIS LINE ASSIGNS e.g. THE number of edges of a graph to graph.N (which is later used for bounds checking)
-       -- does not seems to depend on backend
-       [util.initParameters(`pd.parameters,problemSpec,params_,true)]
+         -- THIS LINE ASSIGNS e.g. THE number of edges of a graph to graph.N (which is later used for bounds checking)
+         -- does not seems to depend on backend
+         [util.initParameters(`pd.parameters,problemSpec,params_,true)]
 
-       var [parametersSym] = &pd.parameters
-       escape
-           -- TODO QUES what does all this cusparse stuff actually do?
-           if initialization_parameters.use_cusparse then -- This block only makes sense for cuda backend
-               emit quote
-                        if pd.J_csrValA == nil then
-                            cd(CUsp.cusparseCreateMatDescr( &pd.desc ))
-                            cd(CUsp.cusparseSetMatType( pd.desc,CUsp.CUSPARSE_MATRIX_TYPE_GENERAL ))
-                            cd(CUsp.cusparseSetMatIndexBase( pd.desc,CUsp.CUSPARSE_INDEX_BASE_ZERO ))
-                            cd(CUsp.cusparseCreate( &pd.handle ))
-                             
-                            logSolver("nnz = %s\n",[tostring(nnzExp)])
-                            logSolver("nResiduals = %s\n",[tostring(nResidualsExp)])
-                            logSolver("nnz = %d, nResiduals = %d\n",int(nnzExp),int(nResidualsExp))
-                             
-                            -- J alloc
-                            C.cudaMalloc([&&opaque](&(pd.J_csrValA)), sizeof(opt_float)*nnzExp)
-                            C.cudaMalloc([&&opaque](&(pd.J_csrColIndA)), sizeof(int)*nnzExp)
-                            C.cudaMemset(pd.J_csrColIndA,-1,sizeof(int)*nnzExp)
-                            C.cudaMalloc([&&opaque](&(pd.J_csrRowPtrA)), sizeof(int)*(nResidualsExp+1))
-                             
-                            -- J^T alloc
-                            C.cudaMalloc([&&opaque](&pd.JT_csrValA), nnzExp*sizeof(float))
-                            C.cudaMalloc([&&opaque](&pd.JT_csrColIndA), nnzExp*sizeof(int))
-                            C.cudaMalloc([&&opaque](&pd.JT_csrRowPtrA), (nUnknowns + 1) *sizeof(int))
-                             
-                            -- Jp alloc
-                            cd(C.cudaMalloc([&&opaque](&pd.Jp), nResidualsExp*sizeof(float)))
-                             
-                            -- write J_csrRowPtrA end
-                            var nnz = nnzExp
-                            C.printf("setting rowptr[%d] = %d\n",nResidualsExp,nnz)
-                            cd(C.cudaMemcpy(&pd.J_csrRowPtrA[nResidualsExp],&nnz,sizeof(int),C.cudaMemcpyHostToDevice))
-                        end 
-                    end 
-               end
-           end
+         var [parametersSym] = &pd.parameters
+         escape
+             -- TODO QUES what does all this cusparse stuff actually do?
+             if initialization_parameters.use_cusparse then -- This block only makes sense for cuda backend
+                 emit quote
+                          if pd.J_csrValA == nil then
+                              cd(CUsp.cusparseCreateMatDescr( &pd.desc ))
+                              cd(CUsp.cusparseSetMatType( pd.desc,CUsp.CUSPARSE_MATRIX_TYPE_GENERAL ))
+                              cd(CUsp.cusparseSetMatIndexBase( pd.desc,CUsp.CUSPARSE_INDEX_BASE_ZERO ))
+                              cd(CUsp.cusparseCreate( &pd.handle ))
+                               
+                              logSolver("nnz = %s\n",[tostring(nnzExp)])
+                              logSolver("nResiduals = %s\n",[tostring(nResidualsExp)])
+                              logSolver("nnz = %d, nResiduals = %d\n",int(nnzExp),int(nResidualsExp))
+                               
+                              -- J alloc
+                              C.cudaMalloc([&&opaque](&(pd.J_csrValA)), sizeof(opt_float)*nnzExp)
+                              C.cudaMalloc([&&opaque](&(pd.J_csrColIndA)), sizeof(int)*nnzExp)
+                              C.cudaMemset(pd.J_csrColIndA,-1,sizeof(int)*nnzExp)
+                              C.cudaMalloc([&&opaque](&(pd.J_csrRowPtrA)), sizeof(int)*(nResidualsExp+1))
+                               
+                              -- J^T alloc
+                              C.cudaMalloc([&&opaque](&pd.JT_csrValA), nnzExp*sizeof(float))
+                              C.cudaMalloc([&&opaque](&pd.JT_csrColIndA), nnzExp*sizeof(int))
+                              C.cudaMalloc([&&opaque](&pd.JT_csrRowPtrA), (nUnknowns + 1) *sizeof(int))
+                               
+                              -- Jp alloc
+                              cd(C.cudaMalloc([&&opaque](&pd.Jp), nResidualsExp*sizeof(float)))
+                               
+                              -- write J_csrRowPtrA end
+                              var nnz = nnzExp
+                              C.printf("setting rowptr[%d] = %d\n",nResidualsExp,nnz)
+                              cd(C.cudaMemcpy(&pd.J_csrRowPtrA[nResidualsExp],&nnz,sizeof(int),C.cudaMemcpyHostToDevice))
+                          end 
+                      end 
+                 end
+             end
 
-       pd.solverparameters.nIter = 0
-       escape 
-           if problemSpec:UsesLambda() then
-               emit quote 
-                        pd.parameters.trust_region_radius       = pd.solverparameters.trust_region_radius
-                        pd.parameters.radius_decrease_factor    = pd.solverparameters.radius_decrease_factor
-                        pd.parameters.min_lm_diagonal           = pd.solverparameters.min_lm_diagonal
-                        pd.parameters.max_lm_diagonal           = pd.solverparameters.max_lm_diagonal
-                    end
-              end 
-           end
+         pd.solverparameters.nIter = 0
+         escape 
+             if problemSpec:UsesLambda() then
+                 emit quote 
+                          pd.parameters.trust_region_radius       = pd.solverparameters.trust_region_radius
+                          pd.parameters.radius_decrease_factor    = pd.solverparameters.radius_decrease_factor
+                          pd.parameters.min_lm_diagonal           = pd.solverparameters.min_lm_diagonal
+                          pd.parameters.max_lm_diagonal           = pd.solverparameters.max_lm_diagonal
+                      end
+                end 
+             end
        gpu.precompute(pd)
-       pd.prevCost = computeCost(pd)
+       pd.prevCost = computeCost(pd) -- <-- segfault in THIS line
     end
     print(init)
 
@@ -1395,7 +1411,10 @@ return function(problemSpec)
     local terra makePlan() : &opt.Plan
             var pd = PlanData.alloc() -- this seems to be sort-of like a constructor call of the "PlanData" class
             pd.plan.data = pd
-            pd.plan.init ,pd.plan.step, pd.plan.cost, pd.plan.setsolverparameter = init, step, cost, setSolverParameter
+            pd.plan.init = init
+            pd.plan.step = step
+            pd.plan.cost = cost
+            pd.plan.setsolverparameter = setSolverParameter
             pd.delta:initGPU()
             pd.r:initGPU()
             pd.b:initGPU()
@@ -1413,18 +1432,18 @@ return function(problemSpec)
             
             [util.initPrecomputedImages(`pd.parameters,problemSpec)]	
             -- C.cudaMalloc([&&opaque](&(pd.scanAlphaNumerator)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scanAlphaNumerator), sizeof(opt_float))
+            backend.allocateDevice(&(pd.scanAlphaNumerator), sizeof(opt_float), opt_float)
             -- C.cudaMalloc([&&opaque](&(pd.scanBetaNumerator)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scanBetaNumerator), sizeof(opt_float))
+            backend.allocateDevice(&(pd.scanBetaNumerator), sizeof(opt_float), opt_float)
             -- C.cudaMalloc([&&opaque](&(pd.scanAlphaDenominator)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scanAlphaDenominator), sizeof(opt_float))
+            backend.allocateDevice(&(pd.scanAlphaDenominator), sizeof(opt_float), opt_float)
             -- C.cudaMalloc([&&opaque](&(pd.modelCost)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.modelCost), sizeof(opt_float))
+            backend.allocateDevice(&(pd.modelCost), sizeof(opt_float), opt_float)
             
             -- C.cudaMalloc([&&opaque](&(pd.scratch)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scratch), sizeof(opt_float))
+            backend.allocateDevice(&(pd.scratch), sizeof(opt_float), opt_float)
             -- C.cudaMalloc([&&opaque](&(pd.q)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.q), sizeof(opt_float))
+            backend.allocateDevice(&(pd.q), sizeof(opt_float), opt_float)
 
             pd.J_csrValA = nil
             pd.JTJ_csrRowPtrA = nil
