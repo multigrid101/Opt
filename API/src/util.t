@@ -635,7 +635,13 @@ util.initParameters = function(self, ProblemSpec, params, isInit)
                 for i,e in ipairs(entry.type.metamethods.elements) do
                     graphinits:insert( `[&e.type](params[e.idx]) )
                 end
+
+                print("\nInside util.initParameters: the graphinit quotes")
+                for k,v in pairs(graphinits) do print(k,v) end -- debug
+
                 rhs = `entry.type { graphinits }
+                print("\nInside util.initParameters: the entry.type")
+                for k,v in pairs(entry.type.entries[3]) do print(k,v) end
             elseif entry.kind == "ScalarParam" and entry.idx >= 0 then
                 rhs = `@[&entry.type](params[entry.idx])
             end
@@ -656,12 +662,14 @@ end
 util.initPrecomputedImages = function(self, ProblemSpec)
     local stmts = terralib.newlist()
 	for _, entry in ipairs(ProblemSpec.parameters) do
-		if entry.kind == "ImageParam" and entry.idx == "alloc" then
-            stmts:insert quote
+        -- print(entry)
+          if entry.kind == "ImageParam" and entry.idx == "alloc" then
+          stmts:insert quote
     		    self.[entry.name]:initGPU()
     		end
     	end
     end
+    -- error()
     return stmts
 end
 

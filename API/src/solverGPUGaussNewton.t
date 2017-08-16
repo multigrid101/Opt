@@ -83,13 +83,13 @@ if initialization_parameters.use_cusparse then
 end
 
 
-local gpuMath = util.gpuMath
--- local gpuMath
--- if backend.name == 'CUDA' then
---   gpuMath = util.gpuMath
--- else
---   gpuMath = util.cpuMath
--- end
+-- local gpuMath = util.gpuMath
+local gpuMath
+if backend.name == 'CUDA' then
+  gpuMath = util.gpuMath
+else
+  gpuMath = util.cpuMath
+end
   
 
 
@@ -613,12 +613,103 @@ return function(problemSpec)
             end
         end 
 
+            -- print(fmap.cost)
+            -- error()
+-- local float_3 = util.Vector(float,3)
+-- local pow2
+-- terra fmap.cost(idx : Index,P : problemSpec:ParameterType()) : float
+--   var midx : Index = idx
+--   var r2 : float_3
+--   var r3 : float
+--   var r4 : bool
+--   var r5 : float
+--   var r6 : float
+--   var r7 : float
+--   var r8 : float_3
+--   var r9 : float
+--   var r10 : float
+--   var r11 : float
+--   var r12 : float
+--   var r13 : float
+--   var r14 : float
+--   var r15 : float
+--   var r16 : float
+--   var r17 : float
+--   var r18 : float
+--   var r19 : float
+--   var r20 : float
+--   var r21 : float
+--   var r22 : float
+--   var r23 : float
+--   var r24 : float
+--   var r25 : float
+--   var r30 : float
+
+--   -- var Constraints_0 : float_3 = Image.metamethods.__apply(&P.Constraints, Index.metamethods.__apply(&midx, 0))
+--             -- C.printf('inside cost()\n')
+--   var Constraints_0 : float_3 = P.Constraints(midx(0))
+
+--   r2 = Constraints_0
+--   r3 = [&float](r2.data)[0]
+--   r4 = r3 >= [float](-999999.9)
+--   r5 = [float](0)
+
+--   if r4 then
+--     r6 = [&float](r2.data)[2]
+--     r7 = [float](-1) * r6
+--     -- var Offset_0 : float_3 = Image.metamethods.__apply(&P.X.Offset, Index.metamethods.__apply(&midx, 0))
+--     var Offset_0 : float_3 = P.X.Offset(midx(0))
+--     r8 = Offset_0
+--     r9 = [&float](r8.data)[2]
+--     r10 = [float](0) + r9 + r7
+--     r11 = [&float](r2.data)[1]
+--     r12 = [float](-1) * r11
+--     r13 = [&float](r8.data)[1]
+--     r14 = [float](0) + r13 + r12
+--     r15 = [float](-1) * r3
+--     r16 = [&float](r8.data)[0]
+--     r17 = [float](0) + r16 + r15
+--     -- r18 = pow2(r10)
+--     r18 = r10*r10
+--     r19 = P.w_fitSqrt
+--     -- r20 = pow2(r19)
+--     r20 = r19*r19
+--     -- r21 = pow2(r14)
+--     r21 = r14*r14
+--     -- r22 = pow2(r17)
+--     r22 = r17*r17
+--     r23 = [float](1) * r20 * r18
+--     r24 = [float](1) * r20 * r21
+--     r25 = [float](1) * r20 * r22
+--     r5 = r5 + r23
+--     r5 = r5 + r24
+--     r5 = r5 + r25
+--   end
+
+--   r30 = [float](0.5 * [double](r5))
+--   -- C.printf('r30: %f', r30)
+
+--   return r30
+--   -- return 0.0
+-- end
+
         terra kernels.computeCost(pd : PlanData, [kernelArglist])
             var cost : opt_float = opt_float(0.0f)
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+                -- C.printf('test\n')
+                -- C.printf('idx: %d\n', idx.d0)
+                -- C.printf('testbla idx: %d\n', idx.d0)
+                -- var x = pd.parameters.Constraints(idx)
+                -- var y = pd.parameters.X.Offset(idx)
+                -- C.printf('constr: %f\n',(x.data)[0])
+                -- C.printf('offset: %f\n',(y.data)[0])
+                -- C.printf('testbla\n')
                 var params = pd.parameters
                 cost = fmap.cost(idx, params)
+                -- C.printf('cost: %f\n', cost)
+                -- cost = 0.0
+                -- C.printf('test\n')
             end
 
             cost = util.warpReduce(cost)
@@ -844,6 +935,8 @@ return function(problemSpec)
         --         util.atomicAdd(pd.scratch, cost)
         --     end
         -- end
+        print(fmap.cost)
+        -- error()
         terra kernels.computeCost_Graph(pd : PlanData, [kernelArglist])
             var cost : opt_float = opt_float(0.0f)
             -- var tIdx = 0
@@ -1176,6 +1269,7 @@ return function(problemSpec)
        pd.prevCost = computeCost(pd) -- <-- segfault in THIS line
     end
     print(init)
+    -- error()
 
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra cleanup(pd : &PlanData)
@@ -1450,6 +1544,8 @@ return function(problemSpec)
 
             return &pd.plan
     end
+    -- print(makePlan)
+    -- error()
 
     return makePlan
 

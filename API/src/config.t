@@ -9,6 +9,7 @@ c.verboseAD = false
 
 c.backend = 'backend_cuda'
 -- c.backend = 'backend_cpu'
+-- c.backend = 'backend_cpu_mt'
 
 c.use_contiguous_allocation = false
 c.use_bindless_texture = true

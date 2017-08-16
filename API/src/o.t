@@ -669,10 +669,15 @@ function ImageType:terratype()
         end
     else    -- QUES seems to use "linear" index of idx
         terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
-            return self.data[idx:tooffset()]
+            -- C.printf('inside __apply: before loading (offset is): %d\n', idx:tooffset())
+            var r = self.data[idx:tooffset()]
+            -- C.printf('inside __apply: after loading\n')
+            return r
         end
     end
     -- Image.metamethods.__apply() END
+    print(Image.metamethods.__apply)
+    -- error()
 
     -- writes
     -- Image.metamethods.__upate() START
@@ -748,15 +753,19 @@ function ImageType:terratype()
     else
         terra Image:setGPUptr(ptr : &uint8) self.data = [&vectortype](ptr) end
     end
+    print(Image.methods.setGPUptr)
+    -- error()
     -- setGPUptr END
 
     terra Image:initFromGPUptr( ptr : &uint8 )
         self.data = nil
+        -- C.printf('address before: %d\n', self.data)
         self:setGPUptr(ptr) -- short explanation: sets self.data = ptr
+        -- C.printf('%d\n', (self.data)[12])
+        -- C.printf('address after: %d\n', self.data)
     end
 
     -- initGPU() START
-    print('ASDFASDFASDF1')
     terra Image:initGPU()
         var data : &uint8
         -- cd(C.cudaMalloc([&&opaque](&data), self:totalbytes()))
@@ -765,7 +774,6 @@ function ImageType:terratype()
         cd( backend.memsetDevice(data, 0, self:totalbytes()) )
         self:initFromGPUptr(data) -- (short explanataion): set self.data = data (and cast to appropriate ptr-type)
     end
-    print('ASDFASDFASDF2')
     print(Image.methods.initGPU)
     -- terra Image:initGPU()
     --         self.data = [&vectortype](C.malloc(self:totalbytes()))
@@ -1000,7 +1008,8 @@ function ProblemSpec:Graph(name, ispace, ...)
         GraphType.entries:insert {name, &Index}
         mm.elements:insert( { name = name, type = Index, idx = assert(tonumber(didx))} )
     end
-    -- 999 below is just a dummy argument
+
+    -- TODO IMPORTANT> need to make the 6 below more general (really???)
     self:newparameter(GraphParam(GraphType, toispace(ispace),name,6))
 end
 
@@ -2964,11 +2973,11 @@ terra opt.PlanFree(plan : &opt.Plan)
 end
 
 terra opt.ProblemInit(plan : &opt.Plan, params : &&opaque) 
-    -- C.printf('doing init\n')
+    C.printf('doing init\n')
     return plan.init(plan.data, params)
 end
 terra opt.ProblemStep(plan : &opt.Plan, params : &&opaque) : int
-    -- C.printf('doing a step\n')
+    C.printf('doing a step\n')
     return plan.step(plan.data, params) -- this seems to be the 'step' function defined in solverGPUGaussNewton.t
 end
 terra opt.ProblemSolve(plan : &opt.Plan, params : &&opaque)
