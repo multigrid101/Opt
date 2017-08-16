@@ -70,6 +70,7 @@ public:
 
     }
 
+    // wrapper around addSolver() that automatically chooses GN or LM solver, depending on the solverParameters
     void addOptSolvers(std::vector<unsigned int> dims, std::string problemFilename, bool doublePrecision = false) {
         if (m_combinedSolverParameters.useOpt) {
             addSolver(std::make_shared<OptSolver>(dims, problemFilename, "gaussNewtonGPU", doublePrecision), "Opt(GN)", true);
@@ -120,6 +121,8 @@ protected:
     // Set to true in preNonlinearSolve or postNonlinearSolve to finish the solve before the specified number of iterations
     bool m_endSolveEarly = false;
     NamedParameters m_solverParams;
+
     NamedParameters m_problemParams;
+
     CombinedSolverParameters m_combinedSolverParameters;
 };

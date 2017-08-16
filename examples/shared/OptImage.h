@@ -47,7 +47,7 @@ public:
     }
 
     void update(void* newData, size_t byteCount, Location srcLoc) {
-        cudaSafeCall(cudaMemcpy(data(), newData, byteCount, cudaMemcpyType(location(), srcLoc)));
+        cudaSafeCall(cudaMemcpy(data(), newData, byteCount, cudaMemcpyType(m_location, srcLoc)));
     }
 
     template<typename T>

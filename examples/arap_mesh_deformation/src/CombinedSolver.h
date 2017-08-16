@@ -17,7 +17,7 @@
 class CombinedSolver : public CombinedSolverBase
 {
 	public:
-        CombinedSolver(const SimpleMesh* mesh, std::vector<int> constraintsIdx, std::vector<std::vector<float>> constraintsTarget, CombinedSolverParameters params, float weightFit, float weightReg) :
+        CombinedSolver(const SimpleMesh* mesh, std::vector<int> constraintsIdx, std::vector<std::vector<float>> constraintsTarget, CombinedSolverParameters params, float weightFit, float weightReg, OptImage::Location location) :
             m_constraintsIdx(constraintsIdx), m_constraintsTarget(constraintsTarget)
 		{
             m_weightFitSqrt = sqrtf(weightFit);
@@ -25,19 +25,20 @@ class CombinedSolver : public CombinedSolverBase
 			m_result = *mesh;
 			m_initial = m_result;
             m_combinedSolverParameters = params;
+            m_location = location;
 
 			unsigned int N = (unsigned int)mesh->n_vertices();
 			unsigned int numedges = (unsigned int)mesh->n_edges(); // by SO
 
             /* m_dims = { N }; */ //original
             m_dims = { N, numedges }; //by SO
-            m_vertexPosFloat3           = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
-            m_anglesFloat3              = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
-            m_vertexPosFloat3Urshape    = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
-            m_vertexPosTargetFloat3     = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
+            m_vertexPosFloat3           = createEmptyOptImage({m_dims[0]}, OptImage::Type::FLOAT, 3, location, true);
+            m_anglesFloat3              = createEmptyOptImage({m_dims[0]}, OptImage::Type::FLOAT, 3, location, true);
+            m_vertexPosFloat3Urshape    = createEmptyOptImage({m_dims[0]}, OptImage::Type::FLOAT, 3, location, true);
+            m_vertexPosTargetFloat3     = createEmptyOptImage({m_dims[0]}, OptImage::Type::FLOAT, 3, location, true);
 
             initializeConnectivity();
-			resetGPUMemory();
+            resetGPUMemory();
             
             addSolver(std::make_shared<CUDAWarpingSolver>(N, d_numNeighbours, d_neighbourIdx, d_neighbourOffset), "CUDA", m_combinedSolverParameters.useCUDA);
             addSolver(std::make_shared<CeresSolver>(m_dims, &m_initial), "Ceres", m_combinedSolverParameters.useCeres);
@@ -128,7 +129,7 @@ class CombinedSolver : public CombinedSolverBase
 
                 count++;
             }
-            m_graph = createGraphFromNeighborLists(h_neighbourIdx, h_neighbourOffset);
+            m_graph = createGraphFromNeighborLists(h_neighbourIdx, h_neighbourOffset, m_location); // m_graph holds gpu pointers AND cpu pointers
 
 
 
@@ -180,7 +181,7 @@ class CombinedSolver : public CombinedSolverBase
 		{
 			unsigned int N = (unsigned int)m_result.n_vertices();
 			std::vector<float3> h_vertexPosFloat3(N);
-            m_vertexPosFloat3->copyTo(h_vertexPosFloat3);
+                        m_vertexPosFloat3->copyTo(h_vertexPosFloat3);
 			for (unsigned int i = 0; i < N; i++)
 			{
 				m_result.set_point(VertexHandle(i), Vec3f(h_vertexPosFloat3[i].x, h_vertexPosFloat3[i].y, h_vertexPosFloat3[i].z));
@@ -191,17 +192,19 @@ class CombinedSolver : public CombinedSolverBase
 
 		SimpleMesh m_result;
 		SimpleMesh m_initial;
+                
+                OptImage::Location m_location;
 
-        float m_weightFitSqrt;
-        float m_weightRegSqrt;
+                float m_weightFitSqrt;
+                float m_weightRegSqrt;
 
-        std::vector<unsigned int> m_dims;
-	
-        std::shared_ptr<OptImage> m_vertexPosFloat3Urshape;
-        std::shared_ptr<OptImage> m_vertexPosFloat3;
-        std::shared_ptr<OptImage> m_vertexPosTargetFloat3;
-        std::shared_ptr<OptImage> m_anglesFloat3;
-        std::shared_ptr<OptGraph> m_graph;
+                std::vector<unsigned int> m_dims;
+                
+                std::shared_ptr<OptImage> m_vertexPosFloat3Urshape;
+                std::shared_ptr<OptImage> m_vertexPosFloat3;
+                std::shared_ptr<OptImage> m_vertexPosTargetFloat3;
+                std::shared_ptr<OptImage> m_anglesFloat3;
+                std::shared_ptr<OptGraph> m_graph;
 
 		int*	d_numNeighbours;
 		int*	d_neighbourIdx;
