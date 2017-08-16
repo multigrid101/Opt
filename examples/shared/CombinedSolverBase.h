@@ -106,7 +106,7 @@ protected:
         }
         else {
             for (int i = 0; i < (int)m_combinedSolverParameters.numIter; ++i) {
-                std::cout << "//////////// ITERATION" << i << "  (" << s.name << ") ///////////////" << std::endl;
+                std::cout << "//////////// ITERATION " << i << "  (" << s.name << ") ///////////////" << std::endl;
                 preNonlinearSolve(i);
                 s.solver->solve(m_solverParams, m_problemParams, m_combinedSolverParameters.profileSolve, s.iterationInfo);
                 postNonlinearSolve(i);
