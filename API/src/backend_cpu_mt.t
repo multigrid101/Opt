@@ -24,6 +24,7 @@ b.numthreads = numthreads
 b.summutex_sym = global(C.pthread_mutex_t, nil,  'summutex')
 
 b.threadarg = symbol(int, 'thread_id')
+b.threadarg_val = b.threadarg -- need second variable to provide default arguments for other backends
 
 if c.opt_float == float then
 
@@ -206,47 +207,75 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         C.pthread_mutex_init(&[b.summutex_sym], nil)
 
 
-        var tdata1 : thread_data
-        var tdata2 : thread_data
+        -- var tdata1 : thread_data
+        -- var tdata2 : thread_data
 
-        var t1 : C.pthread_t
-        var t2 : C.pthread_t
+        var tdatas : thread_data[numthreads]
+
+        -- var t1 : C.pthread_t
+        -- var t2 : C.pthread_t
+
+        var threads : C.pthread_t[numthreads]
 
         -- TODO this is not the correct way to split up the work, will only work for one dimension.
+        -- TODO balance workload more evenly (if necessary)
         escape
             -- outermost dimension is split among threads
             local dimsize = ispace.dims[1].size
             emit quote
-              tdata1.kmin[ 0 ] = 0
-              tdata1.kmax[ 0 ] = dimsize/2
+              -- tdata1.kmin[ 0 ] = 0
+              -- tdata1.kmax[ 0 ] = dimsize/2
 
-              tdata2.kmin[ 0 ] = dimsize/2
-              tdata2.kmax[ 0 ] = dimsize
+              -- tdata2.kmin[ 0 ] = dimsize/2
+              -- tdata2.kmax[ 0 ] = dimsize
+              for k = 0,numthreads-1 do -- last thread needs to be set manually due to roundoff error
+                tdatas[k].kmin[ 0 ] = k*(dimsize/numthreads)
+                tdatas[k].kmax[ 0 ] = (k+1)*(dimsize/numthreads)
+              end
+
+              tdatas[numthreads-1].kmin[ 0 ] = (numthreads-1)*(dimsize/numthreads)
+              tdatas[numthreads-1].kmax[ 0 ] = dimsize
             end
 
           -- all other dimensions traverse everything
           for d = 2,numdims do
             local dimsize = ispace.dims[d].size
             emit quote
-              tdata1.kmin[ [d-1] ] = 0
-              tdata1.kmax[ [d-1] ] = dimsize
+              for k = 0,numthreads do
+                -- tdata1.kmin[ [d-1] ] = 0
+                -- tdata1.kmax[ [d-1] ] = dimsize
 
-              tdata2.kmin[ [d-1] ] = 0
-              tdata2.kmax[ [d-1] ] = dimsize
+                -- tdata2.kmin[ [d-1] ] = 0
+                -- tdata2.kmax[ [d-1] ] = dimsize
+                tdatas[k].kmin[ [d-1] ] = 0
+                tdatas[k].kmax[ [d-1] ] = dimsize
+              end
             end
           end
         end
-        tdata1.pd = pd
-        tdata2.pd = pd
 
-        tdata1.tid = 1
-        tdata2.tid = 2
+        -- tdata1.pd = pd
+        -- tdata2.pd = pd
 
-        C.pthread_create(&t1, nil, threadLauncher, &tdata1)
-        C.pthread_create(&t2, nil, threadLauncher, &tdata2)
+        -- tdata1.tid = 1
+        -- tdata2.tid = 2
+        for k = 0,numthreads do
+          tdatas[k].pd = pd
+          tdatas[k].tid = k+1
+        end
 
-        C.pthread_join(t1, nil)
-        C.pthread_join(t2, nil)
+        -- C.pthread_create(&t1, nil, threadLauncher, &tdata1)
+        -- C.pthread_create(&t2, nil, threadLauncher, &tdata2)
+        for k = 0,numthreads do
+          C.pthread_create(&threads[k], nil, threadLauncher, &tdatas[k])
+        end
+        
+
+        -- C.pthread_join(t1, nil)
+        -- C.pthread_join(t2, nil)
+        for k = 0,numthreads do
+          C.pthread_join(threads[k], nil)
+        end
 
 
     end

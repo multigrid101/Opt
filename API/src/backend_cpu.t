@@ -15,6 +15,7 @@ b.name = 'CPU'
 b.numthreads = 1 -- DO NOT CHANGE THIS
 
 b.threadarg = {}
+b.threadarg_val = 1
 
 -- atomicAdd START
 if c.opt_float == float then

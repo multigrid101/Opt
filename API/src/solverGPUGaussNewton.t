@@ -434,7 +434,7 @@ return function(problemSpec)
                 pd.preconditioner(idx) = pre
             end 
             if not isGraph then
-                unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg] ]))
+                unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg_val] ]))
             end
         end
         
@@ -457,7 +457,7 @@ return function(problemSpec)
                 d = residuum:dot(p)
             end
 
-            unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg] ]))
+            unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg_val] ]))
         end
 
         terra kernels.PCGStep1(pd : PlanData, [kernelArglist], [backend.threadarg])
@@ -471,7 +471,7 @@ return function(problemSpec)
                 d = pd.p(idx):dot(tmp)			 -- x-th term of denominator of alpha
             end
             if not [multistep_alphaDenominator_compute] then
-                unknownWideReduction(idx,d,&(pd.scanAlphaDenominator[ [backend.threadarg] ]))
+                unknownWideReduction(idx,d,&(pd.scanAlphaDenominator[ [backend.threadarg_val] ]))
             end
         end
 
@@ -482,7 +482,7 @@ return function(problemSpec)
                 if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                     d = pd.p(idx):dot(pd.Ap_X(idx))           -- x-th term of denominator of alpha
                 end
-                unknownWideReduction(idx,d,&(pd.scanAlphaDenominator[ [backend.threadarg] ]))
+                unknownWideReduction(idx,d,&(pd.scanAlphaDenominator[ [backend.threadarg_val] ]))
             end
         end
 
@@ -495,8 +495,17 @@ return function(problemSpec)
                 -- TODO generalize for multithreading
                 -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
                 -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
-                var alphaDenominator : opt_float = pd.scanAlphaDenominator[1] + pd.scanAlphaDenominator[2]
-                var alphaNumerator : opt_float = pd.scanAlphaNumerator[1] + pd.scanAlphaNumerator[2]
+                -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[1] + pd.scanAlphaDenominator[2]
+                -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[1] + pd.scanAlphaNumerator[2]
+                var alphaDenominator : opt_float = 0.0
+                for k = 1,backend.numthreads+1 do
+                  alphaDenominator = alphaDenominator + pd.scanAlphaDenominator[k]
+                end
+                var alphaNumerator : opt_float = 0.0
+                for k = 1,backend.numthreads+1 do
+                  alphaNumerator = alphaNumerator + pd.scanAlphaNumerator[k]
+                end
+
 
                 -- update step size alpha
                 var alpha = opt_float(0.0f)
@@ -526,9 +535,9 @@ return function(problemSpec)
                 end
             end
             
-            unknownWideReduction(idx,betaNum,&(pd.scanBetaNumerator[ [backend.threadarg ] ]))
+            unknownWideReduction(idx,betaNum,&(pd.scanBetaNumerator[ [backend.threadarg_val] ]))
             if [problemSpec:UsesLambda()] then
-                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg] ]))
+                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg_val] ]))
             end
         end
 
@@ -538,8 +547,14 @@ return function(problemSpec)
             -- TODO generalize for multithreading
                 -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
                 -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
-                var alphaDenominator : opt_float = pd.scanAlphaDenominator[1] + pd.scanAlphaDenominator[2]
-                var alphaNumerator : opt_float = pd.scanAlphaNumerator[1] + pd.scanAlphaDenominator[2]
+                var alphaDenominator : opt_float = 0.0
+                for k = 1,backend.numthreads+1 do
+                  alphaDenominator = alphaDenominator + pd.scanAlphaDenominator[k]
+                end
+                var alphaNumerator : opt_float = 0.0
+                for k = 1,backend.numthreads+1 do
+                  alphaNumerator = alphaNumerator + pd.scanAlphaNumerator[k]
+                end
 
 
                 -- update step size alpha
@@ -573,9 +588,9 @@ return function(problemSpec)
                     q = 0.5*(pd.delta(idx):dot(r + b)) 
                 end
             end
-            unknownWideReduction(idx,betaNum,&(pd.scanBetaNumerator[ [backend.threadarg] ])) 
+            unknownWideReduction(idx,betaNum,&(pd.scanBetaNumerator[ [backend.threadarg_val] ])) 
             if [problemSpec:UsesLambda()] then
-                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg] ]))
+                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg_val] ]))
             end
         end
 
@@ -587,8 +602,14 @@ return function(problemSpec)
                 -- TODO generalize for multithreading
                 -- var rDotzNew : opt_float = pd.scanBetaNumerator[0]	-- get new numerator
                 -- var rDotzOld : opt_float = pd.scanAlphaNumerator[0]	-- get old denominator
-                var rDotzNew : opt_float = pd.scanBetaNumerator[1] + pd.scanBetaNumerator[2]	-- get new numerator
-                var rDotzOld : opt_float = pd.scanAlphaNumerator[1] + pd.scanAlphaNumerator[2]	-- get old denominator
+                var rDotzNew : opt_float = 0.0
+                for k = 1,backend.numthreads+1 do
+                  rDotzNew = rDotzNew + pd.scanBetaNumerator[k]
+                end
+                var rDotzOld : opt_float = 0.0
+                for k = 1,backend.numthreads+1 do
+                  rDotzOld = rDotzOld + pd.scanAlphaNumerator[k]
+                end
 
                 var beta : opt_float = opt_float(0.0f)
                 beta = rDotzNew/rDotzOld
@@ -725,7 +746,7 @@ return function(problemSpec)
 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
-                util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg] ]), cost)
+                util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg_val] ]), cost)
             end
         end
         print(kernels.computeCost)
@@ -801,8 +822,8 @@ return function(problemSpec)
                     --  so after the dot product, just need to multiply by 2 to recover value identical to CERES  
                     q = 0.5*(pd.delta(idx):dot(residuum + residuum)) 
                 end    
-                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg] ]), [backend.threadarg])
-                unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg] ]))
+                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg_val] ]))
+                unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg_val] ]))
             end
 
             terra kernels.computeModelCost(pd : PlanData, [kernelArglist], [backend.threadarg])            
@@ -815,7 +836,7 @@ return function(problemSpec)
 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
-                    util.atomicAdd_nosync(&(pd.modelCost[ [backend.threadarg] ]), cost)
+                    util.atomicAdd_nosync(&(pd.modelCost[ [backend.threadarg_val] ]), cost)
                 end
             end
 
@@ -922,7 +943,7 @@ return function(problemSpec)
             if not [multistep_alphaDenominator_compute] then
                 d = util.warpReduce(d)
                 if (util.laneid() == 0) then
-                    util.atomicAdd_nosync(&(pd.scanAlphaDenominator[ [backend.threadarg] ]), d)
+                    util.atomicAdd_nosync(&(pd.scanAlphaDenominator[ [backend.threadarg_val] ]), d)
                 end
             end
         end
@@ -962,7 +983,7 @@ return function(problemSpec)
             end 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
-                util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg] ]), cost)
+                util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg_val] ]), cost)
             end
         end
 
@@ -1003,7 +1024,7 @@ return function(problemSpec)
                 end 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
-                    util.atomicAdd_nosync(&(pd.modelCost[ [backend.threadarg] ]), cost)
+                    util.atomicAdd_nosync(&(pd.modelCost[ [backend.threadarg_val] ]), cost)
                 end
             end
         end
@@ -1057,7 +1078,10 @@ return function(problemSpec)
         var f : opt_float[(backend.numthreads+1)]
         -- C.cudaMemcpy(&f, pd.scratch, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
         backend.memcpyDevice2Host(&f, pd.scratch, sizeof(opt_float) * (backend.numthreads+1))
-        f[0] = f[1] + f[2]
+        f[0] = 0.0
+        for k = 1,backend.numthreads+1 do
+          f[0] = f[0] + f[k]
+        end
         return f[0]
     end
 
@@ -1069,7 +1093,10 @@ return function(problemSpec)
         var f : opt_float[(backend.numthreads+1)]
         -- C.cudaMemcpy(&f, pd.modelCost, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
         backend.memcpyDevice2Host(&f, pd.modelCost, sizeof(opt_float) * (backend.numthreads+1))
-        f[0] = f[1] + f[2]
+        f[0] = 0.0
+        for k = 1,backend.numthreads+1 do
+          f[0] = f[0] + f[k]
+        end
         return f[0]
     end
 
@@ -1079,7 +1106,10 @@ return function(problemSpec)
         var f : opt_float[(backend.numthreads+1)]
         -- C.cudaMemcpy(&f, pd.q, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
         backend.memcpyDevice2Host(&f, pd.q, sizeof(opt_float) * (backend.numthreads+1))
-        f[0] = f[1] + f[2]
+        f[0] = 0.0
+        for k = 1,backend.numthreads+1 do
+          f[0] = f[0] + f[k]
+        end
         return f[0]
     end
 
