@@ -880,6 +880,8 @@ return function(problemSpec)
                 fmap.evalJTF(tIdx.d0, pd.parameters, pd.r, pd.preconditioner)
             end
         end    
+        print(fmap.evalJTF)
+        -- error()
 
         -- FOR COMPARISON WITH GRAPH VERSION
         -- terra kernels.PCGStep1(pd : PlanData)
