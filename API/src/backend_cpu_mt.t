@@ -15,12 +15,16 @@ local C = terralib.includecstring [[
 b.name = 'CPUMT'
 
 local numthreads = c.numthreads
+b.numthreads = numthreads
 
 -- atomicAdd START
 -- TODO make atomicAdd add into the sum, but make sure to take care of race conditions
 -- OPTION 1: add into directly into global sum
 -- OPTION 2: have each thread add into its own sum. (i.e. have 'sum' as a float[numthreads]) --> more efficient but harder to implement
 b.summutex_sym = global(C.pthread_mutex_t, nil,  'summutex')
+
+b.threadarg = symbol(int, 'thread_id')
+
 if c.opt_float == float then
 
     local terra atomicAdd_sync(sum : &float, value : float)
@@ -33,6 +37,7 @@ if c.opt_float == float then
     end
     b.atomicAdd_nosync = atomicAdd_nosync
     b.atomicAdd_sync = atomicAdd_sync
+    -- b.atomicAdd_sync = atomicAdd_nosync
     -- TODO copy this implementation downwards when finished (or remove duplicates)
 else
     struct ULLDouble {
@@ -68,6 +73,7 @@ else
         end
         b.atomicAdd_nosync = atomicAdd_nosync
         b.atomicAdd_sync = atomicAdd_sync
+    -- b.atomicAdd_sync = atomicAdd_nosync
     else
         local terra atomicAdd_sync(sum : &double, value : double)
           C.pthread_mutex_lock(&[b.summutex_sym])
@@ -79,6 +85,7 @@ else
         end
         b.atomicAdd_nosync = atomicAdd_nosync
         b.atomicAdd_sync = atomicAdd_sync
+    -- b.atomicAdd_sync = atomicAdd_nosync
     end
 end
 -- atomicAdd END
@@ -181,6 +188,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
       kmin : int[numdims],
       kmax : int[numdims],
       pd : &PlanData
+      tid : int -- thread id
     }
 
     local terra threadLauncher(threadarg : &opaque) : &opaque
@@ -188,8 +196,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         var pd = threaddata.pd
         var kmin = threaddata.kmin
         var kmax = threaddata.kmax
+        var tid = threaddata.tid
 
-        compiledKernel(@pd, kmin, kmax)
+        compiledKernel(@pd, kmin, kmax, tid)
     end
 -- 
     local terra GPULauncher(pd : &PlanData)
@@ -230,6 +239,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         tdata1.pd = pd
         tdata2.pd = pd
 
+        tdata1.tid = 1
+        tdata2.tid = 2
+
         C.pthread_create(&t1, nil, threadLauncher, &tdata1)
         C.pthread_create(&t2, nil, threadLauncher, &tdata2)
 
@@ -262,12 +274,15 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
         dimargs:insert(symbol(int, 'x' .. tostring(k-1)))
       end
 
+      local tidsym = symbol(int, 'tid')
+
       local launchquote = quote 
-        kernel([pd_sym], [dimargs])
+        kernel([pd_sym], [dimargs], [tidsym])
       end
 
       local kminsym = symbol(int[numdims], 'kmin')
       local kmaxsym = symbol(int[numdims], 'kmax')
+
 
       local wrappedquote = launchquote
       for k = 1,numdims do
@@ -281,8 +296,15 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
       end
       print(wrappedquote)
 
-      local wrappedfunc = terra([pd_sym], [kminsym], [kmaxsym])
+      local wrappedfunc = terra([pd_sym], [kminsym], [kmaxsym], [tidsym])
         [wrappedquote]
+        -- TODO generalize this to an arbitrary number of threads
+        -- [pd_sym].scratch[0] = [pd_sym].scratch[0] + [pd_sym].scratch[1]
+        -- [pd_sym].modelCost[0] = [pd_sym].modelCost[0] + [pd_sym].modelCost[1]
+        -- [pd_sym].q[0] = [pd_sym].q[0] + [pd_sym].q[1]
+        -- [pd_sym].scanAlphaDenominator[0] = [pd_sym].scanAlphaDenominator[0] + [pd_sym].scanAlphaDenominator[1]
+        -- [pd_sym].scanAlphaNumerator[0] = [pd_sym].scanAlphaNumerator[0] + [pd_sym].scanAlphaNumerator[1]
+        -- [pd_sym].scanBetaNumerator[0] = [pd_sym].scanBetaNumerator[0] + [pd_sym].scanBetaNumerator[1]
       end
       print(wrappedfunc)
       -- error()

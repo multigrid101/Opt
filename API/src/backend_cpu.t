@@ -12,6 +12,9 @@ local C = terralib.includecstring [[
 ]]
 
 b.name = 'CPU'
+b.numthreads = 1 -- DO NOT CHANGE THIS
+
+b.threadarg = {}
 
 -- atomicAdd START
 if c.opt_float == float then

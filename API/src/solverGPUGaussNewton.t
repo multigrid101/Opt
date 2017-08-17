@@ -181,7 +181,7 @@ return function(problemSpec)
         plan : opt.Plan
         parameters : problemSpec:ParameterType()
         solverparameters : SolverParameters
-        scratch : &opt_float
+        scratch : &opt_float -- array has size=numthreads+1, zeroth element is used for the sum
 
         delta : TUnknownType	--current linear update to be computed -> num vars
         r : TUnknownType		--residuals -> num vars	--TODO this needs to be a 'residual type'
@@ -350,7 +350,7 @@ return function(problemSpec)
         local unknownWideReduction = macro(function(idx,val,reductionTarget) return quote -- TODO QUES why does this macro have 'idx' as an argument???
                                                                                         val = util.warpReduce(val)
                                                                                         if (util.laneid() == 0) then                
-                                                                                            util.atomicAdd_sync(reductionTarget, val)
+                                                                                            util.atomicAdd_nosync(reductionTarget, val)
                                                                                         end
                                                                                     end -- end quote from above
         end)
@@ -399,7 +399,7 @@ return function(problemSpec)
             return result
         end
 
-        terra kernels.PCGInit1(pd : PlanData, [kernelArglist])
+        terra kernels.PCGInit1(pd : PlanData, [kernelArglist], [backend.threadarg])
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
         
             var idx : Index
@@ -434,11 +434,11 @@ return function(problemSpec)
                 pd.preconditioner(idx) = pre
             end 
             if not isGraph then
-                unknownWideReduction(idx,d,pd.scanAlphaNumerator)
+                unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg] ]))
             end
         end
         
-        terra kernels.PCGInit1_Finish(pd : PlanData, [kernelArglist])	--only called for graphs (i.e. if graphs are used)
+        terra kernels.PCGInit1_Finish(pd : PlanData, [kernelArglist], [backend.threadarg])	--only called for graphs (i.e. if graphs are used)
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) then
@@ -457,10 +457,10 @@ return function(problemSpec)
                 d = residuum:dot(p)
             end
 
-            unknownWideReduction(idx,d,pd.scanAlphaNumerator)
+            unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg] ]))
         end
 
-        terra kernels.PCGStep1(pd : PlanData, [kernelArglist])
+        terra kernels.PCGStep1(pd : PlanData, [kernelArglist], [backend.threadarg])
             var d : opt_float = opt_float(0.0f)
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
@@ -471,29 +471,32 @@ return function(problemSpec)
                 d = pd.p(idx):dot(tmp)			 -- x-th term of denominator of alpha
             end
             if not [multistep_alphaDenominator_compute] then
-                unknownWideReduction(idx,d,pd.scanAlphaDenominator)
+                unknownWideReduction(idx,d,&(pd.scanAlphaDenominator[ [backend.threadarg] ]))
             end
         end
 
         if multistep_alphaDenominator_compute then
-            terra kernels.PCGStep1_Finish(pd : PlanData, [kernelArglist])
+            terra kernels.PCGStep1_Finish(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var d : opt_float = opt_float(0.0f)
                 var idx : Index
                 if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                     d = pd.p(idx):dot(pd.Ap_X(idx))           -- x-th term of denominator of alpha
                 end
-                unknownWideReduction(idx,d,pd.scanAlphaDenominator)
+                unknownWideReduction(idx,d,&(pd.scanAlphaDenominator[ [backend.threadarg] ]))
             end
         end
 
-        terra kernels.PCGStep2(pd : PlanData, [kernelArglist])
+        terra kernels.PCGStep2(pd : PlanData, [kernelArglist], [backend.threadarg])
             var betaNum = opt_float(0.0f) 
             var q = opt_float(0.0f) -- Only used if LM
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 -- sum over block results to compute denominator of alpha
-                var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
-                var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
+                -- TODO generalize for multithreading
+                -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
+                -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
+                var alphaDenominator : opt_float = pd.scanAlphaDenominator[1] + pd.scanAlphaDenominator[2]
+                var alphaNumerator : opt_float = pd.scanAlphaNumerator[1] + pd.scanAlphaNumerator[2]
 
                 -- update step size alpha
                 var alpha = opt_float(0.0f)
@@ -523,24 +526,29 @@ return function(problemSpec)
                 end
             end
             
-            unknownWideReduction(idx,betaNum,pd.scanBetaNumerator)
+            unknownWideReduction(idx,betaNum,&(pd.scanBetaNumerator[ [backend.threadarg ] ]))
             if [problemSpec:UsesLambda()] then
-                unknownWideReduction(idx,q,pd.q)
+                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg] ]))
             end
         end
 
-        terra kernels.PCGStep2_1stHalf(pd : PlanData, [kernelArglist])
+        terra kernels.PCGStep2_1stHalf(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
-                var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
-                var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
+            -- TODO generalize for multithreading
+                -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
+                -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
+                var alphaDenominator : opt_float = pd.scanAlphaDenominator[1] + pd.scanAlphaDenominator[2]
+                var alphaNumerator : opt_float = pd.scanAlphaNumerator[1] + pd.scanAlphaDenominator[2]
+
+
                 -- update step size alpha
                 var alpha = alphaNumerator/alphaDenominator 
                 pd.delta(idx) = pd.delta(idx)+alpha*pd.p(idx)       -- do a descent step
             end
         end
 
-        terra kernels.PCGStep2_2ndHalf(pd : PlanData, [kernelArglist])
+        terra kernels.PCGStep2_2ndHalf(pd : PlanData, [kernelArglist], [backend.threadarg])
             var betaNum = opt_float(0.0f) 
             var q = opt_float(0.0f) 
             var idx : Index
@@ -565,19 +573,22 @@ return function(problemSpec)
                     q = 0.5*(pd.delta(idx):dot(r + b)) 
                 end
             end
-            unknownWideReduction(idx,betaNum,pd.scanBetaNumerator) 
+            unknownWideReduction(idx,betaNum,&(pd.scanBetaNumerator[ [backend.threadarg] ])) 
             if [problemSpec:UsesLambda()] then
-                unknownWideReduction(idx,q,pd.q)
+                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg] ]))
             end
         end
 
 
-        terra kernels.PCGStep3(pd : PlanData, [kernelArglist])			
+        terra kernels.PCGStep3(pd : PlanData, [kernelArglist], [backend.threadarg])			
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
             
-                var rDotzNew : opt_float = pd.scanBetaNumerator[0]	-- get new numerator
-                var rDotzOld : opt_float = pd.scanAlphaNumerator[0]	-- get old denominator
+                -- TODO generalize for multithreading
+                -- var rDotzNew : opt_float = pd.scanBetaNumerator[0]	-- get new numerator
+                -- var rDotzOld : opt_float = pd.scanAlphaNumerator[0]	-- get old denominator
+                var rDotzNew : opt_float = pd.scanBetaNumerator[1] + pd.scanBetaNumerator[2]	-- get new numerator
+                var rDotzOld : opt_float = pd.scanAlphaNumerator[1] + pd.scanAlphaNumerator[2]	-- get old denominator
 
                 var beta : opt_float = opt_float(0.0f)
                 beta = rDotzNew/rDotzOld
@@ -585,28 +596,28 @@ return function(problemSpec)
             end
         end
         
-        terra kernels.PCGLinearUpdate(pd : PlanData, [kernelArglist])
+        terra kernels.PCGLinearUpdate(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 pd.parameters.X(idx) = pd.parameters.X(idx) + pd.delta(idx)
             end
         end	
         
-        terra kernels.revertUpdate(pd : PlanData, [kernelArglist])
+        terra kernels.revertUpdate(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 pd.parameters.X(idx) = pd.prevX(idx)
             end
         end	
 
-        terra kernels.computeAdelta(pd : PlanData, [kernelArglist])
+        terra kernels.computeAdelta(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 pd.Adelta(idx) = fmap.applyJTJ(idx, pd.parameters, pd.delta, pd.CtC)
             end
         end
 
-        terra kernels.savePreviousUnknowns(pd : PlanData, [kernelArglist])
+        terra kernels.savePreviousUnknowns(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 pd.prevX(idx) = pd.parameters.X(idx)
@@ -693,7 +704,7 @@ return function(problemSpec)
 --   -- return 0.0
 -- end
 
-        terra kernels.computeCost(pd : PlanData, [kernelArglist])
+        terra kernels.computeCost(pd : PlanData, [kernelArglist], [backend.threadarg])
             var cost : opt_float = opt_float(0.0f)
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
@@ -714,15 +725,17 @@ return function(problemSpec)
 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
-                util.atomicAdd_sync(pd.scratch, cost)
+                util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg] ]), cost)
             end
         end
+        print(kernels.computeCost)
+        -- error()
 
         if not fmap.dumpJ then
-            terra kernels.saveJToCRS(pd : PlanData, [kernelArglist])
+            terra kernels.saveJToCRS(pd : PlanData, [kernelArglist], [backend.threadarg])
             end
         else
-            terra kernels.saveJToCRS(pd : PlanData, [kernelArglist])
+            terra kernels.saveJToCRS(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
                 var [parametersSym] = &pd.parameters
                 if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
@@ -733,7 +746,7 @@ return function(problemSpec)
         
 
         if fmap.precompute then
-            terra kernels.precompute(pd : PlanData, [kernelArglist])
+            terra kernels.precompute(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
                 if idx:initFromCUDAParams([kernelArglist]) then
                    fmap.precompute(idx,pd.parameters)
@@ -742,7 +755,7 @@ return function(problemSpec)
         end
 
         if problemSpec:UsesLambda() then
-            terra kernels.PCGComputeCtC(pd : PlanData, [kernelArglist])
+            terra kernels.PCGComputeCtC(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
                 if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then 
                     var CtC = fmap.computeCtC(idx, pd.parameters)
@@ -750,14 +763,14 @@ return function(problemSpec)
                 end 
             end
 
-            terra kernels.PCGSaveSSq(pd : PlanData, [kernelArglist])
+            terra kernels.PCGSaveSSq(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
                 if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then 
                     pd.SSq(idx) = pd.preconditioner(idx)       
                 end 
             end
 
-            terra kernels.PCGFinalizeDiagonal(pd : PlanData, [kernelArglist])
+            terra kernels.PCGFinalizeDiagonal(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
                 var d = opt_float(0.0f)
                 var q = opt_float(0.0f)
@@ -788,11 +801,11 @@ return function(problemSpec)
                     --  so after the dot product, just need to multiply by 2 to recover value identical to CERES  
                     q = 0.5*(pd.delta(idx):dot(residuum + residuum)) 
                 end    
-                unknownWideReduction(idx,q,pd.q)
-                unknownWideReduction(idx,d,pd.scanAlphaNumerator)
+                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg] ]), [backend.threadarg])
+                unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg] ]))
             end
 
-            terra kernels.computeModelCost(pd : PlanData, [kernelArglist])            
+            terra kernels.computeModelCost(pd : PlanData, [kernelArglist], [backend.threadarg])            
                 var cost : opt_float = opt_float(0.0f)
                 var idx : Index
                 if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
@@ -802,7 +815,7 @@ return function(problemSpec)
 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
-                    util.atomicAdd_sync(pd.modelCost, cost)
+                    util.atomicAdd_nosync(&(pd.modelCost[ [backend.threadarg] ]), cost)
                 end
             end
 
@@ -872,7 +885,7 @@ return function(problemSpec)
         -- end
         -- print(fmap.evalJTF)
         -- error()
-        terra kernels.PCGInit1_Graph(pd : PlanData, [kernelArglist])
+        terra kernels.PCGInit1_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             -- var tIdx = 0
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
@@ -898,7 +911,7 @@ return function(problemSpec)
         --         unknownWideReduction(idx,d,pd.scanAlphaDenominator)
         --     end
         -- end
-        terra kernels.PCGStep1_Graph(pd : PlanData, [kernelArglist])
+        terra kernels.PCGStep1_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             var d = opt_float(0.0f)
             -- var tIdx = 0 
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
@@ -909,12 +922,12 @@ return function(problemSpec)
             if not [multistep_alphaDenominator_compute] then
                 d = util.warpReduce(d)
                 if (util.laneid() == 0) then
-                    util.atomicAdd_sync(pd.scanAlphaDenominator, d)
+                    util.atomicAdd_nosync(&(pd.scanAlphaDenominator[ [backend.threadarg] ]), d)
                 end
             end
         end
 
-        terra kernels.computeAdelta_Graph(pd : PlanData, [kernelArglist])
+        terra kernels.computeAdelta_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             -- var tIdx = 0 
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
@@ -934,12 +947,12 @@ return function(problemSpec)
 
         --     cost = util.warpReduce(cost)
         --     if (util.laneid() == 0) then
-        --         util.atomicAdd_sync(pd.scratch, cost)
+        --         util.atomicAdd_nosync(pd.scratch, cost)
         --     end
         -- end
         print(fmap.cost)
         -- error()
-        terra kernels.computeCost_Graph(pd : PlanData, [kernelArglist])
+        terra kernels.computeCost_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             var cost : opt_float = opt_float(0.0f)
             -- var tIdx = 0
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
@@ -949,15 +962,15 @@ return function(problemSpec)
             end 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
-                util.atomicAdd_sync(pd.scratch, cost)
+                util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg] ]), cost)
             end
         end
 
         if not fmap.dumpJ then
-            terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist])
+            terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             end
         else
-            terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist])
+            terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
                 -- var tIdx = 0
                 var [parametersSym] = &pd.parameters
                 -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
@@ -971,7 +984,7 @@ return function(problemSpec)
         end
 
         if problemSpec:UsesLambda() then
-            terra kernels.PCGComputeCtC_Graph(pd : PlanData, [kernelArglist])
+            terra kernels.PCGComputeCtC_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
                 -- var tIdx = 0
                 -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
               var tIdx : Index
@@ -980,7 +993,7 @@ return function(problemSpec)
                 end
             end    
 
-            terra kernels.computeModelCost_Graph(pd : PlanData, [kernelArglist]) 
+            terra kernels.computeModelCost_Graph(pd : PlanData, [kernelArglist], [backend.threadarg]) 
                 var cost : opt_float = opt_float(0.0f)
                 -- var tIdx = 0
                 -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
@@ -990,7 +1003,7 @@ return function(problemSpec)
                 end 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
-                    util.atomicAdd_sync(pd.modelCost, cost)
+                    util.atomicAdd_nosync(&(pd.modelCost[ [backend.threadarg] ]), cost)
                 end
             end
         end
@@ -1034,35 +1047,40 @@ return function(problemSpec)
     -- print('ASDF123')
     -- print(kernelArglist)
     -- print('ASDF123')
+
+        -- TODO generalize this to an arbitrary number of threads
     local terra computeCost(pd : &PlanData) : opt_float
         -- C.cudaMemset(pd.scratch, 0, sizeof(opt_float))
-        backend.memsetDevice(pd.scratch, 0, sizeof(opt_float))
+        backend.memsetDevice(pd.scratch, 0, sizeof(opt_float) * (backend.numthreads+1))
         gpu.computeCost(pd)
         gpu.computeCost_Graph(pd) -- TODO need to uncomment later
-        var f : opt_float
+        var f : opt_float[(backend.numthreads+1)]
         -- C.cudaMemcpy(&f, pd.scratch, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
-        backend.memcpyDevice2Host(&f, pd.scratch, sizeof(opt_float))
-        return f
+        backend.memcpyDevice2Host(&f, pd.scratch, sizeof(opt_float) * (backend.numthreads+1))
+        f[0] = f[1] + f[2]
+        return f[0]
     end
 
     local terra computeModelCost(pd : &PlanData) : opt_float
         -- C.cudaMemset(pd.modelCost, 0, sizeof(opt_float))
-        backend.memsetDevice(pd.modelCost, 0, sizeof(opt_float))
+        backend.memsetDevice(pd.modelCost, 0, sizeof(opt_float) * (backend.numthreads+1))
         gpu.computeModelCost(pd)
         gpu.computeModelCost_Graph(pd)
-        var f : opt_float
+        var f : opt_float[(backend.numthreads+1)]
         -- C.cudaMemcpy(&f, pd.modelCost, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
-        backend.memcpyDevice2Host(&f, pd.modelCost, sizeof(opt_float))
-        return f
+        backend.memcpyDevice2Host(&f, pd.modelCost, sizeof(opt_float) * (backend.numthreads+1))
+        f[0] = f[1] + f[2]
+        return f[0]
     end
 
     local sqrtf = util.cpuMath.sqrt
 
     local terra fetchQ(pd : &PlanData) : opt_float
-        var f : opt_float
+        var f : opt_float[(backend.numthreads+1)]
         -- C.cudaMemcpy(&f, pd.q, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
-        backend.memcpyDevice2Host(&f, pd.q, sizeof(opt_float))
-        return f
+        backend.memcpyDevice2Host(&f, pd.q, sizeof(opt_float) * (backend.numthreads+1))
+        f[0] = f[1] + f[2]
+        return f[0]
     end
 
     local computeModelCostChange
@@ -1078,7 +1096,7 @@ return function(problemSpec)
         end
     end
 
-    local terra GetToHost(ptr : &opaque, N : int) : &int
+    local terra GetToHost(ptr : &opaque, N : int) : &int -- TODO dead code???
         var r = [&int](C.malloc(sizeof(int)*N))
         -- C.cudaMemcpy(r,ptr,N*sizeof(int),C.cudaMemcpyDeviceToHost)
         backend.memcpyDevice2Host(r,ptr,N*sizeof(int))
@@ -1268,7 +1286,7 @@ return function(problemSpec)
                 end 
              end
        gpu.precompute(pd)
-       pd.prevCost = computeCost(pd) -- <-- segfault in THIS line
+       pd.prevCost = computeCost(pd)
     end
     print(init)
     -- error()
@@ -1295,11 +1313,11 @@ return function(problemSpec)
         [util.initParameters(`pd.parameters,problemSpec, params_,false)]
         if pd.solverparameters.nIter < pd.solverparameters.nIterations then
                 -- C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-                backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float))
+                backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1))
                 -- C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-                backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float))
+                backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float) * (backend.numthreads+1))
                 -- C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-                backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float))
+                backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1))
 
                 gpu.PCGInit1(pd)
                 if isGraph then
@@ -1311,9 +1329,9 @@ return function(problemSpec)
                     if problemSpec:UsesLambda() then
                         emit quote
                             -- C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))
-                            backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float)) -- TODO QUES isn't this a duplicate from a few lines above?
+                            backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1)) -- TODO QUES isn't this a duplicate from a few lines above?
                             -- C.cudaMemset(pd.q, 0, sizeof(opt_float))
-                            backend.memsetDevice(pd.q, 0, sizeof(opt_float))
+                            backend.memsetDevice(pd.q, 0, sizeof(opt_float) * (backend.numthreads+1))
                             if [initialization_parameters.jacobiScaling == JacobiScalingType.ONCE_PER_SOLVE] and pd.solverparameters.nIter == 0 then
                                 gpu.PCGSaveSSq(pd)
                             end
@@ -1331,9 +1349,9 @@ return function(problemSpec)
                 for lIter = 0, pd.solverparameters.lIterations do				
 
                     -- C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))
-                    backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float))
+                    backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float) * (backend.numthreads+1))
                     -- C.cudaMemset(pd.q, 0, sizeof(opt_float))
-                    backend.memsetDevice(pd.q, 0, sizeof(opt_float))
+                    backend.memsetDevice(pd.q, 0, sizeof(opt_float) * (backend.numthreads+1))
 
                     if not initialization_parameters.use_cusparse then
                         gpu.PCGStep1(pd)
@@ -1350,7 +1368,7 @@ return function(problemSpec)
                     end
                                     
                     -- C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))
-                    backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float))
+                    backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1))
                                     
                     if [problemSpec:UsesLambda()] and ((lIter + 1) % residual_reset_period) == 0 then
                         gpu.PCGStep2_1stHalf(pd)
@@ -1367,7 +1385,7 @@ return function(problemSpec)
 
                     -- save new rDotz for next iteration
                     -- C.cudaMemcpy(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float), C.cudaMemcpyDeviceToDevice)	
-                    backend.memcpyDevice(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float))
+                    backend.memcpyDevice(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float) * (backend.numthreads+1))
                     
                     if [problemSpec:UsesLambda()] then
                         Q1 = fetchQ(pd)
@@ -1528,18 +1546,18 @@ return function(problemSpec)
             
             [util.initPrecomputedImages(`pd.parameters,problemSpec)]	
             -- C.cudaMalloc([&&opaque](&(pd.scanAlphaNumerator)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scanAlphaNumerator), sizeof(opt_float), opt_float)
+            backend.allocateDevice(&(pd.scanAlphaNumerator), sizeof(opt_float) * (backend.numthreads+1), opt_float)
             -- C.cudaMalloc([&&opaque](&(pd.scanBetaNumerator)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scanBetaNumerator), sizeof(opt_float), opt_float)
+            backend.allocateDevice(&(pd.scanBetaNumerator), sizeof(opt_float) * (backend.numthreads+1), opt_float)
             -- C.cudaMalloc([&&opaque](&(pd.scanAlphaDenominator)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scanAlphaDenominator), sizeof(opt_float), opt_float)
+            backend.allocateDevice(&(pd.scanAlphaDenominator), sizeof(opt_float) * (backend.numthreads+1), opt_float)
             -- C.cudaMalloc([&&opaque](&(pd.modelCost)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.modelCost), sizeof(opt_float), opt_float)
+            backend.allocateDevice(&(pd.modelCost), sizeof(opt_float) * (backend.numthreads+1), opt_float)
             
             -- C.cudaMalloc([&&opaque](&(pd.scratch)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scratch), sizeof(opt_float), opt_float)
+            backend.allocateDevice(&(pd.scratch), sizeof(opt_float) * (backend.numthreads+1), opt_float)
             -- C.cudaMalloc([&&opaque](&(pd.q)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.q), sizeof(opt_float), opt_float)
+            backend.allocateDevice(&(pd.q), sizeof(opt_float) * (backend.numthreads+1), opt_float)
 
             pd.J_csrValA = nil
             pd.JTJ_csrRowPtrA = nil
