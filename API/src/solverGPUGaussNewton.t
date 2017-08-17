@@ -1275,7 +1275,7 @@ return function(problemSpec)
 
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra cleanup(pd : &PlanData)
-        logSolver("final cost=%f\n", pd.prevCost)
+        logSolver("final cost=%.16f\n", pd.prevCost)
         pd.timer:endEvent(nil,pd.endSolver)
         pd.timer:evaluate()
         pd.timer:cleanup()
