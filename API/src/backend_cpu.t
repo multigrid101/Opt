@@ -18,7 +18,8 @@ if c.opt_float == float then
     local terra atomicAdd(sum : &float, value : float)
       @sum = @sum + value
     end
-    b.atomicAdd = atomicAdd
+    b.atomicAdd_sync = atomicAdd
+    b.atomicAdd_nosync = atomicAdd
 else
     struct ULLDouble {
         union {
@@ -46,12 +47,14 @@ else
         local terra atomicAdd(sum : &double, value : double)
           @sum = @sum + value
         end
-        b.atomicAdd = atomicAdd
+        b.atomicAdd_sync = atomicAdd
+        b.atomicAdd_nosync = atomicAdd
     else
         local terra atomicAdd(sum : &double, value : double)
           @sum = @sum + value
         end
-        b.atomicAdd = atomicAdd
+        b.atomicAdd_sync = atomicAdd
+        b.atomicAdd_nosync = atomicAdd
     end
 end
 -- atomicAdd END

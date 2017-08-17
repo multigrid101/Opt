@@ -696,7 +696,7 @@ function ImageType:terratype()
     -- TODO are these functions even used? --> seems to be used in generated code that comes out of 'createfunction' 
         terra Image:atomicAddChannel(idx : Index, c : int32, v : scalartype)
             var addr : &scalartype = &self.data[idx:tooffset()].data[c]
-            util.atomicAdd(addr,v)
+            util.atomicAdd_sync(addr,v)
         end
         terra Image:atomicAdd(idx : Index, v : vectortype) -- only for hand written stuff
             for i = 0,channelcount do

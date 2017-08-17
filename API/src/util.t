@@ -469,7 +469,8 @@ if opt_float == float then
     -- 	terralib.asm(terralib.types.unit,"red.global.add.f32 [$0],$1;","l,f", true, sum, value)
     -- end
     -- util.atomicAdd = atomicAdd
-    util.atomicAdd = backend.atomicAdd
+    util.atomicAdd_sync = backend.atomicAdd_sync
+    util.atomicAdd_nosync = backend.atomicAdd_nosync
 
     terra __shfl_down(v : float, delta : uint, width : int)
     	var ret : float;

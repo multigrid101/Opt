@@ -18,7 +18,8 @@ if c.opt_float == float then
     local terra atomicAdd(sum : &float, value : float)
     	terralib.asm(terralib.types.unit,"red.global.add.f32 [$0],$1;","l,f", true, sum, value)
     end
-    b.atomicAdd = atomicAdd
+    b.atomicAdd_sync = atomicAdd
+    b.atomicAdd_nosync = atomicAdd
 else
     struct ULLDouble {
         union {
@@ -47,7 +48,8 @@ else
             var address_as_i : uint64 = [uint64] (sum);
             terralib.asm(terralib.types.unit,"red.global.add.f64 [$0],$1;","l,d", true, address_as_i, value)
         end
-        b.atomicAdd = atomicAdd
+        b.atomicAdd_sync = atomicAdd
+        b.atomicAdd_nosync = atomicAdd
     else
         local terra atomicAdd(sum : &double, value : double)
             var address_as_i : &uint64 = [&uint64] (sum);
@@ -64,7 +66,8 @@ else
 
             return __ull_as_double(old);
         end
-        b.atomicAdd = atomicAdd
+        b.atomicAdd_sync = atomicAdd
+        b.atomicAdd_nosync = atomicAdd
     end
 end
 -- atomicAdd END

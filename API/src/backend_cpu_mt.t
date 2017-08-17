@@ -23,12 +23,16 @@ local numthreads = c.numthreads
 b.summutex_sym = global(C.pthread_mutex_t, nil,  'summutex')
 if c.opt_float == float then
 
-    local terra atomicAdd(sum : &float, value : float)
+    local terra atomicAdd_sync(sum : &float, value : float)
       C.pthread_mutex_lock(&[b.summutex_sym])
       @sum = @sum + value
       C.pthread_mutex_unlock(&[b.summutex_sym])
     end
-    b.atomicAdd = atomicAdd
+    local terra atomicAdd_nosync(sum : &float, value : float)
+      @sum = @sum + value
+    end
+    b.atomicAdd_nosync = atomicAdd_nosync
+    b.atomicAdd_sync = atomicAdd_sync
     -- TODO copy this implementation downwards when finished (or remove duplicates)
 else
     struct ULLDouble {
@@ -54,19 +58,27 @@ else
     end
 
     if pascalOrBetterGPU then
-        local terra atomicAdd(sum : &double, value : double)
+        local terra atomicAdd_sync(sum : &double, value : double)
           C.pthread_mutex_lock(&[b.summutex_sym])
           @sum = @sum + value
           C.pthread_mutex_unlock(&[b.summutex_sym])
         end
-        b.atomicAdd = atomicAdd
+        local terra atomicAdd_nosync(sum : &float, value : float)
+          @sum = @sum + value
+        end
+        b.atomicAdd_nosync = atomicAdd_nosync
+        b.atomicAdd_sync = atomicAdd_sync
     else
-        local terra atomicAdd(sum : &double, value : double)
+        local terra atomicAdd_sync(sum : &double, value : double)
           C.pthread_mutex_lock(&[b.summutex_sym])
           @sum = @sum + value
           C.pthread_mutex_unlock(&[b.summutex_sym])
         end
-        b.atomicAdd = atomicAdd
+        local terra atomicAdd_nosync(sum : &float, value : float)
+          @sum = @sum + value
+        end
+        b.atomicAdd_nosync = atomicAdd_nosync
+        b.atomicAdd_sync = atomicAdd_sync
     end
 end
 -- atomicAdd END

@@ -350,7 +350,7 @@ return function(problemSpec)
         local unknownWideReduction = macro(function(idx,val,reductionTarget) return quote -- TODO QUES why does this macro have 'idx' as an argument???
                                                                                         val = util.warpReduce(val)
                                                                                         if (util.laneid() == 0) then                
-                                                                                            util.atomicAdd(reductionTarget, val)
+                                                                                            util.atomicAdd_sync(reductionTarget, val)
                                                                                         end
                                                                                     end -- end quote from above
         end)
@@ -714,7 +714,7 @@ return function(problemSpec)
 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
-                util.atomicAdd(pd.scratch, cost)
+                util.atomicAdd_sync(pd.scratch, cost)
             end
         end
 
@@ -802,7 +802,7 @@ return function(problemSpec)
 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
-                    util.atomicAdd(pd.modelCost, cost)
+                    util.atomicAdd_sync(pd.modelCost, cost)
                 end
             end
 
@@ -909,7 +909,7 @@ return function(problemSpec)
             if not [multistep_alphaDenominator_compute] then
                 d = util.warpReduce(d)
                 if (util.laneid() == 0) then
-                    util.atomicAdd(pd.scanAlphaDenominator, d)
+                    util.atomicAdd_sync(pd.scanAlphaDenominator, d)
                 end
             end
         end
@@ -934,7 +934,7 @@ return function(problemSpec)
 
         --     cost = util.warpReduce(cost)
         --     if (util.laneid() == 0) then
-        --         util.atomicAdd(pd.scratch, cost)
+        --         util.atomicAdd_sync(pd.scratch, cost)
         --     end
         -- end
         print(fmap.cost)
@@ -949,7 +949,7 @@ return function(problemSpec)
             end 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
-                util.atomicAdd(pd.scratch, cost)
+                util.atomicAdd_sync(pd.scratch, cost)
             end
         end
 
@@ -990,7 +990,7 @@ return function(problemSpec)
                 end 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
-                    util.atomicAdd(pd.modelCost, cost)
+                    util.atomicAdd_sync(pd.modelCost, cost)
                 end
             end
         end
