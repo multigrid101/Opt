@@ -11,6 +11,8 @@ extern "C" {
 #include "cudaUtil.h"
 #include "NamedParameters.h"
 #include "SolverBase.h"
+#include <cstdlib>
+#include <string.h>
 
 /**
  */
