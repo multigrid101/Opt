@@ -1004,13 +1004,16 @@ return function(problemSpec)
             end
         end
 
+        -- Index:printpretty()
+        -- print(fmap.computeCtC)
+        -- error()
         if problemSpec:UsesLambda() then
             terra kernels.PCGComputeCtC_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
                 -- var tIdx = 0
                 -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
               var tIdx : Index
               if tIdx:initFromCUDAParams([kernelArglist]) then
-                    fmap.computeCtC(tIdx, pd.parameters, pd.CtC)
+                    fmap.computeCtC(tIdx.d0, pd.parameters, pd.CtC)
                 end
             end    
 
@@ -1020,7 +1023,7 @@ return function(problemSpec)
                 -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
               var tIdx : Index
               if tIdx:initFromCUDAParams([kernelArglist]) then
-                    cost = fmap.modelcost(tIdx, pd.parameters, pd.delta)
+                    cost = fmap.modelcost(tIdx.d0, pd.parameters, pd.delta)
                 end 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then

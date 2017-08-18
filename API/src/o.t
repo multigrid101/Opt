@@ -482,6 +482,8 @@ function IndexSpace:indextype()
     terra Index:tooffset()
         return [genoffset(self)]
     end
+    print(Index.methods.tooffset)
+    -- error()
 
     -- this function is local to here and only used during the generation of the
     -- following terra-functions
@@ -1099,12 +1101,12 @@ local function problemPlan(id, dimensions, pplan)
         print('\n')
         print('tbl.parameters')
         printt(tbl.parameters)
-        print('\n')
-        print('tbl.parameters[7].type')
-        printt(tbl.parameters[7].type)
-        print('\n')
-        print('tbl.parameters[7].type.entries')
-        printt(tbl.parameters[7].type.entries)
+        -- print('\n')
+        -- print('tbl.parameters[7].type')
+        -- printt(tbl.parameters[7].type)
+        -- print('\n')
+        -- print('tbl.parameters[7].type.entries')
+        -- printt(tbl.parameters[7].type.entries)
         -- print('\n')
         -- printt(tbl.energyspecs)
         -- print('\n')
@@ -2878,7 +2880,7 @@ function ProblemSpecAD:Cost(...)
     self.P.energyspecs = energyspecs
     print('\n\n\n')
     print('START Inside ProblemSpecAD:Cost(), the functions')
-    printt(self.P.functions[2].functionmap)
+    -- printt(self.P.functions[2].functionmap)
     print('END Inside ProblemSpecAD:Cost(), the functions')
     print('\n\n\n')
     return self.P

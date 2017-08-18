@@ -285,21 +285,21 @@ end
 
 function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same  problemSpec as in solver.t
 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions:')
-    for k,v in pairs(problemSpec.functions) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[1]:')
-    for k,v in pairs(problemSpec.functions[1]) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[1].typ:')
-    for k,v in pairs(problemSpec.functions[1].typ) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[2]:')
-    for k,v in pairs(problemSpec.functions[2]) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[2].typ:')
-    for k,v in pairs(problemSpec.functions[2].typ) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec.functions[2].typ.__index:')
-    for k,v in pairs(problemSpec.functions[2].typ.__index) do print(k,v) end --debug 
-    print('\nInside util.makeGPUFunctions: The problemSpec:')
-    for k,v in pairs(problemSpec.functions[1].typ.ispace.dims) do print(k,v) end
-    for k,v in pairs(problemSpec.functions[1].typ.ispace.dims[1]) do print(k,v) end
+    -- print('\nInside util.makeGPUFunctions: The problemSpec.functions:')
+    -- for k,v in pairs(problemSpec.functions) do print(k,v) end --debug 
+    -- print('\nInside util.makeGPUFunctions: The problemSpec.functions[1]:')
+    -- for k,v in pairs(problemSpec.functions[1]) do print(k,v) end --debug 
+    -- print('\nInside util.makeGPUFunctions: The problemSpec.functions[1].typ:')
+    -- for k,v in pairs(problemSpec.functions[1].typ) do print(k,v) end --debug 
+    -- print('\nInside util.makeGPUFunctions: The problemSpec.functions[2]:')
+    -- for k,v in pairs(problemSpec.functions[2]) do print(k,v) end --debug 
+    -- print('\nInside util.makeGPUFunctions: The problemSpec.functions[2].typ:')
+    -- for k,v in pairs(problemSpec.functions[2].typ) do print(k,v) end --debug 
+    -- print('\nInside util.makeGPUFunctions: The problemSpec.functions[2].typ.__index:')
+    -- for k,v in pairs(problemSpec.functions[2].typ.__index) do print(k,v) end --debug 
+    -- print('\nInside util.makeGPUFunctions: The problemSpec:')
+    -- for k,v in pairs(problemSpec.functions[1].typ.ispace.dims) do print(k,v) end
+    -- for k,v in pairs(problemSpec.functions[1].typ.ispace.dims[1]) do print(k,v) end
 
     -- step 1: compile the actual cuda kernels
     local kernelFunctions = {}
