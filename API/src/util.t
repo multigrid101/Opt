@@ -385,63 +385,66 @@ terra isprefix(pre : rawstring, str : rawstring) : bool
 end
 terra Timer:evaluate()
 	if ([c._opt_verbosity > 0]) then
-		var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
-		var aggregateTimingNames = [Array(rawstring)].salloc():init()
-		for i = 0,self.timingInfo:size() do
-			var eventInfo = self.timingInfo(i);
-			C.cudaEventSynchronize(eventInfo.endEvent)
-	    	C.cudaEventElapsedTime(&eventInfo.duration, eventInfo.startEvent, eventInfo.endEvent);
-	    	var index =  aggregateTimingNames:indexof(eventInfo.eventName)
-	    	if index < 0 then
-	    		aggregateTimingNames:insert(eventInfo.eventName)
-	    		aggregateTimingInfo:insert({eventInfo.duration, 1})
-	    	else
-	    		aggregateTimingInfo(index)._0 = aggregateTimingInfo(index)._0 + eventInfo.duration
-	    		aggregateTimingInfo(index)._1 = aggregateTimingInfo(index)._1 + 1
-	    	end
-	    end
+          var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
+          var aggregateTimingNames = [Array(rawstring)].salloc():init()
 
-		C.printf(		"--------------------------------------------------------\n")
-	    C.printf(		"        Kernel        |   Count  |   Total   | Average \n")
-		C.printf(		"----------------------+----------+-----------+----------\n")
-	    for i = 0, aggregateTimingNames:size() do
-	    	C.printf(	"----------------------+----------+-----------+----------\n")
-			C.printf(" %-20s |   %4d   | %8.3fms| %7.4fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
-	    end
-        C.printf(		"--------------------------------------------------------\n")
-        C.printf("TIMING ")
-        for i = 0, aggregateTimingNames:size() do
-	        var n = aggregateTimingNames(i)
-            if isprefix("PCGInit1",n) or isprefix("PCGStep1",n) or isprefix("overall",n) then
-                C.printf("%f ",aggregateTimingInfo(i)._0)
+          for i = 0,self.timingInfo:size() do
+            var eventInfo = self.timingInfo(i);
+            C.cudaEventSynchronize(eventInfo.endEvent)
+            C.cudaEventElapsedTime(&eventInfo.duration, eventInfo.startEvent, eventInfo.endEvent);
+            var index =  aggregateTimingNames:indexof(eventInfo.eventName)
+            if index < 0 then
+              aggregateTimingNames:insert(eventInfo.eventName)
+              aggregateTimingInfo:insert({eventInfo.duration, 1})
+            else
+              aggregateTimingInfo(index)._0 = aggregateTimingInfo(index)._0 + eventInfo.duration
+              aggregateTimingInfo(index)._1 = aggregateTimingInfo(index)._1 + 1
             end
-        end
-        C.printf("\n")
-        -- TODO: Refactor timing code
-        var linIters = 0
-        var nonLinIters = 0
-        for i = 0, aggregateTimingNames:size() do
-            var n = aggregateTimingNames(i)
-            if isprefix("PCGInit1",n) then
-                linIters = aggregateTimingInfo(i)._1
-            end
-            if isprefix("PCGStep1",n) then
-                nonLinIters = aggregateTimingInfo(i)._1
-            end
-        end
-        var linAggregate : float = 0.0f
-        var nonLinAggregate : float = 0.0f
-        for i = 0, aggregateTimingNames:size() do
-            var n = aggregateTimingInfo(i)._1
-            if n == linIters then
-                linAggregate = linAggregate + aggregateTimingInfo(i)._0
-            end
-            if n == nonLinIters then
-                nonLinAggregate = nonLinAggregate + aggregateTimingInfo(i)._0
-            end
-        end
-        C.printf("Per-iter times ms (nonlinear,linear): %7.4f\t%7.4f\n", linAggregate, nonLinAggregate)
-	end
+          end
+
+          C.printf(		"--------------------------------------------------------\n")
+          C.printf(		"        Kernel        |   Count  |   Total   | Average \n")
+          C.printf(		"----------------------+----------+-----------+----------\n")
+          for i = 0, aggregateTimingNames:size() do
+              C.printf(	"----------------------+----------+-----------+----------\n")
+              C.printf(" %-20s |   %4d   | %8.3fms| %7.4fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
+          end
+
+          C.printf(		"--------------------------------------------------------\n")
+          C.printf("TIMING ")
+          for i = 0, aggregateTimingNames:size() do
+              var n = aggregateTimingNames(i)
+              if isprefix("PCGInit1",n) or isprefix("PCGStep1",n) or isprefix("overall",n) then
+                  C.printf("%f ",aggregateTimingInfo(i)._0)
+              end
+          end
+
+          C.printf("\n")
+          -- TODO: Refactor timing code
+          var linIters = 0
+          var nonLinIters = 0
+          for i = 0, aggregateTimingNames:size() do
+              var n = aggregateTimingNames(i)
+              if isprefix("PCGInit1",n) then
+                  linIters = aggregateTimingInfo(i)._1
+              end
+              if isprefix("PCGStep1",n) then
+                  nonLinIters = aggregateTimingInfo(i)._1
+              end
+          end
+          var linAggregate : float = 0.0f
+          var nonLinAggregate : float = 0.0f
+          for i = 0, aggregateTimingNames:size() do
+              var n = aggregateTimingInfo(i)._1
+              if n == linIters then
+                  linAggregate = linAggregate + aggregateTimingInfo(i)._0
+              end
+              if n == nonLinIters then
+                  nonLinAggregate = nonLinAggregate + aggregateTimingInfo(i)._0
+              end
+          end
+          C.printf("Per-iter times ms (nonlinear,linear): %7.4f\t%7.4f\n", linAggregate, nonLinAggregate)
+          end
     
 end
 --------------------------- Timing stuff end
