@@ -73,8 +73,12 @@ int main(int argc, const char * argv[]) {
     bool useCUDAPatch = false;
     bool useEigen = false;
 
-    CombinedSolver solver(imageR32, image1Large, imageR32MaskLarge, params, useCUDAPatch, useEigen);
-    solver.solveAll();
+    CombinedSolver solver(imageR32, image1Large, imageR32MaskLarge, params, useCUDAPatch, useEigen, OptImage::Location::GPU);
+    CombinedSolver solver_cpu(imageR32, image1Large, imageR32MaskLarge, params, useCUDAPatch, useEigen, OptImage::Location::CPU);
+
+    /* solver.solveAll(); */
+    solver_cpu.solveAll();
+
     ColorImageR32G32B32A32* res = solver.result();
 	ColorImageR8G8B8A8 out(res->getWidth(), res->getHeight());
 	for (unsigned int y = 0; y < res->getHeight(); y++) {

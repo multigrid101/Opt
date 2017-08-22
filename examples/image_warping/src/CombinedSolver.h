@@ -101,18 +101,20 @@ float *wt0, float *wt1, float *wt2) {
 
 class CombinedSolver : public CombinedSolverBase {
 public:
-    CombinedSolver(const ColorImageR32& image, const ColorImageR32G32B32& imageColor, const ColorImageR32& imageMask, std::vector<std::vector<int>>& constraints, CombinedSolverParameters params) : m_constraints(constraints){
+    CombinedSolver(const ColorImageR32& image, const ColorImageR32G32B32& imageColor, const ColorImageR32& imageMask, std::vector<std::vector<int>>& constraints, CombinedSolverParameters params, OptImage::Location location) : m_constraints(constraints){
 		m_image = image;
 		m_imageColor = imageColor;
 		m_imageMask = imageMask;
         m_combinedSolverParameters = params;
 
+        m_location = location;
+
         m_dims = { m_image.getWidth(), m_image.getHeight() };
-        m_urshape       = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, OptImage::GPU, true);
-        m_warpField     = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, OptImage::GPU, true);
-        m_warpAngles    = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, OptImage::GPU, true);
-        m_constraintImage = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, OptImage::GPU, true);
-        m_mask          = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, OptImage::GPU, true);
+        m_urshape       = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, location, true);
+        m_warpField     = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, location, true);
+        m_warpAngles    = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, location, true);
+        m_constraintImage = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, location, true);
+        m_mask          = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, location, true);
 
 		resetGPU();
         
@@ -176,7 +178,13 @@ public:
             m_urshape->update(h_urshape);
             m_warpField->update(h_urshape);
             m_mask->update(h_mask);
-            cudaSafeCall(cudaMemset(m_warpAngles->data(), 0, sizeof(float)*m_image.getWidth()*m_image.getHeight()));
+
+            if (m_location == OptImage::Location::GPU) {
+              cudaSafeCall(cudaMemset(m_warpAngles->data(), 0, sizeof(float)*m_image.getWidth()*m_image.getHeight()));
+            }
+            else {
+              memset(m_warpAngles->data(), 0, sizeof(float)*m_image.getWidth()*m_image.getHeight());
+            }
 	}
 
 	void setConstraintImage(float alpha)
@@ -317,5 +325,7 @@ private:
 
 
 	std::vector<std::vector<int>>& m_constraints;
+
+        OptImage::Location m_location;
 
 };

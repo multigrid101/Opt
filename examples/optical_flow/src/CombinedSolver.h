@@ -17,8 +17,11 @@ static void updateOptImage(std::shared_ptr<OptImage> dst, BaseImage<T> src) {
 
 class CombinedSolver : public CombinedSolverBase {
 public:
-    CombinedSolver(const ColorImageR32& sourceImage, const ColorImageR32& targetImage, const CombinedSolverParameters& params) {
+    CombinedSolver(const ColorImageR32& sourceImage, const ColorImageR32& targetImage, const CombinedSolverParameters& params, OptImage::Location loation) {
         m_combinedSolverParameters = params;
+        m_location = location;
+
+
         const unsigned int numLevels = 2;
         const float sigmas[2] = { 1.0f, 5.0f };
 
@@ -112,11 +115,11 @@ private:
 		void init(const ColorImageR32& source, const ColorImageR32& target) {
 			assert(source.getWidth() == target.getWidth() && source.getHeight() == target.getHeight());
             m_dims = { source.getWidth(), source.getHeight() };
-            m_source        = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, OptImage::Location::GPU, true);
-            m_target        = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, OptImage::Location::GPU, true);
-            m_targetDU      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, OptImage::Location::GPU, true);
-            m_targetDV      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, OptImage::Location::GPU, true);
-            m_flowVectors   = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, OptImage::Location::GPU, true);
+            m_source        = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, m_location, true);
+            m_target        = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, m_location, true);
+            m_targetDU      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, m_location, true);
+            m_targetDV      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, m_location, true);
+            m_flowVectors   = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, m_location, true);
 
 			ColorImageR32 targetDU = computeDU(target);
 			ColorImageR32 targetDV = computeDV(target);
@@ -192,6 +195,8 @@ private:
 
     float m_fitSqrt;
     float m_regSqrt;
+
+    OptImage::Location m_location;
 
     ColorImageR32 m_sourceImage;
     ColorImageR32 m_targetImage;

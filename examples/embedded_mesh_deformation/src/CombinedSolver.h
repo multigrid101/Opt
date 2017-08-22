@@ -12,19 +12,22 @@
 class CombinedSolver : public CombinedSolverBase
 {
 	public:
-        CombinedSolver(const SimpleMesh* mesh, std::vector<int> constraintsIdx, std::vector<std::vector<float>> constraintsTarget, CombinedSolverParameters params) : m_constraintsIdx(constraintsIdx), m_constraintsTarget(constraintsTarget)
+        CombinedSolver(const SimpleMesh* mesh, std::vector<int> constraintsIdx, std::vector<std::vector<float>> constraintsTarget, CombinedSolverParameters params, OptImage::Location location) : m_constraintsIdx(constraintsIdx), m_constraintsTarget(constraintsTarget)
 		{
             m_combinedSolverParameters = params;
 			m_result = *mesh;
 			m_initial = m_result;
+                        m_location = location;
 
             unsigned int N = (unsigned int)mesh->n_vertices();
+            unsigned int numedges = (unsigned int)mesh->n_edges();
+
             initializeConnectivity();
-            std::vector<unsigned int> dims = { N };
-            m_rotationMatrices = createEmptyOptImage(dims, OptImage::Type::FLOAT, 9, OptImage::GPU, true);
-            m_vertexPositions = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
-            m_vertexTargets = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
-            m_urshape = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
+            std::vector<unsigned int> dims = { N, numedges };
+            m_rotationMatrices = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 9, location, true);
+            m_vertexPositions = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
+            m_vertexTargets = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
+            m_urshape = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
             addOptSolvers(dims, "embedded_mesh_deformation.t", m_combinedSolverParameters.optDoublePrecision);
 		} 
 
@@ -116,7 +119,7 @@ class CombinedSolver : public CombinedSolverBase
 
                 count++;
             }
-            m_graph = createGraphFromNeighborLists(h_neighbourIdx, h_neighbourOffset);
+            m_graph = createGraphFromNeighborLists(h_neighbourIdx, h_neighbourOffset, m_location);
         }
 
 		void resetGPUMemory()
@@ -166,6 +169,8 @@ class CombinedSolver : public CombinedSolverBase
         float m_weightFitSqrt;
         float m_weightRegSqrt;
         float m_weightRotSqrt;
+
+        OptImage::Location m_location;
 	
 		std::shared_ptr<OptImage>   m_rotationMatrices;
         std::shared_ptr<OptImage>   m_vertexTargets;

@@ -1,4 +1,5 @@
 local N = Dim("N",0)
+local NUMEDGES = Dim("NUMEDGES",1)
 
 local w_fitSqrt     = Param("w_fitSqrt",        float, 0)
 local w_regSqrt     = Param("w_regSqrt",        float, 1)
@@ -7,7 +8,8 @@ local Offset        = Unknown("Offset",         opt_float3,{N},3)			--vertex.xyz
 local RotMatrix     = Unknown("RotMatrix",      opt_float9,{N},4)
 local UrShape       = Image("UrShape",          opt_float3,{N},5)		--urshape: vertex.xyz
 local Constraints   = Image("Constraints",      opt_float3,{N},6)	--constraints
-local G             = Graph("G", 7, "v0", {N}, 8, "v1", {N}, 9)
+-- local G             = Graph("G", 7, "v0", {N}, 8, "v1", {N}, 9)
+local G             = Graph("G", {NUMEDGES}, "v0", {N}, 8, "v1", {N}, 9)
 UsePreconditioner(true)	--really needed here
 
 --fitting

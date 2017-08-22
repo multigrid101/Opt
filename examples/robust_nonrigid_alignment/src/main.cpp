@@ -62,8 +62,12 @@ int main(int argc, const char * argv[])
     params.useOpt = false;
     params.useOptLM = true;
 
-    CombinedSolver solver(sourceMesh, targetMeshes, sourceTetIndices, params);
-    solver.solveAll();
+    CombinedSolver solver(sourceMesh, targetMeshes, sourceTetIndices, params, OptImage::Location::GPU);
+    CombinedSolver solver_cpu(sourceMesh, targetMeshes, sourceTetIndices, params, OptImage::Location::CPU);
+
+    /* solver.solveAll(); */
+    solver_cpu.solveAll();
+
     SimpleMesh* res = solver.result();
     
 	if (!OpenMesh::IO::write_mesh(*res, "out.ply"))

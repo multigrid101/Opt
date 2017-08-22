@@ -112,6 +112,7 @@ int main(int argc, const char * argv[]) {
     CombinedSolver solver_cpu(mesh, constraintsIdx, constraintsTarget, params, weightFit, weightReg, OptImage::Location::CPU);
 
     solver.solveAll();
+    /* solver_cpu.solveAll(); */
 
     
     // write results to file

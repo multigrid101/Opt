@@ -135,8 +135,12 @@ int main(int argc, const char * argv[]) {
    
 
 
-	CombinedSolver solver(imageR32, imageColor, imageR32Mask, constraints, params);
-    solver.solveAll();
+	CombinedSolver solver(imageR32, imageColor, imageR32Mask, constraints, params, OptImage::Location::GPU);
+	CombinedSolver solver_cpu(imageR32, imageColor, imageR32Mask, constraints, params, OptImage::Location::CPU);
+
+    /* solver.solveAll(); */
+    solver_cpu.solveAll();
+
     ColorImageR32G32B32* res = solver.result();
 	ColorImageR8G8B8A8 out(res->getWidth(), res->getHeight());
 	for (unsigned int y = 0; y < res->getHeight(); y++) {

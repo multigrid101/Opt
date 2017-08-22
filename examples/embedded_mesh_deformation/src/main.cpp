@@ -52,8 +52,12 @@ int main(int argc, const char * argv[])
     params.nonLinearIter = 5;
     params.linearIter = 125;
 
-    CombinedSolver solver(mesh, constraintsIdx, constraintsTarget, params);
-    solver.solveAll();
+    CombinedSolver solver(mesh, constraintsIdx, constraintsTarget, params, OptImage::Location::GPU);
+    CombinedSolver solver_cpu(mesh, constraintsIdx, constraintsTarget, params, OptImage::Location::CPU);
+
+    /* solver.solveAll(); */
+    solver_cpu.solveAll();
+
     SimpleMesh* res = solver.result();
 
 	if (!OpenMesh::IO::write_mesh(*res, "out.off"))

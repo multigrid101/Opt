@@ -5,7 +5,8 @@
 #include <string.h>
 #include <cuda_runtime.h>
 #include <stdio.h>
-#include <math.h>
+/* #include <math.h> */
+#include <cmath>
 #include <limits>
 //using std::memcpy;
 

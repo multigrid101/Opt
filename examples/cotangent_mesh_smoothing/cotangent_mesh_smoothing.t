@@ -1,10 +1,15 @@
 local N = Dim("N",0)
+local NUMEDGES = Dim("NUMEDGES",1)
 
 local w_fitSqrt = Param("w_fit", float, 0)
 local w_regSqrt = Param("w_reg", float, 1)
 local X = Unknown("X", opt_float3,{N},2)
 local A = Array("A", opt_float3,{N},3)
-local G = Graph("G", 4, "v0", {N}, 5, --current vertex
+-- local G = Graph("G", 4, "v0", {N}, 5, --current vertex
+--                             "v1", {N}, 6, --neighboring vertex
+--                             "v2", {N}, 7, --prev neighboring vertex
+--                             "v3", {N}, 8) --next neighboring vertex
+local G = Graph("G", {NUMEDGES}, "v0", {N}, 5, --current vertex
                             "v1", {N}, 6, --neighboring vertex
                             "v2", {N}, 7, --prev neighboring vertex
                             "v3", {N}, 8) --next neighboring vertex

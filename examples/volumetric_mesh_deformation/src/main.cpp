@@ -24,8 +24,13 @@ int main(int argc, const char * argv[])
     params.linearIter = 60;
 
     int3 voxelGridSize = make_int3(5, 20, 5);
-    CombinedSolver solver(mesh, voxelGridSize, params);
-    solver.solveAll();
+
+    CombinedSolver solver(mesh, voxelGridSize, params, OptImage::Location::GPU);
+    CombinedSolver solver_cpu(mesh, voxelGridSize, params, OptImage::Location::CPU);
+
+    /* solver.solveAll(); */
+    solver_cpu.solveAll();
+
     SimpleMesh* res = solver.result();
     solver.saveGraphResults();
 

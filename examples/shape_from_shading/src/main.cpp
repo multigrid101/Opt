@@ -37,9 +37,14 @@ int main(int argc, const char * argv[])
         params.linearIter = 10;
     }
 
-    CombinedSolver solver(solverInputGPU, params);
+    CombinedSolver solver(solverInputGPU, params, OptImage::Location::GPU);
+    CombinedSolver solver_cpu(solverInputGPU, params, OptImage::Location::CPU);
+
     printf("Solving\n");
+
     solver.solveAll();
+    solver_cpu.solveAll();
+
     std::shared_ptr<SimpleBuffer> result = solver.result();
     printf("Solved\n");
     printf("About to save\n");

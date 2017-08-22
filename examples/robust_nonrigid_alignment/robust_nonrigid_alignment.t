@@ -1,4 +1,5 @@
 local N = Dim("N",0)
+local NUMEDGES = Dim("NUMEDGES",1)
 
 local w_fitSqrt         = Param("w_fitSqrt", float, 0)
 local w_regSqrt         = Param("w_regSqrt", float, 1)
@@ -9,7 +10,8 @@ local RobustWeights     = Unknown("RobustWeights", opt_float,{N},4)
 local UrShape           = Array("UrShape", opt_float3, {N},5)		    --urshape: vertex.xyz
 local Constraints       = Array("Constraints", opt_float3,{N},6)	    --constraints
 local ConstraintNormals = Array("ConstraintNormals", opt_float3,{N},7)
-local G                 = Graph("G", 8, "v0", {N}, 9, "v1", {N}, 10)
+-- local G                 = Graph("G", 8, "v0", {N}, 9, "v1", {N}, 10)
+local G                 = Graph("G", {NUMEDGES}, "v0", {N}, 9, "v1", {N}, 10)
 UsePreconditioner(true)
 
 local robustWeight = RobustWeights(0)

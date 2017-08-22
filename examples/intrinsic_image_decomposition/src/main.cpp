@@ -21,9 +21,11 @@ int main(int argc, const char * argv[])
     params.nonLinearIter = 7;
     params.linearIter = 10;
 
-    CombinedSolver solver(imageR32, params);
+    CombinedSolver solver(imageR32, params, OptImage::Location::GPU);
+    CombinedSolver solver_cpu(imageR32, params, OptImage::Location::CPU);
 
-	solver.solveAll();
+    /* solver.solveAll(); */
+    solver_cpu.solveAll();
 
     ColorImageR32G32B32A32* res = solver.getAlbedo();
 	ColorImageR8G8B8A8 out(res->getWidth(), res->getHeight());

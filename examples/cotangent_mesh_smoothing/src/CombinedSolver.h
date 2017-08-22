@@ -13,19 +13,23 @@
 class CombinedSolver : public CombinedSolverBase
 {
 public:
-    CombinedSolver(const SimpleMesh* mesh, bool performanceRun, CombinedSolverParameters params, float weightFit, float weightReg)
+    CombinedSolver(const SimpleMesh* mesh, bool performanceRun, CombinedSolverParameters params, float weightFit, float weightReg, OptImage::Location location)
     {
         m_weightFitSqrt = sqrtf(weightFit);
         m_weightRegSqrt = sqrtf(weightReg);
         m_combinedSolverParameters = params;
         m_result = *mesh;
         m_initial = m_result;
+        m_location = location;
 
         unsigned int N = (unsigned int)mesh->n_vertices();
+        unsigned int numedges = (unsigned int)mesh->n_edges();
+
         initializeConnectivity();
-        std::vector<unsigned int> dims = { N };
-        m_unknown = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
-        m_target = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
+        std::vector<unsigned int> dims = { N, numedges };
+
+        m_unknown = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
+        m_target = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
 
         std::cout << "compiling... ";
         addOptSolvers(dims, "cotangent_mesh_smoothing.t", m_combinedSolverParameters.optDoublePrecision);
@@ -112,7 +116,7 @@ public:
             }
         }
 
-        m_graph = std::make_shared<OptGraph>(std::vector<std::vector<int> >({ head, tail, prev, next }));
+        m_graph = std::make_shared<OptGraph>(std::vector<std::vector<int> >({ head, tail, prev, next }), m_location);
     }
 
     void resetGPUMemory()
@@ -149,6 +153,8 @@ private:
 
     float m_weightFitSqrt;
     float m_weightRegSqrt;
+
+    OptImage::Location m_location;
 
     std::shared_ptr<OptImage> m_unknown;
     std::shared_ptr<OptImage> m_target;

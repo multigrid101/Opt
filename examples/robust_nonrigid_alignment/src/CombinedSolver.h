@@ -69,12 +69,13 @@ class CombinedSolver : public CombinedSolverBase
 {
 
 	public:
-        CombinedSolver(const SimpleMesh* sourceMesh, const std::vector<SimpleMesh*>& targetMeshes, const std::vector<int4>& sourceTetIndices, CombinedSolverParameters params)
+        CombinedSolver(const SimpleMesh* sourceMesh, const std::vector<SimpleMesh*>& targetMeshes, const std::vector<int4>& sourceTetIndices, CombinedSolverParameters params, OptImage::Location location)
 		{
             m_combinedSolverParameters = params;
             m_result = *sourceMesh;
 			m_initial = m_result;
             m_sourceTetIndices = sourceTetIndices;
+            m_location = location;
 
             for (SimpleMesh* mesh : targetMeshes) {
                 m_targets.push_back(*mesh);
@@ -92,12 +93,12 @@ class CombinedSolver : public CombinedSolverBase
             std::cout << "Average Edge Length: " << m_averageEdgeLength << std::endl;
 
             std::vector<unsigned int> dims = { N };
-            m_vertexPosTargetFloat3     = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::Location::GPU, true);
-            m_vertexNormalTargetFloat3  = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::Location::GPU, true);
-            m_robustWeights             = createEmptyOptImage(dims, OptImage::Type::FLOAT, 1, OptImage::Location::GPU, true);
-            m_vertexPosFloat3           = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::Location::GPU, true);
-            m_vertexPosFloat3Urshape    = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::Location::GPU, true);
-            m_anglesFloat3              = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::Location::GPU, true);
+            m_vertexPosTargetFloat3     = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
+            m_vertexNormalTargetFloat3  = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
+            m_robustWeights             = createEmptyOptImage(dims, OptImage::Type::FLOAT, 1, location, true);
+            m_vertexPosFloat3           = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
+            m_vertexPosFloat3Urshape    = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
+            m_anglesFloat3              = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
             
 			resetGPUMemory();   
 
@@ -405,7 +406,7 @@ class CombinedSolver : public CombinedSolverBase
             std::vector<int> h_numNeighbours, h_neighbourIdx, h_neighbourOffset;
             generateOptEdges(h_numNeighbours, h_neighbourIdx, h_neighbourOffset);
 
-            m_graph = createGraphFromNeighborLists(h_neighbourIdx, h_neighbourOffset);
+            m_graph = createGraphFromNeighborLists(h_neighbourIdx, h_neighbourOffset, m_location);
 
             uint N = (uint)m_initial.n_vertices();
             std::vector<float3> h_vertexPosFloat3(N);
@@ -489,6 +490,8 @@ class CombinedSolver : public CombinedSolverBase
 		std::shared_ptr<OptImage> m_vertexPosFloat3Urshape;
         std::shared_ptr<OptImage> m_robustWeights;
         std::shared_ptr<OptGraph> m_graph;
+
+        OptImage::Location m_location;
 
 
         float m_weightFit;

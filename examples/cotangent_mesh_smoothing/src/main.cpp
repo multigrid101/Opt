@@ -33,8 +33,14 @@ int main(int argc, const char * argv[])
     params.linearIter = 25;
     float weightFit = 1.0f;
     float weightReg = 0.5f;
-    CombinedSolver solver(mesh, performanceRun, params, weightFit, weightReg);
-    solver.solveAll();
+    weightReg = 5.0f;
+
+    CombinedSolver solver(mesh, performanceRun, params, weightFit, weightReg, OptImage::Location::GPU);
+    CombinedSolver solver_cpu(mesh, performanceRun, params, weightFit, weightReg, OptImage::Location::CPU);
+
+    /* solver.solveAll(); */
+    solver_cpu.solveAll();
+
     SimpleMesh* res = solver.result();
     if (!OpenMesh::IO::write_mesh(*res, "out.off"))
     {

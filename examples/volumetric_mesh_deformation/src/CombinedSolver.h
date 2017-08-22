@@ -13,12 +13,13 @@
 class CombinedSolver : public CombinedSolverBase
 {
 	public:
-        CombinedSolver(const SimpleMesh* mesh, int3 voxelGridSize, CombinedSolverParameters params)
+        CombinedSolver(const SimpleMesh* mesh, int3 voxelGridSize, CombinedSolverParameters params, OptImage::Location location)
 		{
             m_combinedSolverParameters = params;
 
 			m_result = *mesh;
 			m_initial = m_result;
+                        m_location = location;
 
             m_dims      = voxelGridSize;
 			m_nNodes    = (m_dims.x + 1)*(m_dims.y + 1)*(m_dims.z + 1);
@@ -26,10 +27,10 @@ class CombinedSolver : public CombinedSolverBase
 			unsigned int N = (unsigned int)mesh->n_vertices();
 		
             std::vector<unsigned int> dims = { (uint)m_dims.x + 1, (uint)m_dims.y + 1, (uint)m_dims.z + 1 };
-            m_gridPosFloat3         = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
-            m_gridAnglesFloat3      = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
-            m_gridPosFloat3Urshape  = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
-            m_gridPosTargetFloat3   = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, OptImage::GPU, true);
+            m_gridPosFloat3         = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
+            m_gridAnglesFloat3      = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
+            m_gridPosFloat3Urshape  = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
+            m_gridPosTargetFloat3   = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
 
 			m_vertexToVoxels.resize(N);
             m_relativeCoords.resize(N);
@@ -224,7 +225,12 @@ class CombinedSolver : public CombinedSolverBase
 
             m_gridPosFloat3->update(h_gridVertexPosFloat3);
             m_gridPosFloat3Urshape->update(h_gridVertexPosFloat3);
+            if (m_location == OptImage::Location::GPU) {
 			cudaSafeCall(cudaMemset(m_gridAnglesFloat3->data(), 0, sizeof(float3)*m_nNodes));
+            }
+            else {
+			memset(m_gridAnglesFloat3->data(), 0, sizeof(float3)*m_nNodes);
+            }
 		}
 
 		void resetGPUMemory()
@@ -349,4 +355,6 @@ class CombinedSolver : public CombinedSolverBase
         std::shared_ptr<OptImage> m_gridAnglesFloat3;
         float m_weightFitSqrt;
         float m_weightRegSqrt;
+
+        OptImage::Location m_location;
 };

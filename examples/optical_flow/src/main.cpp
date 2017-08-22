@@ -43,8 +43,12 @@ int main(int argc, const char * argv[]) {
     params.nonLinearIter = 1;
     params.linearIter = 50;
 
-    CombinedSolver solver(imageSrcGray, imageTarGray, params);
+    CombinedSolver solver(imageSrcGray, imageTarGray, params, OptImage::Location::GPU);
+    CombinedSolver solver_cpu(imageSrcGray, imageTarGray, params, OptImage::Location::CPU);
+
     solver.solveAll();
+    /* solver_cpu.solveAll(); */
+
     BaseImage<float2> flowVectors = solver.result();
 
 	const std::string outFile = "out.png";

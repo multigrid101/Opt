@@ -20,12 +20,14 @@ private:
     std::shared_ptr<SimpleBuffer>   m_initialUnknown;
     std::shared_ptr<SimpleBuffer>   m_result;
     std::vector<unsigned int> m_dims;
+    OptImage::Location m_location;
 public:
-    CombinedSolver(const SFSSolverInput& inputGPU, CombinedSolverParameters params)
+    CombinedSolver(const SFSSolverInput& inputGPU, CombinedSolverParameters params, OptImage::Location location)
 	{
         m_combinedSolverParameters = params;
         m_initialUnknown = std::make_shared<SimpleBuffer>(*inputGPU.initialUnknown, true);
         m_result = std::make_shared<SimpleBuffer>(*inputGPU.initialUnknown, true);
+        m_location = location;
         inputGPU.setParameters(m_problemParams, m_result);
 
         m_dims = { (unsigned int)m_result->width(), (unsigned int)m_result->height() };

@@ -16,7 +16,7 @@
 
 class CombinedSolver : public CombinedSolverBase {
 public:
-    CombinedSolver(const ColorImageR32G32B32A32& image, const ColorImageR32G32B32A32& image1, const ColorImageR32& imageMask, CombinedSolverParameters params, bool useCUDAPatch, bool useEigen)
+    CombinedSolver(const ColorImageR32G32B32A32& image, const ColorImageR32G32B32A32& image1, const ColorImageR32& imageMask, CombinedSolverParameters params, bool useCUDAPatch, bool useEigen, OptImage::Location location)
 	{
         m_combinedSolverParameters = params;
         m_useCUDAPatch = useCUDAPatch;
@@ -24,11 +24,12 @@ public:
 		m_image = image;
 		m_image1 = image1;
 		m_imageMask = imageMask;
+                m_location = location;
         m_dims = { m_image.getWidth(), m_image.getHeight() };
 
-        d_image     = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 4, OptImage::Location::GPU, true);
-        d_target    = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 4, OptImage::Location::GPU, true);
-        d_mask      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, OptImage::Location::GPU, true);
+        d_image     = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 4, location, true);
+        d_target    = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 4, location, true);
+        d_mask      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, location, true);
 
 		resetGPUMemory();
 
@@ -94,7 +95,15 @@ public:
 
 	void copyResultToCPU() {
 		m_result = ColorImageR32G32B32A32(m_image.getWidth(), m_image.getHeight());
-        cudaSafeCall(cudaMemcpy(m_result.getData(), d_image->data(), sizeof(float4)*m_image.getWidth()*m_image.getHeight(), cudaMemcpyDeviceToHost));
+
+
+        if (m_location == OptImage::Location::GPU) {
+          cudaSafeCall(cudaMemcpy(m_result.getData(), d_image->data(), sizeof(float4)*m_image.getWidth()*m_image.getHeight(), cudaMemcpyDeviceToHost));
+        }
+        else {
+          memcpy(m_result.getData(), d_image->data(), sizeof(float4)*m_image.getWidth()*m_image.getHeight());
+        }
+
 	}
 
 private:
@@ -106,6 +115,8 @@ private:
 	ColorImageR32		   m_imageMask;
 
 	ColorImageR32G32B32A32 m_result;
+
+        OptImage::Location m_location;
 
 	std::shared_ptr<OptImage> d_image;
     std::shared_ptr<OptImage> d_target;
