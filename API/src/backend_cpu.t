@@ -19,11 +19,14 @@ b.threadarg_val = 1
 
 -- atomicAdd START
 if c.opt_float == float then
-    local terra atomicAdd(sum : &float, value : float)
+    local terra atomicAddSync(sum : &float, value : float, offset : int)
       @sum = @sum + value
     end
-    b.atomicAdd_sync = atomicAdd
-    b.atomicAdd_nosync = atomicAdd
+    local terra atomicAddNosync(sum : &float, value : float)
+      @sum = @sum + value
+    end
+    b.atomicAdd_sync = atomicAddSync
+    b.atomicAdd_nosync = atomicAddNosync
 else
     struct ULLDouble {
         union {
@@ -48,17 +51,23 @@ else
     end
 
     if pascalOrBetterGPU then
-        local terra atomicAdd(sum : &double, value : double)
+        local terra atomicAddSync(sum : &float, value : float, offset : int)
           @sum = @sum + value
         end
-        b.atomicAdd_sync = atomicAdd
-        b.atomicAdd_nosync = atomicAdd
+        local terra atomicAddNosync(sum : &float, value : float)
+          @sum = @sum + value
+        end
+        b.atomicAdd_sync = atomicAddSync
+        b.atomicAdd_nosync = atomicAddNosync
     else
-        local terra atomicAdd(sum : &double, value : double)
+        local terra atomicAddSync(sum : &float, value : float, offset : int)
           @sum = @sum + value
         end
-        b.atomicAdd_sync = atomicAdd
-        b.atomicAdd_nosync = atomicAdd
+        local terra atomicAddNosync(sum : &float, value : float)
+          @sum = @sum + value
+        end
+        b.atomicAdd_sync = atomicAddSync
+        b.atomicAdd_nosync = atomicAddNosync
     end
 end
 -- atomicAdd END

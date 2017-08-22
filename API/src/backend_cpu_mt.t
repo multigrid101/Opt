@@ -21,22 +21,23 @@ b.numthreads = numthreads
 -- TODO make atomicAdd add into the sum, but make sure to take care of race conditions
 -- OPTION 1: add into directly into global sum
 -- OPTION 2: have each thread add into its own sum. (i.e. have 'sum' as a float[numthreads]) --> more efficient but harder to implement
-b.summutex_sym = global(C.pthread_mutex_t, nil,  'summutex')
+b.summutex_sym = global(C.pthread_mutex_t[c.nummutexes], nil,  'summutex')
 
 b.threadarg = symbol(int, 'thread_id')
 b.threadarg_val = b.threadarg -- need second variable to provide default arguments for other backends
 
 if c.opt_float == float then
 
-    local terra atomicAdd_sync(sum : &float, value : float)
-      C.pthread_mutex_lock(&[b.summutex_sym])
+    local terra atomicAdd_sync(sum : &float, value : float, offset : int)
+      C.pthread_mutex_lock(&([b.summutex_sym][offset]))
       @sum = @sum + value
-      C.pthread_mutex_unlock(&[b.summutex_sym])
+      C.pthread_mutex_unlock(&([b.summutex_sym][offset]))
     end
     local terra atomicAdd_nosync(sum : &float, value : float)
       @sum = @sum + value
     end
     b.atomicAdd_nosync = atomicAdd_nosync
+
     b.atomicAdd_sync = atomicAdd_sync
     -- b.atomicAdd_sync = atomicAdd_nosync
     -- TODO copy this implementation downwards when finished (or remove duplicates)
@@ -64,29 +65,31 @@ else
     end
 
     if pascalOrBetterGPU then
-        local terra atomicAdd_sync(sum : &double, value : double)
-          C.pthread_mutex_lock(&[b.summutex_sym])
+        local terra atomicAdd_sync(sum : &double, value : double, offset: int)
+          C.pthread_mutex_lock(&([b.summutex_sym][offset]))
           @sum = @sum + value
-          C.pthread_mutex_unlock(&[b.summutex_sym])
+          C.pthread_mutex_unlock(&([b.summutex_sym][offset]))
         end
         local terra atomicAdd_nosync(sum : &float, value : float)
           @sum = @sum + value
         end
         b.atomicAdd_nosync = atomicAdd_nosync
+
         b.atomicAdd_sync = atomicAdd_sync
-    -- b.atomicAdd_sync = atomicAdd_nosync
+        -- b.atomicAdd_sync = atomicAdd_nosync
     else
-        local terra atomicAdd_sync(sum : &double, value : double)
-          C.pthread_mutex_lock(&[b.summutex_sym])
+        local terra atomicAdd_sync(sum : &double, value : double, offset : int)
+          C.pthread_mutex_lock(&([b.summutex_sym][offset]))
           @sum = @sum + value
-          C.pthread_mutex_unlock(&[b.summutex_sym])
+          C.pthread_mutex_unlock(&([b.summutex_sym][offset]))
         end
         local terra atomicAdd_nosync(sum : &float, value : float)
           @sum = @sum + value
         end
         b.atomicAdd_nosync = atomicAdd_nosync
+
         b.atomicAdd_sync = atomicAdd_sync
-    -- b.atomicAdd_sync = atomicAdd_nosync
+        -- b.atomicAdd_sync = atomicAdd_nosync
     end
 end
 -- atomicAdd END
@@ -204,7 +207,6 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 -- 
     local terra GPULauncher(pd : &PlanData)
         -- var [b.summutex_sym]
-        C.pthread_mutex_init(&[b.summutex_sym], nil)
 
 
         -- var tdata1 : thread_data

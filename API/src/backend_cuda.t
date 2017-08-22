@@ -19,11 +19,14 @@ b.threadarg_val = 1
 
 -- atomicAdd START
 if c.opt_float == float then
-    local terra atomicAdd(sum : &float, value : float)
+    local terra atomicAddSync(sum : &float, value : float, offset : int)
     	terralib.asm(terralib.types.unit,"red.global.add.f32 [$0],$1;","l,f", true, sum, value)
     end
-    b.atomicAdd_sync = atomicAdd
-    b.atomicAdd_nosync = atomicAdd
+    local terra atomicAddNosync(sum : &float, value : float)
+    	terralib.asm(terralib.types.unit,"red.global.add.f32 [$0],$1;","l,f", true, sum, value)
+    end
+    b.atomicAdd_sync = atomicAddSync
+    b.atomicAdd_nosync = atomicAddNosync
 else
     struct ULLDouble {
         union {
@@ -48,14 +51,18 @@ else
     end
 
     if pascalOrBetterGPU then
-        local terra atomicAdd(sum : &double, value : double)
+        local terra atomicAddSync(sum : &double, value : double, offset : int)
             var address_as_i : uint64 = [uint64] (sum);
             terralib.asm(terralib.types.unit,"red.global.add.f64 [$0],$1;","l,d", true, address_as_i, value)
         end
-        b.atomicAdd_sync = atomicAdd
-        b.atomicAdd_nosync = atomicAdd
+        local terra atomicAddNosync(sum : &double, value : double)
+            var address_as_i : uint64 = [uint64] (sum);
+            terralib.asm(terralib.types.unit,"red.global.add.f64 [$0],$1;","l,d", true, address_as_i, value)
+        end
+        b.atomicAdd_sync = atomicAddSync
+        b.atomicAdd_nosync = atomicAddNosync
     else
-        local terra atomicAdd(sum : &double, value : double)
+        local terra atomicAddSync(sum : &double, value : double, offset : int)
             var address_as_i : &uint64 = [&uint64] (sum);
             var old : uint64 = address_as_i[0];
             var assumed : uint64;
@@ -70,8 +77,23 @@ else
 
             return __ull_as_double(old);
         end
-        b.atomicAdd_sync = atomicAdd
-        b.atomicAdd_nosync = atomicAdd
+        local terra atomicAddNoSync(sum : &double, value : double)
+            var address_as_i : &uint64 = [&uint64] (sum);
+            var old : uint64 = address_as_i[0];
+            var assumed : uint64;
+
+            repeat
+                assumed = old;
+                old = terralib.asm(uint64,"atom.global.cas.b64 $0,[$1],$2,$3;", 
+                    "=l,l,l,l", true, address_as_i, assumed, 
+                    __double_as_ull( value + __ull_as_double(assumed) )
+                    );
+            until assumed == old;
+
+            return __ull_as_double(old);
+        end
+        b.atomicAdd_sync = atomicAddSync
+        b.atomicAdd_nosync = atomicAddNoSync
     end
 end
 -- atomicAdd END

@@ -9,6 +9,7 @@ util.C = terralib.includecstring [[
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <math.h>
 #include <cuda_runtime.h>
 #ifdef _WIN32

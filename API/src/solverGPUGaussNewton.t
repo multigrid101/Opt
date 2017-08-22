@@ -1261,6 +1261,17 @@ return function(problemSpec)
     -- from here on: define init, step, etc, which make up the main body of the solver
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra init(data_ : &opaque, params_ : &&opaque)
+        
+       escape
+         if backend.name == 'CPUMT' then
+           emit quote
+             for k = 0,1000 do
+               C.pthread_mutex_init(&([backend.summutex_sym][k]), nil)
+             end
+           end
+         end
+       end
+
        var pd = [&PlanData](data_)
        pd.timer:init()
        pd.timer:startEvent("overall",nil,&pd.endSolver)
