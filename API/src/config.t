@@ -1,6 +1,7 @@
 local c = {}
 
 c._opt_double_precision = false
+-- c._opt_double_precision = true
 if c._opt_double_precision then c.opt_float =  double else c.opt_float =  float end
 
 c._opt_verbosity = 10
