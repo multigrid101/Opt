@@ -1,6 +1,7 @@
 local b = {}
 local c = require('config')
 local C = terralib.includecstring [[
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <pthread.h>
 #include <string.h>
@@ -196,6 +197,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
       kmax : int[numdims],
       pd : &PlanData
       tid : int -- thread id
+      cpuset : C.cpu_set_t
     }
 
     local terra threadLauncher(threadarg : &opaque) : &opaque
@@ -205,7 +207,20 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         var kmax = threaddata.kmax
         var tid = threaddata.tid
 
+        var cpuset = threaddata.cpuset
+        
+        -- if config.cpumap is not set, then let OS schedule the threads as it sees fit
+        escape
+          if c.cpumap then
+            emit quote
+              C.pthread_setaffinity_np(C.pthread_self(), sizeof(C.cpu_set_t), &cpuset)
+            end
+          end
+        end
+
         compiledKernel(@pd, kmin, kmax, tid)
+        
+
     end
 -- 
     local terra GPULauncher(pd : &PlanData)
@@ -221,6 +236,40 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         -- var t2 : C.pthread_t
 
         var threads : C.pthread_t[numthreads]
+
+        -- if config.cpumap is not set, then let OS take care of threadmapping
+        escape
+          if c.cpumap then
+            emit quote
+              var cpusets : C.cpu_set_t[numthreads]
+              var cpumap : int[8]
+
+              escape
+                for k = 1,numthreads do
+                  emit quote
+                    cpumap[ [k-1] ] = [ c.cpumap[k] ]
+                  end
+                end
+              end
+
+              -- CPU_ZERO macro
+              for k = 0,numthreads do
+                C.memset ( &(cpusets[k]) , 0, sizeof (C.cpu_set_t)) -- 0 is the integer value of '\0'
+              end
+
+              -- CPU_SET macro
+              for k = 0,numthreads do
+                var cpuid : C.size_t = cpumap[k]
+                ([&C.__cpu_mask](cpusets[k].__bits))[0] = ([&C.__cpu_mask](cpusets[k].__bits))[0] or ([C.__cpu_mask]( 1  << cpuid) )
+              end
+
+
+              for k = 0,numthreads do
+                tdatas[k].cpuset = cpusets[k]
+              end
+            end
+          end
+        end
 
         -- TODO this is not the correct way to split up the work, will only work for one dimension.
         -- TODO balance workload more evenly (if necessary)

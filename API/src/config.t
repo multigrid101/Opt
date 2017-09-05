@@ -10,6 +10,8 @@ c.verboseAD = false
 
 -- c.numthreads = 2 -- only for backend_cpu_mt, no effect on other backends
 c.numthreads = 4 -- only for backend_cpu_mt, no effect on other backends
+-- c.cpumap = { 0, 1, 2, 3, 4, 5, 6, 7 } -- default
+-- c.cpumap = { 1, 5, 2, 3, 4, 5, 6, 7 }
 c.nummutexes = 10000 -- adjust by hand (only has effec for backend_cpu_mt) TODO find better solution for this
 
 -- c.backend = 'backend_cuda'
