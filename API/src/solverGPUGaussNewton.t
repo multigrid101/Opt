@@ -514,18 +514,18 @@ return function(problemSpec)
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 -- sum over block results to compute denominator of alpha
                 -- TODO generalize for multithreading
-                -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
-                -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
+                var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
+                var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
                 -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[1] + pd.scanAlphaDenominator[2]
                 -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[1] + pd.scanAlphaNumerator[2]
-                var alphaDenominator : opt_float = 0.0
-                for k = 1,backend.numthreads+1 do
-                  alphaDenominator = alphaDenominator + pd.scanAlphaDenominator[k]
-                end
-                var alphaNumerator : opt_float = 0.0
-                for k = 1,backend.numthreads+1 do
-                  alphaNumerator = alphaNumerator + pd.scanAlphaNumerator[k]
-                end
+                -- var alphaDenominator : opt_float = 0.0
+                -- for k = 1,backend.numthreads+1 do
+                --   alphaDenominator = alphaDenominator + pd.scanAlphaDenominator[k]
+                -- end
+                -- var alphaNumerator : opt_float = 0.0
+                -- for k = 1,backend.numthreads+1 do
+                --   alphaNumerator = alphaNumerator + pd.scanAlphaNumerator[k]
+                -- end
 
 
                 -- update step size alpha
@@ -615,6 +615,16 @@ return function(problemSpec)
             end
         end
 
+        -- TEST START
+        local unroll = function(sum, a, n)
+            local quotelist = terralib.newlist()
+            for k = 1,n-1 do
+                quotelist:insert(quote sum = sum + a[k]   end)
+            end
+
+            return quotelist
+        end
+        -- TEST END
 
         terra kernels.PCGStep3(pd : PlanData, [kernelArglist], [backend.threadarg])			
         -- reads: z, p
@@ -623,22 +633,28 @@ return function(problemSpec)
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
             
                 -- TODO generalize for multithreading
-                -- var rDotzNew : opt_float = pd.scanBetaNumerator[0]	-- get new numerator
-                -- var rDotzOld : opt_float = pd.scanAlphaNumerator[0]	-- get old denominator
-                var rDotzNew : opt_float = 0.0
-                for k = 1,backend.numthreads+1 do
-                  rDotzNew = rDotzNew + pd.scanBetaNumerator[k]
-                end
-                var rDotzOld : opt_float = 0.0
-                for k = 1,backend.numthreads+1 do
-                  rDotzOld = rDotzOld + pd.scanAlphaNumerator[k]
-                end
+                var rDotzNew : opt_float = pd.scanBetaNumerator[0]	-- get new numerator
+                var rDotzOld : opt_float = pd.scanAlphaNumerator[0]	-- get old denominator
+                -- var rDotzNew : opt_float = 0.0
+                -- for k = 1,backend.numthreads+1 do
+                --   rDotzNew = rDotzNew + pd.scanBetaNumerator[k]
+                -- end
+                -- -- [unroll(rDotzNew, `pd.scanBetaNumerator, backend.numthreads+1)]
+                -- var rDotzOld : opt_float = 0.0
+                -- for k = 1,backend.numthreads+1 do
+                --   rDotzOld = rDotzOld + pd.scanAlphaNumerator[k]
+                -- end
+                -- [unroll(rDotzOld, `pd.scanAlphaNumerator, backend.numthreads+1)]
 
                 var beta : opt_float = opt_float(0.0f)
                 beta = rDotzNew/rDotzOld
                 pd.p(idx) = pd.z(idx)+beta*pd.p(idx)			    -- update decent direction
             end
         end
+        print(kernels.PCGStep3)
+        kernels.PCGStep3:disas()
+        terralib.saveobj('PCGStep3.o', {bla = kernels.PCGStep3})
+        -- error()
         
         terra kernels.PCGLinearUpdate(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
@@ -1446,9 +1462,33 @@ return function(problemSpec)
                         end
                         gpu.PCGStep2_2ndHalf(pd)
                     else
+
+                        -- TEST START
+                        pd.scanAlphaDenominator[0] = 0.0
+                        for k = 1,backend.numthreads+1 do
+                          pd.scanAlphaDenominator[0] = pd.scanAlphaDenominator[0] + pd.scanAlphaDenominator[k]
+                        end
+                        pd.scanAlphaNumerator[0] = 0.0
+                        for k = 1,backend.numthreads+1 do
+                          pd.scanAlphaNumerator[0] = pd.scanAlphaNumerator[0] + pd.scanAlphaNumerator[k]
+                        end
+                        -- TEST END
+
                         gpu.PCGStep2(pd)
                     end
 
+                -- TEST START
+                pd.scanBetaNumerator[0] = 0.0
+                for k = 1,backend.numthreads+1 do
+                  pd.scanBetaNumerator[0] = pd.scanBetaNumerator[0] + pd.scanBetaNumerator[k]
+                end
+                -- [unroll(rDotzNew, `pd.scanBetaNumerator, backend.numthreads+1)]
+                pd.scanAlphaNumerator[0] = 0.0
+                for k = 1,backend.numthreads+1 do
+                  pd.scanAlphaNumerator[0] = pd.scanAlphaNumerator[0] + pd.scanAlphaNumerator[k]
+                end
+                -- [unroll(rDotzOld, `pd.scanAlphaNumerator, backend.numthreads+1)]
+                -- TEST END
                     gpu.PCGStep3(pd)
 
                     -- save new rDotz for next iteration
