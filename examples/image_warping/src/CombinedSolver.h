@@ -109,7 +109,8 @@ public:
 
         m_location = location;
 
-        m_dims = { m_image.getWidth(), m_image.getHeight() };
+        /* m_dims = { m_image.getWidth(), m_image.getHeight() }; // original */
+        m_dims = { m_image.getWidth()*10, m_image.getHeight()*10 };
         m_urshape       = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, location, true);
         m_warpField     = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, location, true);
         m_warpAngles    = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, location, true);
@@ -118,7 +119,7 @@ public:
 
 		resetGPU();
         
-        addSolver(std::make_shared<CUDAWarpingSolver>(m_dims), "CUDA", m_combinedSolverParameters.useCUDA);
+        /* addSolver(std::make_shared<CUDAWarpingSolver>(m_dims), "CUDA", m_combinedSolverParameters.useCUDA); */
         addSolver(std::make_shared<CeresSolverWarping>(m_dims), "Ceres", m_combinedSolverParameters.useCeres);
         addOptSolvers(m_dims, "image_warping.t", m_combinedSolverParameters.optDoublePrecision);
 	}

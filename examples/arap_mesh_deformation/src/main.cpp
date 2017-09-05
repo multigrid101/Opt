@@ -77,9 +77,12 @@ int main(int argc, const char * argv[]) {
     // Load SolverParameter struct
     CombinedSolverParameters params;
 
-    params.numIter = 10;
-    params.nonLinearIter = 20;
-    params.linearIter = 100;
+    /* params.numIter = 10; */ //original
+    /* params.nonLinearIter = 20; */ //original
+    /* params.linearIter = 100; */ //original
+    params.numIter = 1;
+    params.nonLinearIter = 2;
+    params.linearIter = 2;
     params.useOpt = true;
     if (performanceRun) {
         params.useCUDA = false;
@@ -112,7 +115,7 @@ int main(int argc, const char * argv[]) {
     CombinedSolver solver_cpu(mesh, constraintsIdx, constraintsTarget, params, weightFit, weightReg, OptImage::Location::CPU);
 
     solver.solveAll();
-    /* solver_cpu.solveAll(); */
+    solver_cpu.solveAll();
 
     
     // write results to file
