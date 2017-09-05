@@ -64,7 +64,8 @@ else
         return u.b;
     end
 
-    if pascalOrBetterGPU then
+    -- if pascalOrBetterGPU then
+    if true then
         local terra atomicAdd_sync(sum : &double, value : double, offset: int)
           C.pthread_mutex_lock(&([b.summutex_sym][offset]))
           @sum = @sum + value
@@ -179,6 +180,8 @@ b.cd = cd
 
 
 local GRID_SIZES = c.GRID_SIZES
+
+b.threadcreation_counter = global(int, 0,  'threadcreation_counter')
 
 
 local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) -- compiledKernel is the result of b.makeWrappedFunctions

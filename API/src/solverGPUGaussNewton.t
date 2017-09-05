@@ -400,6 +400,17 @@ return function(problemSpec)
         end
 
         terra kernels.PCGInit1(pd : PlanData, [kernelArglist], [backend.threadarg])
+
+            -- -- NONSENSE WORK START
+            -- var bla : int = [backend.threadarg]
+            -- for k = 0,1000000 do
+            --   bla = (bla + 23)/[backend.threadarg]
+            -- end
+            -- if [backend.threadarg] < 0 then
+            --   C.printf('%d\n', bla)
+            -- end
+            -- -- NONSENSE WORK END
+
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
         
             var idx : Index
@@ -461,6 +472,10 @@ return function(problemSpec)
         end
 
         terra kernels.PCGStep1(pd : PlanData, [kernelArglist], [backend.threadarg])
+        -- writes: Ap_X (0.3 GiB)
+        -- reads: X (in applyJTJ approx 0.3 GB (maybe times 5)), p (0.3 GiB), all known Arrays (approx. 0.53 GiB (maybe times 5))
+        --> lower bound approx 1.5 GiB per kernel run.
+        --> upper bound bound approx 4.6 GiB per kernel run.
             var d : opt_float = opt_float(0.0f)
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
@@ -470,10 +485,14 @@ return function(problemSpec)
                 pd.Ap_X(idx) = tmp					 -- store for next kernel call
                 d = pd.p(idx):dot(tmp)			 -- x-th term of denominator of alpha
             end
+
+
             if not [multistep_alphaDenominator_compute] then
                 unknownWideReduction(idx,d,&(pd.scanAlphaDenominator[ [backend.threadarg_val] ]))
             end
         end
+        print(fmap.applyJTJ)
+        -- error()
 
         if multistep_alphaDenominator_compute then
             terra kernels.PCGStep1_Finish(pd : PlanData, [kernelArglist], [backend.threadarg])
@@ -487,6 +506,8 @@ return function(problemSpec)
         end
 
         terra kernels.PCGStep2(pd : PlanData, [kernelArglist], [backend.threadarg])
+        -- writes: delta, r, z
+        -- reads: delta, p, r, Ap_X, preconditioner, z, (b if UsesLambda)
             var betaNum = opt_float(0.0f) 
             var q = opt_float(0.0f) -- Only used if LM
             var idx : Index
@@ -596,6 +617,8 @@ return function(problemSpec)
 
 
         terra kernels.PCGStep3(pd : PlanData, [kernelArglist], [backend.threadarg])			
+        -- reads: z, p
+        -- writes: p
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
             
@@ -1345,6 +1368,7 @@ return function(problemSpec)
 
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra step(data_ : &opaque, params_ : &&opaque)
+        -- [backend.threadcreation_counter] = 0
         var pd = [&PlanData](data_)
         var residual_reset_period : int         = pd.solverparameters.residual_reset_period
         var min_relative_decrease : opt_float   = pd.solverparameters.min_relative_decrease
@@ -1510,12 +1534,15 @@ return function(problemSpec)
                     ]]
 
                         pd.solverparameters.nIter = pd.solverparameters.nIter + 1
+        -- C.printf('created %d threads in this step \n', [backend.threadcreation_counter])
                         return 1
         else
             cleanup(pd)
             return 0
         end
     end
+    print(step)
+    -- error()
 
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra cost(data_ : &opaque) : double
