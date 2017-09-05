@@ -7,6 +7,8 @@ local backend = require(c.backend)
 
 util.C = terralib.includecstring [[
 #include <stdio.h>
+#include <time.h>
+#include "/home/sebastian/Desktop/cycle.h"
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -373,6 +375,19 @@ terra Timer:startEvent(name : rawstring,  stream : C.cudaStream_t, endEvent : &C
     C.cudaEventRecord(timingInfo.startEvent, stream)
     self.timingInfo:insert(timingInfo)
     @endEvent = timingInfo.endEvent
+
+    var start : C.timespec
+    C.clock_gettime(C.CLOCK_MONOTONIC, &start) 
+
+    -- var starttime : double
+    -- starttime = start.tv_sec
+    -- starttime = starttime + [double](start.tv_nsec)
+
+    var starttime : C.ticks = C.getticks()
+
+
+    -- TODO clean this up a little
+    C.printf('starting kernel %s at time %lu\n', name, starttime)
 end
 terra Timer:endEvent(stream : C.cudaStream_t, endEvent : C.cudaEvent_t)
     C.cudaEventRecord(endEvent, stream)
