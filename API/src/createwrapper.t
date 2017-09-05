@@ -204,7 +204,7 @@ end
 
 local flags = {}
 if ffi.os == "Windows" then
-    flags = terralib.newlist { string.format("/IMPLIB:%s.lib",libraryname),terralib.terrahome.."\\lib\\terra.lib",terralib.terrahome.."\\lib\\lua51.lib","Shlwapi.lib" }
+    flags = terralib.newlist { string.format("/IMPLIB:%s.lib",libraryname),terralib.terrahome.."\\lib\\terra.lib",terralib.terrahome.."\\lib\\lua51.lib","Shlwapi.lib", '-lpthread'}
     
     for k,_ in pairs(wrappers) do
         flags:insert("/EXPORT:"..k)
