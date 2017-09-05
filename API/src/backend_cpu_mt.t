@@ -227,6 +227,8 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         escape
             -- outermost dimension is split among threads
             local dimsize = ispace.dims[1].size
+            local outerdim = numdims-1
+            -- local outerdim = 0
             emit quote
               -- tdata1.kmin[ 0 ] = 0
               -- tdata1.kmax[ 0 ] = dimsize/2
@@ -234,16 +236,17 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
               -- tdata2.kmin[ 0 ] = dimsize/2
               -- tdata2.kmax[ 0 ] = dimsize
               for k = 0,numthreads-1 do -- last thread needs to be set manually due to roundoff error
-                tdatas[k].kmin[ 0 ] = k*(dimsize/numthreads)
-                tdatas[k].kmax[ 0 ] = (k+1)*(dimsize/numthreads)
+                tdatas[k].kmin[ outerdim ] = k*(dimsize/numthreads)
+                tdatas[k].kmax[ outerdim ] = (k+1)*(dimsize/numthreads)
               end
 
-              tdatas[numthreads-1].kmin[ 0 ] = (numthreads-1)*(dimsize/numthreads)
-              tdatas[numthreads-1].kmax[ 0 ] = dimsize
+              tdatas[numthreads-1].kmin[ outerdim ] = (numthreads-1)*(dimsize/numthreads)
+              tdatas[numthreads-1].kmax[ outerdim ] = dimsize
             end
 
           -- all other dimensions traverse everything
-          for d = 2,numdims do
+          -- for d = 2,numdims do
+          for d = 1,numdims-1 do
             local dimsize = ispace.dims[d].size
             emit quote
               for k = 0,numthreads do
