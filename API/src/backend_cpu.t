@@ -223,7 +223,17 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
     --     end
 
     --     cd(C.cudaGetLastError())
+        var endEvent : C.cudaEvent_t 
+        if ([_opt_collect_kernel_timing]) then
+            pd.timer:startEvent(kernelName,nil,&endEvent)
+        end
+
+        
       compiledKernel(@pd)
+
+        if ([_opt_collect_kernel_timing]) then
+            pd.timer:endEvent(nil,endEvent)
+        end
     end
     -- print(GPULauncher)
     return GPULauncher

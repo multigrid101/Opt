@@ -268,15 +268,38 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
         -- C.pthread_create(&t1, nil, threadLauncher, &tdata1)
         -- C.pthread_create(&t2, nil, threadLauncher, &tdata2)
+        var endEvent : C.cudaEvent_t 
+        var threadEvent : C.cudaEvent_t 
+        if ([_opt_collect_kernel_timing]) then
+            pd.timer:startEvent(kernelName,nil,&endEvent)
+        end
+
+        
+
         for k = 0,numthreads do
+          if ([_opt_collect_kernel_timing]) then
+              pd.timer:startEvent('thread start',nil,&threadEvent)
+          end
+
+          [b.threadcreation_counter] = [b.threadcreation_counter] + 1
           C.pthread_create(&threads[k], nil, threadLauncher, &tdatas[k])
+
+          if ([_opt_collect_kernel_timing]) then
+              pd.timer:endEvent(nil,threadEvent)
+          end
         end
         
 
         -- C.pthread_join(t1, nil)
         -- C.pthread_join(t2, nil)
         for k = 0,numthreads do
+
           C.pthread_join(threads[k], nil)
+
+        end
+
+        if ([_opt_collect_kernel_timing]) then
+            pd.timer:endEvent(nil,endEvent)
         end
 
 
