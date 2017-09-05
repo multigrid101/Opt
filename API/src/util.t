@@ -541,7 +541,8 @@ else
     --     end
     --     util.atomicAdd = atomicAdd
     -- end
-    util.atomicAdd = backend.atomicAdd
+    util.atomicAdd_sync = backend.atomicAdd_sync
+    util.atomicAdd_nosync = backend.atomicAdd_nosync
 
     terra __shfl_down(v : double, delta : uint, width : int)
         var ret : uint2Double;
