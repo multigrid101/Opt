@@ -1304,7 +1304,7 @@ return function(problemSpec)
        escape
          if backend.name == 'CPUMT' then
            emit quote
-             for k = 0,1000 do
+             for k = 0,conf.nummutexes do
                C.pthread_mutex_init(&([backend.summutex_sym][k]), nil)
              end
            end
