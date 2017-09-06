@@ -653,8 +653,8 @@ return function(problemSpec)
             end
         end
         print(kernels.PCGStep3)
-        kernels.PCGStep3:disas()
-        terralib.saveobj('PCGStep3.o', {bla = kernels.PCGStep3})
+        -- kernels.PCGStep3:disas()
+        -- terralib.saveobj('PCGStep3.o', {bla = kernels.PCGStep3})
         -- error()
         
         terra kernels.PCGLinearUpdate(pd : PlanData, [kernelArglist], [backend.threadarg])
