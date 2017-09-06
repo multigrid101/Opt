@@ -181,7 +181,8 @@ return function(problemSpec)
         plan : opt.Plan
         parameters : problemSpec:ParameterType()
         solverparameters : SolverParameters
-        scratch : &opt_float -- array has size=numthreads+1, zeroth element is used for the sum
+        -- scratch : &opt_float -- array has size=numthreads+1, zeroth element is used for the sum
+        scratch : &&opt_float -- array has size=numthreads+1, zeroth element is used for the sum
 
         delta : TUnknownType	--current linear update to be computed -> num vars
         r : TUnknownType		--residuals -> num vars	--TODO this needs to be a 'residual type'
@@ -197,12 +198,12 @@ return function(problemSpec)
 		
         prevX : TUnknownType -- Place to copy unknowns to before speculatively updating. Avoids hassle when (X + delta) - delta != X 
 
-        scanAlphaNumerator : &opt_float
-        scanAlphaDenominator : &opt_float
-        scanBetaNumerator : &opt_float
+        scanAlphaNumerator : &&opt_float
+        scanAlphaDenominator : &&opt_float
+        scanBetaNumerator : &&opt_float
 
-        modelCost : &opt_float    -- modelCost = L(delta) where L(h) = F' F + 2 h' J' F + h' J' J h
-        q : &opt_float -- Q value for zeta calculation (see CERES)
+        modelCost : &&opt_float    -- modelCost = L(delta) where L(h) = F' F + 2 h' J' F + h' J' J h
+        q : &&opt_float -- Q value for zeta calculation (see CERES)
 		
         timer : Timer
         endSolver : util.TimerEvent
@@ -445,7 +446,7 @@ return function(problemSpec)
                 pd.preconditioner(idx) = pre
             end 
             if not isGraph then
-                unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg_val] ]))
+                unknownWideReduction(idx,d,(pd.scanAlphaNumerator[ [backend.threadarg_val] ]))
             end
         end
         
@@ -468,7 +469,7 @@ return function(problemSpec)
                 d = residuum:dot(p)
             end
 
-            unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg_val] ]))
+            unknownWideReduction(idx,d,(pd.scanAlphaNumerator[ [backend.threadarg_val] ]))
         end
 
         terra kernels.PCGStep1(pd : PlanData, [kernelArglist], [backend.threadarg])
@@ -488,7 +489,7 @@ return function(problemSpec)
 
 
             if not [multistep_alphaDenominator_compute] then
-                unknownWideReduction(idx,d,&(pd.scanAlphaDenominator[ [backend.threadarg_val] ]))
+                unknownWideReduction(idx,d,(pd.scanAlphaDenominator[ [backend.threadarg_val] ]))
             end
         end
         print(fmap.applyJTJ)
@@ -501,7 +502,7 @@ return function(problemSpec)
                 if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                     d = pd.p(idx):dot(pd.Ap_X(idx))           -- x-th term of denominator of alpha
                 end
-                unknownWideReduction(idx,d,&(pd.scanAlphaDenominator[ [backend.threadarg_val] ]))
+                unknownWideReduction(idx,d,(pd.scanAlphaDenominator[ [backend.threadarg_val] ]))
             end
         end
 
@@ -514,8 +515,8 @@ return function(problemSpec)
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
                 -- sum over block results to compute denominator of alpha
                 -- TODO generalize for multithreading
-                var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
-                var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
+                var alphaDenominator : opt_float = @(pd.scanAlphaDenominator[0])
+                var alphaNumerator : opt_float = @(pd.scanAlphaNumerator[0])
                 -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[1] + pd.scanAlphaDenominator[2]
                 -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[1] + pd.scanAlphaNumerator[2]
                 -- var alphaDenominator : opt_float = 0.0
@@ -556,9 +557,9 @@ return function(problemSpec)
                 end
             end
             
-            unknownWideReduction(idx,betaNum,&(pd.scanBetaNumerator[ [backend.threadarg_val] ]))
+            unknownWideReduction(idx,betaNum,(pd.scanBetaNumerator[ [backend.threadarg_val] ]))
             if [problemSpec:UsesLambda()] then
-                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg_val] ]))
+                unknownWideReduction(idx,q,(pd.q[ [backend.threadarg_val] ]))
             end
         end
 
@@ -570,11 +571,11 @@ return function(problemSpec)
                 -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
                 var alphaDenominator : opt_float = 0.0
                 for k = 1,backend.numthreads+1 do
-                  alphaDenominator = alphaDenominator + pd.scanAlphaDenominator[k]
+                  alphaDenominator = alphaDenominator + @(pd.scanAlphaDenominator[k])
                 end
                 var alphaNumerator : opt_float = 0.0
                 for k = 1,backend.numthreads+1 do
-                  alphaNumerator = alphaNumerator + pd.scanAlphaNumerator[k]
+                  alphaNumerator = alphaNumerator + @(pd.scanAlphaNumerator[k])
                 end
 
 
@@ -609,9 +610,9 @@ return function(problemSpec)
                     q = 0.5*(pd.delta(idx):dot(r + b)) 
                 end
             end
-            unknownWideReduction(idx,betaNum,&(pd.scanBetaNumerator[ [backend.threadarg_val] ])) 
+            unknownWideReduction(idx,betaNum,(pd.scanBetaNumerator[ [backend.threadarg_val] ])) 
             if [problemSpec:UsesLambda()] then
-                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg_val] ]))
+                unknownWideReduction(idx,q,(pd.q[ [backend.threadarg_val] ]))
             end
         end
 
@@ -633,8 +634,8 @@ return function(problemSpec)
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
             
                 -- TODO generalize for multithreading
-                var rDotzNew : opt_float = pd.scanBetaNumerator[0]	-- get new numerator
-                var rDotzOld : opt_float = pd.scanAlphaNumerator[0]	-- get old denominator
+                var rDotzNew : opt_float = @(pd.scanBetaNumerator[0])	-- get new numerator
+                var rDotzOld : opt_float = @(pd.scanAlphaNumerator[0])	-- get old denominator
                 -- var rDotzNew : opt_float = 0.0
                 -- for k = 1,backend.numthreads+1 do
                 --   rDotzNew = rDotzNew + pd.scanBetaNumerator[k]
@@ -785,7 +786,8 @@ return function(problemSpec)
 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
-                util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg_val] ]), cost)
+                -- util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg_val] ]), cost)
+                util.atomicAdd_nosync((pd.scratch[ [backend.threadarg_val] ]), cost)
             end
         end
         print(kernels.computeCost)
@@ -861,8 +863,8 @@ return function(problemSpec)
                     --  so after the dot product, just need to multiply by 2 to recover value identical to CERES  
                     q = 0.5*(pd.delta(idx):dot(residuum + residuum)) 
                 end    
-                unknownWideReduction(idx,q,&(pd.q[ [backend.threadarg_val] ]))
-                unknownWideReduction(idx,d,&(pd.scanAlphaNumerator[ [backend.threadarg_val] ]))
+                unknownWideReduction(idx,q,(pd.q[ [backend.threadarg_val] ]))
+                unknownWideReduction(idx,d,(pd.scanAlphaNumerator[ [backend.threadarg_val] ]))
             end
 
             terra kernels.computeModelCost(pd : PlanData, [kernelArglist], [backend.threadarg])            
@@ -875,7 +877,7 @@ return function(problemSpec)
 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
-                    util.atomicAdd_nosync(&(pd.modelCost[ [backend.threadarg_val] ]), cost)
+                    util.atomicAdd_nosync((pd.modelCost[ [backend.threadarg_val] ]), cost)
                 end
             end
 
@@ -982,7 +984,7 @@ return function(problemSpec)
             if not [multistep_alphaDenominator_compute] then
                 d = util.warpReduce(d)
                 if (util.laneid() == 0) then
-                    util.atomicAdd_nosync(&(pd.scanAlphaDenominator[ [backend.threadarg_val] ]), d)
+                    util.atomicAdd_nosync((pd.scanAlphaDenominator[ [backend.threadarg_val] ]), d)
                 end
             end
         end
@@ -1022,7 +1024,8 @@ return function(problemSpec)
             end 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
-                util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg_val] ]), cost)
+                -- util.atomicAdd_nosync(&(pd.scratch[ [backend.threadarg_val] ]), cost)
+                util.atomicAdd_nosync((pd.scratch[ [backend.threadarg_val] ]), cost)
             end
         end
 
@@ -1066,7 +1069,7 @@ return function(problemSpec)
                 end 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
-                    util.atomicAdd_nosync(&(pd.modelCost[ [backend.threadarg_val] ]), cost)
+                    util.atomicAdd_nosync((pd.modelCost[ [backend.threadarg_val] ]), cost)
                 end
             end
         end
@@ -1114,12 +1117,24 @@ return function(problemSpec)
         -- TODO generalize this to an arbitrary number of threads
     local terra computeCost(pd : &PlanData) : opt_float
         -- C.cudaMemset(pd.scratch, 0, sizeof(opt_float))
-        backend.memsetDevice(pd.scratch, 0, sizeof(opt_float) * (backend.numthreads+1))
+
+        for k = 0,backend.numthreads+1 do
+        -- backend.memsetDevice(pd.scratch, 0, sizeof(opt_float) * (backend.numthreads+1))
+          backend.memsetDevice(pd.scratch[k], 0, sizeof(opt_float))
+        end
+
         gpu.computeCost(pd)
         gpu.computeCost_Graph(pd) -- TODO need to uncomment later
         var f : opt_float[(backend.numthreads+1)]
         -- C.cudaMemcpy(&f, pd.scratch, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
-        backend.memcpyDevice2Host(&f, pd.scratch, sizeof(opt_float) * (backend.numthreads+1))
+
+
+        for k = 0,backend.numthreads+1 do
+          -- backend.memcpyDevice2Host(&f, pd.scratch, sizeof(opt_float) * (backend.numthreads+1))
+          backend.memcpyDevice2Host(&(f[k]), pd.scratch[k], sizeof(opt_float))
+        end
+
+
         f[0] = 0.0
         for k = 1,backend.numthreads+1 do
           f[0] = f[0] + f[k]
@@ -1129,12 +1144,21 @@ return function(problemSpec)
 
     local terra computeModelCost(pd : &PlanData) : opt_float
         -- C.cudaMemset(pd.modelCost, 0, sizeof(opt_float))
-        backend.memsetDevice(pd.modelCost, 0, sizeof(opt_float) * (backend.numthreads+1))
+        -- backend.memsetDevice(pd.modelCost, 0, sizeof(opt_float) * (backend.numthreads+1))
+        for k = 0,backend.numthreads+1 do
+          backend.memsetDevice(pd.modelCost[k], 0, sizeof(opt_float))
+        end
+
         gpu.computeModelCost(pd)
         gpu.computeModelCost_Graph(pd)
         var f : opt_float[(backend.numthreads+1)]
+
         -- C.cudaMemcpy(&f, pd.modelCost, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
-        backend.memcpyDevice2Host(&f, pd.modelCost, sizeof(opt_float) * (backend.numthreads+1))
+        -- backend.memcpyDevice2Host(&f, pd.modelCost, sizeof(opt_float) * (backend.numthreads+1))
+        for k = 0,backend.numthreads+1 do
+          backend.memcpyDevice2Host(&(f[k]), pd.modelCost[k], sizeof(opt_float))
+        end
+
         f[0] = 0.0
         for k = 1,backend.numthreads+1 do
           f[0] = f[0] + f[k]
@@ -1146,8 +1170,13 @@ return function(problemSpec)
 
     local terra fetchQ(pd : &PlanData) : opt_float
         var f : opt_float[(backend.numthreads+1)]
+
         -- C.cudaMemcpy(&f, pd.q, sizeof(opt_float), C.cudaMemcpyDeviceToHost)
-        backend.memcpyDevice2Host(&f, pd.q, sizeof(opt_float) * (backend.numthreads+1))
+        -- backend.memcpyDevice2Host(&f, pd.q, sizeof(opt_float) * (backend.numthreads+1))
+        for k = 0,backend.numthreads+1 do
+          backend.memcpyDevice2Host(&(f[k]), pd.q[k], sizeof(opt_float))
+        end
+
         f[0] = 0.0
         for k = 1,backend.numthreads+1 do
           f[0] = f[0] + f[k]
@@ -1396,12 +1425,24 @@ return function(problemSpec)
         var Q1 : opt_float
         [util.initParameters(`pd.parameters,problemSpec, params_,false)]
         if pd.solverparameters.nIter < pd.solverparameters.nIterations then
+
                 -- C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-                backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                -- backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                for k = 0,backend.numthreads+1 do
+                  backend.memsetDevice(pd.scanAlphaNumerator[k], 0, sizeof(opt_float))
+                end
+
                 -- C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-                backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                -- backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                for k = 0,backend.numthreads+1 do
+                  backend.memsetDevice(pd.scanAlphaDenominator[k], 0, sizeof(opt_float))
+                end
+
                 -- C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))	--scan in PCGInit1 requires reset
-                backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                -- backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                for k = 0,backend.numthreads+1 do
+                  backend.memsetDevice(pd.scanBetaNumerator[k], 0, sizeof(opt_float))
+                end
 
                 gpu.PCGInit1(pd)
                 if isGraph then
@@ -1412,10 +1453,19 @@ return function(problemSpec)
                 escape 
                     if problemSpec:UsesLambda() then
                         emit quote
+
                             -- C.cudaMemset(pd.scanAlphaNumerator, 0, sizeof(opt_float))
-                            backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1)) -- TODO QUES isn't this a duplicate from a few lines above?
+                            -- backend.memsetDevice(pd.scanAlphaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1)) -- TODO QUES isn't this a duplicate from a few lines above?
+                            for k = 0,backend.numthreads+1 do
+                              backend.memsetDevice(pd.scanAlphaNumerator[k], 0, sizeof(opt_float))
+                            end
+
                             -- C.cudaMemset(pd.q, 0, sizeof(opt_float))
-                            backend.memsetDevice(pd.q, 0, sizeof(opt_float) * (backend.numthreads+1))
+                            -- backend.memsetDevice(pd.q, 0, sizeof(opt_float) * (backend.numthreads+1))
+                            for k = 0,backend.numthreads+1 do
+                              backend.memsetDevice(pd.q[k], 0, sizeof(opt_float))
+                            end
+
                             if [initialization_parameters.jacobiScaling == JacobiScalingType.ONCE_PER_SOLVE] and pd.solverparameters.nIter == 0 then
                                 gpu.PCGSaveSSq(pd)
                             end
@@ -1433,9 +1483,17 @@ return function(problemSpec)
                 for lIter = 0, pd.solverparameters.lIterations do				
 
                     -- C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))
-                    backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                    -- backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                    for k = 0,backend.numthreads+1 do
+                      backend.memsetDevice(pd.scanAlphaDenominator[k], 0, sizeof(opt_float))
+                    end
+
+
                     -- C.cudaMemset(pd.q, 0, sizeof(opt_float))
-                    backend.memsetDevice(pd.q, 0, sizeof(opt_float) * (backend.numthreads+1))
+                    -- backend.memsetDevice(pd.q, 0, sizeof(opt_float) * (backend.numthreads+1))
+                    for k = 0,backend.numthreads+1 do
+                      backend.memsetDevice(pd.q[k], 0, sizeof(opt_float))
+                    end
 
                     if not initialization_parameters.use_cusparse then
                         gpu.PCGStep1(pd)
@@ -1452,7 +1510,10 @@ return function(problemSpec)
                     end
                                     
                     -- C.cudaMemset(pd.scanBetaNumerator, 0, sizeof(opt_float))
-                    backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                    -- backend.memsetDevice(pd.scanBetaNumerator, 0, sizeof(opt_float) * (backend.numthreads+1))
+                    for k = 0,backend.numthreads+1 do
+                      backend.memsetDevice(pd.scanBetaNumerator[k], 0, sizeof(opt_float))
+                    end
                                     
                     if [problemSpec:UsesLambda()] and ((lIter + 1) % residual_reset_period) == 0 then
                         gpu.PCGStep2_1stHalf(pd)
@@ -1464,13 +1525,13 @@ return function(problemSpec)
                     else
 
                         -- TEST START
-                        pd.scanAlphaDenominator[0] = 0.0
+                        @(pd.scanAlphaDenominator[0]) = 0.0
                         for k = 1,backend.numthreads+1 do
-                          pd.scanAlphaDenominator[0] = pd.scanAlphaDenominator[0] + pd.scanAlphaDenominator[k]
+                          @(pd.scanAlphaDenominator[0]) = @(pd.scanAlphaDenominator[0]) + @(pd.scanAlphaDenominator[k])
                         end
-                        pd.scanAlphaNumerator[0] = 0.0
+                        @(pd.scanAlphaNumerator[0]) = 0.0
                         for k = 1,backend.numthreads+1 do
-                          pd.scanAlphaNumerator[0] = pd.scanAlphaNumerator[0] + pd.scanAlphaNumerator[k]
+                          @(pd.scanAlphaNumerator[0]) = @(pd.scanAlphaNumerator[0]) + @(pd.scanAlphaNumerator[k])
                         end
                         -- TEST END
 
@@ -1478,14 +1539,14 @@ return function(problemSpec)
                     end
 
                 -- TEST START
-                pd.scanBetaNumerator[0] = 0.0
+                @(pd.scanBetaNumerator[0]) = 0.0
                 for k = 1,backend.numthreads+1 do
-                  pd.scanBetaNumerator[0] = pd.scanBetaNumerator[0] + pd.scanBetaNumerator[k]
+                  @(pd.scanBetaNumerator[0]) = @(pd.scanBetaNumerator[0]) + @(pd.scanBetaNumerator[k])
                 end
                 -- [unroll(rDotzNew, `pd.scanBetaNumerator, backend.numthreads+1)]
-                pd.scanAlphaNumerator[0] = 0.0
+                @(pd.scanAlphaNumerator[0]) = 0.0
                 for k = 1,backend.numthreads+1 do
-                  pd.scanAlphaNumerator[0] = pd.scanAlphaNumerator[0] + pd.scanAlphaNumerator[k]
+                  @(pd.scanAlphaNumerator[0]) = @(pd.scanAlphaNumerator[0]) + @(pd.scanAlphaNumerator[k])
                 end
                 -- [unroll(rDotzOld, `pd.scanAlphaNumerator, backend.numthreads+1)]
                 -- TEST END
@@ -1493,7 +1554,10 @@ return function(problemSpec)
 
                     -- save new rDotz for next iteration
                     -- C.cudaMemcpy(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float), C.cudaMemcpyDeviceToDevice)	
-                    backend.memcpyDevice(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float) * (backend.numthreads+1))
+                    -- backend.memcpyDevice(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float) * (backend.numthreads+1))
+                    for k = 0,backend.numthreads+1 do
+                      backend.memcpyDevice(pd.scanAlphaNumerator[k], pd.scanBetaNumerator[k], sizeof(opt_float))
+                    end
                     
                     if [problemSpec:UsesLambda()] then
                         Q1 = fetchQ(pd)
@@ -1656,26 +1720,49 @@ return function(problemSpec)
             initializeSolverParameters(&pd.solverparameters)
             
             [util.initPrecomputedImages(`pd.parameters,problemSpec)]	
+
             -- C.cudaMalloc([&&opaque](&(pd.scanAlphaNumerator)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scanAlphaNumerator), sizeof(opt_float) * (backend.numthreads+1), opt_float)
+            backend.allocateDevice(&(pd.scanAlphaNumerator), sizeof([&opt_float]) * (backend.numthreads+1), [&opt_float])
+            for k = 0,backend.numthreads+1 do
+              backend.allocateDevice(&(pd.scanAlphaNumerator[k]), sizeof(opt_float), opt_float)
+            end
+
             -- C.cudaMalloc([&&opaque](&(pd.scanBetaNumerator)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scanBetaNumerator), sizeof(opt_float) * (backend.numthreads+1), opt_float)
+            backend.allocateDevice(&(pd.scanBetaNumerator), sizeof([&opt_float]) * (backend.numthreads+1), [&opt_float])
+            for k = 0,backend.numthreads+1 do
+              backend.allocateDevice(&(pd.scanBetaNumerator[k]), sizeof(opt_float), opt_float)
+            end
+
             -- C.cudaMalloc([&&opaque](&(pd.scanAlphaDenominator)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scanAlphaDenominator), sizeof(opt_float) * (backend.numthreads+1), opt_float)
+            backend.allocateDevice(&(pd.scanAlphaDenominator), sizeof([&opt_float]) * (backend.numthreads+1), [&opt_float])
+            for k = 0,backend.numthreads+1 do
+              backend.allocateDevice(&(pd.scanAlphaDenominator[k]), sizeof(opt_float), opt_float)
+            end
+
             -- C.cudaMalloc([&&opaque](&(pd.modelCost)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.modelCost), sizeof(opt_float) * (backend.numthreads+1), opt_float)
+            backend.allocateDevice(&(pd.modelCost), sizeof([&opt_float]) * (backend.numthreads+1), [&opt_float])
+            for k = 0,backend.numthreads+1 do
+              backend.allocateDevice(&(pd.modelCost[k]), sizeof(opt_float), opt_float)
+            end
             
             -- C.cudaMalloc([&&opaque](&(pd.scratch)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.scratch), sizeof(opt_float) * (backend.numthreads+1), opt_float)
+            backend.allocateDevice(&(pd.scratch), sizeof([&opt_float]) * (backend.numthreads+1), [&opt_float])
+            for k = 0,backend.numthreads+1 do
+              backend.allocateDevice(&(pd.scratch[k]), sizeof(opt_float), opt_float)
+            end
+
             -- C.cudaMalloc([&&opaque](&(pd.q)), sizeof(opt_float))
-            backend.allocateDevice(&(pd.q), sizeof(opt_float) * (backend.numthreads+1), opt_float)
+            backend.allocateDevice(&(pd.q), sizeof([&opt_float]) * (backend.numthreads+1), [&opt_float])
+            for k = 0,backend.numthreads+1 do
+              backend.allocateDevice(&(pd.q[k]), sizeof(opt_float), opt_float)
+            end
 
             pd.J_csrValA = nil
             pd.JTJ_csrRowPtrA = nil
 
             return &pd.plan
     end
-    -- print(makePlan)
+    print(makePlan)
     -- error()
 
     return makePlan
