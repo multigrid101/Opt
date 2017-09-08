@@ -45,17 +45,26 @@ else
         C.raise(sig)
     end
     terra setupsigsegv(L : &C.lua_State)
+    -- does not modify stack
+
+        -- get terralib.traceback() and put on top of stack -- terralib | terralib.traceback()
         C.lua_getfield(L, LUA_GLOBALSINDEX,"terralib");
         C.lua_getfield(L, -1, "traceback");
+
+        -- get copy of  terralib.traceback() from top of stack and cast to terra function -- terralib | terralib.traceback()
         var tb = C.lua_topointer(L,-1);
         if tb == nil then return end
         terratraceback = @[&(&opaque -> {})](tb)
+
+        -- TODO what does this do?
         var sa : CN.sigaction
         sa.sa_flags = [terralib.constant(uint32,C.SA_RESETHAND)] or C.SA_SIGINFO
         C.sigemptyset(&sa.sa_mask)
         sa.[sigactionwrapper].[sigactionstruct] = sigsegv
         C.sigaction(C.SIGSEGV, &sa, nil)
         C.sigaction(C.SIGILL, &sa, nil)
+
+        -- empty the stack
         C.lua_settop(L,-3)
     end
     
@@ -114,6 +123,27 @@ end
 
 local sourcepath = absolutepath(sourcedirectory).."/?.t"
 local terra NewState(params : Opt_InitializationParameters) : &LibraryState
+-- loads o.t andcreates a new 'state' variable S. S is populated with (among other) freshly
+-- terra-compiled versions of all api terra-functions. S is later passed to all
+-- api C-functions, which in turns call the corresponding api terra-function in S.
+
+-- example: OptProblem* Opt_ProblemDefine(OptState* S, params) {
+--            S.ProblemDefine(params);
+--          }
+
+-- so this function can be summarized as follows:
+-- terra NewState(params)
+--   <do some stuff with the parameters>
+  
+--   opt = require('o.t')
+
+--   S.ProblemDefine = opt.ProblemDefine
+--   ...
+
+--   return S
+-- end
+
+
     var S = [&LibraryState](C.malloc(sizeof(LibraryState)))
     var L = C.luaL_newstate();
     S.L = L
@@ -136,34 +166,42 @@ local terra NewState(params : Opt_InitializationParameters) : &LibraryState
 
     C.lua_pushboolean(L,params.collectPerKernelTimingInfo);
     C.lua_setfield(L,LUA_GLOBALSINDEX,"_opt_collect_kernel_timing")
+    -- stack is now empty
 
+    -- push 'package()' onto stack -- package
     C.lua_getfield(L,LUA_GLOBALSINDEX,"package")
 
-    -- C.lua_setfield(L,LUA_GLOBALSINDEX,)
     escape 
-        if embedsource then
-            emit quote C.lua_getfield(L,-1,"preload") end
+        if embedsource then -- this branch is for libOpt.a
+            emit quote C.lua_getfield(L,-1,"preload") end -- package | package.preload()
 			
-			local command = ""
-			if ffi.os == "Windows" then
-				command = "cmd /c dir /b "
-			else
-				command = "ls "
-			end 
+            local listdir_command = ""
+            if ffi.os == "Windows" then
+                    listdir_command = "cmd /c dir /b "
+            else
+                    listdir_command = "ls "
+            end 
 
-			print(command..sourcedirectory)
+            -- TODO is this important or debug?
+            print(listdir_command..sourcedirectory)
 			
-            for line in io.popen(command..sourcedirectory):lines() do
-                local name = line:match("(.*)%.t")
-                if name then
-                    local content = io.open(sourcedirectory.."/"..line,"r"):read("*all")
+            -- TODO what exactly happens in this loop, the stackvalues do not seem to be used
+            for fullfilename in io.popen(listdir_command..sourcedirectory):lines() do -- iterate over filenames in sourcedir
+
+                -- open each valid terra file
+                local filenamestub = fullfilename:match("(.*)%.t")
+                if filenamestub then
+                    local filecontent = io.open(sourcedirectory.."/"..fullfilename,"r"):read("*all")
                     emit quote
-                        if 0 ~= C.terra_loadbuffer(L,content,[#content],["@"..line]) then doerror(L) end
-                        C.lua_setfield(L,-2,name)
+                        -- stack after following line: package | package.preload | compiledchunck
+                        if 0 ~= C.terra_loadbuffer(L,filecontent,[#filecontent],["@"..fullfilename]) then doerror(L) end
+
+                        -- stack after following line: package | compiledchuck
+                        C.lua_setfield(L,-2,filenamestub)
                     end
                 end
             end
-        else
+        else -- this branch is for libOptDev.a
             emit quote 
                 C.lua_getfield(L,-1,"terrapath")
                 C.lua_pushstring(L,";")
@@ -174,24 +212,33 @@ local terra NewState(params : Opt_InitializationParameters) : &LibraryState
         end
     end
     
+    -- top of stack after next two lines: -- ... | require() | 'o' (o.t)
     C.lua_getfield(L,LUA_GLOBALSINDEX,"require")
     C.lua_pushstring(L,main)
+
+    -- calls 'require(o.t)' and stores result on top of stack
+    -- result is a sollection of the api functions, i.e. a table 'opt' with
+    -- opt.ProblemDefine()
+    -- opt.ProblemPlan()
+    -- etc. etc. (see o.t)
     if C.lua_pcall(L,1,1,0) ~= 0 then return doerror(L) end
     
-    escape
-        for k,type in pairs(apifunctions) do
+    -- stores ctype pointers to all api functions from o.t in S
+    escape -- top of stack: ... | opt
+        for apifunc_name,apifunc_terratype in pairs(apifunctions) do
             emit quote
-                C.lua_getfield(L,-1,k)
-                C.lua_getfield(L,-1,"getpointer")
-                C.lua_insert(L,-2)
-                C.lua_call(L,1,1) 
-                S.[k] = @[&type](C.lua_topointer(L,-1))
-                C.lua_settop(L, -2)
+                C.lua_getfield(L,-1,apifunc_name) -- ... | opt | opt.ProblemDefine
+                C.lua_getfield(L,-1,"getpointer") -- ... | opt | opt.ProblemDefine | opt.ProblemDefine.getpointer
+                C.lua_insert(L,-2) -- ... | opt | opt.ProblemDefine.getpointer | opt.ProblemDefine
+                C.lua_call(L,1,1) -- ... opt | result of opt.ProblemDefine.getpointer(opt.ProblemDefine)
+                S.[apifunc_name] = @[&apifunc_terratype](C.lua_topointer(L,-1))
+                C.lua_settop(L, -2) -- ...
             end
         end
     end
     return S
 end
+print(NewState)
 wrappers[libraryname.."_NewState"] =  NewState
 
 for k,type in pairs(apifunctions) do
