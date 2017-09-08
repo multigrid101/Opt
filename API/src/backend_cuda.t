@@ -400,9 +400,10 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
 	       assert(dimcount <= 3, "cannot launch over images with more than 3 dims")
            local ks = delegate.CenterFunctions(ispace,problemfunction.functionmap) -- ks are the kernelfunctions as shown in gaussNewtonGPU.t
            for name,func in pairs(ks) do
-             -- print(name,func) -- debug
+             print(name,func) -- debug
                 kernelFunctions[getkname(name,problemfunction.typ)] = { kernel = func , annotations = { {"maxntidx", GRID_SIZES[dimcount][1]}, {"maxntidy", GRID_SIZES[dimcount][2]}, {"maxntidz", GRID_SIZES[dimcount][3]}, {"minctasm",1} } }
            end
+           -- error()
         else
             local graphname = problemfunction.typ.graphname
             local ispace = problemfunction.typ.ispace -- by SO
