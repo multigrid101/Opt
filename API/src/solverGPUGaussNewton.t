@@ -403,16 +403,6 @@ return function(problemSpec)
 
         terra kernels.PCGInit1(pd : PlanData, [kernelArglist], [backend.threadarg])
 
-            -- -- NONSENSE WORK START
-            -- var bla : int = [backend.threadarg]
-            -- for k = 0,1000000 do
-            --   bla = (bla + 23)/[backend.threadarg]
-            -- end
-            -- if [backend.threadarg] < 0 then
-            --   C.printf('%d\n', bla)
-            -- end
-            -- -- NONSENSE WORK END
-
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
         
             var idx : Index
