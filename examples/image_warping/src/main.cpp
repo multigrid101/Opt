@@ -108,12 +108,18 @@ int main(int argc, const char * argv[]) {
 	}
 
     CombinedSolverParameters params;
-    /* params.numIter = 19; // original */
-    params.numIter = 1;
+
+    params.numIter = 19; // original
+    /* params.numIter = 1; */
+
     params.useCUDA = false;
-    params.nonLinearIter = 2; // original
-    /* params.linearIter = 400; // original */
-    params.linearIter = 2; 
+
+    /* params.nonLinearIter = 8; // original */
+    params.nonLinearIter = 8; // original
+
+    params.linearIter = 400; // original
+    /* params.linearIter = 2; */ 
+
     if (performanceRun) {
         params.useCUDA = false;
         params.useOpt = true;

@@ -164,9 +164,15 @@ struct opt.Plan(S.Object) {
 struct opt.Problem {} -- just used as an opaque type, pointers are actually just the ID
 -- TODO this is almost C API, may move to bottom?
 local function problemDefine(filename, kind, pid)
-    local problemmetadata = { filename = ffi.string(filename), kind = ffi.string(kind), id = #problems + 1 }
+
+    local problemmetadata = { filename = ffi.string(filename),
+                              kind = ffi.string(kind),
+                              id = #problems + 1
+                              }
+
     problems[problemmetadata.id] = problemmetadata
     pid[0] = problemmetadata.id
+
 end
 problemDefine = terralib.cast({rawstring, rawstring, &int} -> {}, problemDefine) --> required to tturn lua-function into terra function
 
