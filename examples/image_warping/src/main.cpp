@@ -1,6 +1,8 @@
 ﻿#include "main.h"
 #include "CombinedSolver.h"
 
+#include <boost/program_options.hpp>
+
 static void loadConstraints(std::vector<std::vector<int> >& constraints, std::string filename) {
   std::ifstream in(filename, std::fstream::in);
 
@@ -27,29 +29,60 @@ static void loadConstraints(std::vector<std::vector<int> >& constraints, std::st
 }
 
 
+namespace po = boost::program_options;
 int main(int argc, const char * argv[]) {
 	// CAT 
+        
+
+    // Declare the supported options.
+    po::options_description desc("Allowed options");
+    desc.add_options()
+      ("help", "produce help message")
+      ("backend", po::value<std::string>()->default_value("backend_cpu"), "set backend to 'backend_cuda', 'backend_cpu' or 'backend_cpu_mt'")
+      ("numthreads", po::value<int>()->default_value(1), "set the number of threads (only has effect for backend_cpu_mt)")
+    ;
+    
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);    
+    
+    if (vm.count("help")) {
+      std::cout << desc << "\n";
+      return 1;
+    }
+    
+    /* if (vm.count("compression")) { */
+    /*   cout << "Compression level was set to " */ 
+    /*   << vm["compression"].as<int>() << ".\n"; */
+    /* } else { */
+    /*   cout << "Compression level was not set.\n"; */
+    /* } */
+    
+
+
+
+  
     std::string filename = "../data/cat512.png";
 
     int downsampleFactor = 1;
 	bool lmOnlyFullSolve = false;
-    if (argc > 1) {
-        filename = argv[1];
-    }
-    if (argc > 2) {
-        downsampleFactor = std::max(0,atoi(argv[2])); 
-    }
+    /* if (argc > 1) { */
+    /*     filename = argv[1]; */
+    /* } */
+    /* if (argc > 2) { */
+    /*     downsampleFactor = std::max(0,atoi(argv[2])); */ 
+    /* } */
     bool performanceRun = false;
-    if (argc > 3) {
-        if (std::string(argv[3]) == "perf") {
-            performanceRun = true;
-            if (atoi(argv[2]) > 0) {
-                lmOnlyFullSolve = true;
-            }
-        } else {
-            printf("Invalid third parameter: %s\n", argv[3]);
-        }
-    }
+    /* if (argc > 3) { */
+    /*     if (std::string(argv[3]) == "perf") { */
+    /*         performanceRun = true; */
+    /*         if (atoi(argv[2]) > 0) { */
+    /*             lmOnlyFullSolve = true; */
+    /*         } */
+    /*     } else { */
+    /*         printf("Invalid third parameter: %s\n", argv[3]); */
+    /*     } */
+    /* } */
 
     // Must have a mask and constraints file in the same directory as the input image
     std::string maskFilename = filename.substr(0, filename.size() - 4) + "_mask.png";
@@ -117,8 +150,8 @@ int main(int argc, const char * argv[]) {
     /* params.nonLinearIter = 8; // original */
     params.nonLinearIter = 8; // original
 
-    params.linearIter = 400; // original
-    /* params.linearIter = 2; */ 
+    /* params.linearIter = 400; // original */
+    params.linearIter = 2; 
 
     if (performanceRun) {
         params.useCUDA = false;
@@ -143,10 +176,12 @@ int main(int argc, const char * argv[]) {
    
 
 
-        int numthreads = 8;
+        /* int numthreads = 8; */
+        int numthreads = vm["numthreads"].as<int>();
 
         /* std::string backend = "backend_cpu_mt"; */
-        std::string backend = "backend_cuda";
+        std::string backend = vm["backend"].as<std::string>();
+        /* std::string backend = "backend_cuda"; */
 
         OptImage::Location location;
         if (backend == "backend_cuda") {
