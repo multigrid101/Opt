@@ -27,6 +27,58 @@ b.summutex_sym = global(C.pthread_mutex_t[c.nummutexes], nil,  'summutex')
 b.threadarg = symbol(int, 'thread_id')
 b.threadarg_val = b.threadarg -- need second variable to provide default arguments for other backends
 
+---------------- ReduceVar start
+b.ReduceVar = &&opt_float
+b.ReduceVarHost = b.ReduceVar
+
+b.ReduceVar.allocate = function(variable)
+  return quote
+            [variable] = [&&opt_float](C.malloc(sizeof([&&opt_float]) * (b.numthreads+1)))
+            for k = 0,b.numthreads+1 do
+              [variable][k] = [&opt_float](C.malloc(sizeof(opt_float)))
+            end
+         end
+end
+b.ReduceVarHost.allocate2 = b.ReduceVar.allocate
+
+b.ReduceVar.getDataPtr = function(varquote, k)
+  return `[varquote][k]
+end
+
+b.ReduceVar.getData = function(varquote, k)
+  return `@([varquote][k])
+end
+b.ReduceVarHost.getData2 = b.ReduceVar.getData
+
+b.ReduceVar.setToConst = function(varquote, val)
+  return quote
+           for k = 0,b.numthreads+1 do
+             C.memset([&opaque]([varquote][k]), val, sizeof(opt_float))
+           end
+         end
+end
+
+b.ReduceVar.memcpyDevice2Host = function(targetquote, sourcequote)
+  print(targetquote)
+    return quote
+             for k = 0,b.numthreads+1 do
+               C.memcpy([&opaque]([targetquote][k]), [&opaque]([sourcequote][k]), sizeof(opt_float))
+             end
+           end
+  end
+b.ReduceVar.memcpyDevice = b.ReduceVar.memcpyDevice2Host
+
+b.ReduceVar.reduceAllThreads = function(varquote)
+  return quote
+            @([varquote][0]) = 0.0
+            for k = 1,b.numthreads+1 do
+              @([varquote][0]) = @([varquote][0]) + @([varquote][k])
+            end
+         end
+end
+b.ReduceVarHost.reduceAllThreads2 = b.ReduceVar.reduceAllThreads
+---------------- ReduceVar end
+
 if c.opt_float == float then
 
     local terra atomicAdd_sync(sum : &float, value : float, offset : int)

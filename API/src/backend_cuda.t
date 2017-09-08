@@ -17,6 +17,81 @@ b.numthreads = 1 -- DO NOT CHANGE THIS
 b.threadarg = {}
 b.threadarg_val = 1
 
+local cd = macro(function(apicall) 
+    local apicallstr = tostring(apicall)
+    local filename = debug.getinfo(1,'S').source
+    return quote
+        var str = [apicallstr]
+        var r = apicall
+        if r ~= 0 then  
+            C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
+            C.printf("In call: %s", str)
+            C.printf("In file: %s\n", filename)
+            C.exit(r)
+        end
+    in
+        r
+    end end)
+b.cd = cd
+
+---------------- ReduceVar start
+b.ReduceVar = &opt_float
+b.ReduceVarHost = &opt_float
+
+b.ReduceVarHost.allocate2 = function(variable) -- modified method name to avoid name clash with ReduceVar methods
+    return quote [variable] = [&opt_float](C.malloc(sizeof(opt_float))) end
+end
+
+b.ReduceVarHost.getData2 = function( varquote, index ) -- modified method name to avoid name clash with ReduceVar methods
+  return `@[varquote]
+end
+
+b.ReduceVarHost.reduceAllThreads2 = function( varquote ) -- modified method name to avoid name clash with ReduceVar methods
+  return {}
+end
+---------------------------------------------
+
+b.ReduceVar.reduceAllThreads = function( varquote )
+  return {}
+end
+
+
+b.ReduceVar.allocate = function(variable)
+  -- if location == 0 then -- Device
+    return `C.cudaMalloc([&&opaque](&([variable])), sizeof(opt_float))
+  -- else
+    -- return quote [variable] = C.malloc([&&opaque](variable), sizeof(opt_float))
+  -- end
+end
+
+b.ReduceVar.getData = function(variablequote, k)
+  return `(@([variablequote]))
+end
+
+b.ReduceVar.getDataPtr = function(variable, k)
+  -- C.printf('starting getdataptr\n')
+  -- C.printf('stopping getdataptr\n')
+  return variable
+end
+
+
+b.ReduceVar.setToConst = function(variable, val)
+  return `C.cudaMemset([&opaque]( [variable] ), [val], sizeof(opt_float))
+end
+
+b.ReduceVar.memcpyDevice2Host = function(targetquote, sourcequote)
+  return `C.cudaMemcpy( [targetquote] , [sourcequote] , sizeof(opt_float), C.cudaMemcpyDeviceToHost)
+end
+
+b.ReduceVar.reduceAllThreads = function( varquote )
+  return {}
+end
+
+b.ReduceVar.memcpyDevice = function(targetquote, sourcequote)
+  return `C.cudaMemcpy([&opaque]([targetquote]), [&opaque]([sourcequote]), sizeof(opt_float), C.cudaMemcpyDeviceToDevice)
+end
+---------------- ReduceVar end
+
 -- atomicAdd START
 if c.opt_float == float then
     local terra atomicAddSync(sum : &float, value : float, offset : int)
@@ -222,22 +297,6 @@ end
 ------------------------------------------------------------------------------ wrap and compile kernels
 -- TODO choose better name and put with other general purpose stuff
 -- TODO this seems to be re-defined in solver AND o.t
-local cd = macro(function(apicall) 
-    local apicallstr = tostring(apicall)
-    local filename = debug.getinfo(1,'S').source
-    return quote
-        var str = [apicallstr]
-        var r = apicall
-        if r ~= 0 then  
-            C.printf("Cuda reported error %d: %s\n",r, C.cudaGetErrorString(r))
-            C.printf("In call: %s", str)
-            C.printf("In file: %s\n", filename)
-            C.exit(r)
-        end
-    in
-        r
-    end end)
-b.cd = cd
 
 
 -- TODO only used in next function, so make local there
@@ -300,8 +359,12 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
             pd.timer:endEvent(nil,endEvent)
         end
 
+        -- C.printf('bla1\n')
         cd(C.cudaGetLastError())
+        -- C.printf('bla2\n')
     end
+    print(checkedLaunch)
+    -- if kernelName == 'computeCost_W_H' then print(GPULauncher) error() end
     return GPULauncher
 end
 
@@ -381,7 +444,12 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
         if not args then
             fn = macro(function() return `{} end) -- dummy function for blank groups occur for things like precompute and _Graph when they are not present
         else
-            fn = terra([args]) launches end
+            fn = terra([args])
+              -- C.printf('starting launcher\n')
+              launches
+              -- C.printf('stopping launcher\n')
+            end
+
             fn:setname(name)
             fn:gettype()
         end
@@ -393,6 +461,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
     printt(grouplaunchers)
     print('END inside backend.makeWrappedFunctions: the grouplaunchers')
     print('\n\n\n')
+    -- error()
 
     return grouplaunchers
 end

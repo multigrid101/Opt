@@ -376,8 +376,6 @@ terra Timer:startEvent(name : rawstring,  stream : C.cudaStream_t, endEvent : &C
     self.timingInfo:insert(timingInfo)
     @endEvent = timingInfo.endEvent
 
-    var start : C.timespec
-    C.clock_gettime(C.CLOCK_MONOTONIC, &start) 
 
     -- var starttime : double
     -- starttime = start.tv_sec
@@ -387,10 +385,14 @@ terra Timer:startEvent(name : rawstring,  stream : C.cudaStream_t, endEvent : &C
 
 
     -- TODO clean this up a little
-    C.printf('starting kernel %s at time %lu\n', name, starttime)
+    -- C.printf('starting kernel %s at time %lu\n', name, starttime)
 end
 terra Timer:endEvent(stream : C.cudaStream_t, endEvent : C.cudaEvent_t)
     C.cudaEventRecord(endEvent, stream)
+
+    var stoptime : C.ticks = C.getticks()
+
+    -- C.printf('    stopping kernel at time %lu\n', stoptime)
 end
 
 -- TODO only used in next function, so make local there

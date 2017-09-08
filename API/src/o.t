@@ -150,7 +150,7 @@ local function compilePlan(problemSpec, kind)
 end
 
 -- TODO what does this syntax do, I can't find what "struct foo() {}" with brackets does
--- TODO other syntax problem: what do the arrows do?
+-- TODO other syntax problem: what do the arrows do? --> defines function pointers
 -- TODO maybe put in extra file
 struct opt.Plan(S.Object) {
     init : {&opaque,&&opaque} -> {} -- plan.data,params
