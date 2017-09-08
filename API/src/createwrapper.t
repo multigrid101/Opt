@@ -95,6 +95,9 @@ struct LibraryState { L : &C.lua_State }
 
 -- Must match Opt.h
 struct Opt_InitializationParameters {
+-- this struct collects all NON-PROBLEM-SPECIFIC information that is required by o.t at compile-time,
+-- i.e. at the time when o.t is parsed (and all terra-functions within it are instantiated
+
     -- If true, all intermediate values and unknowns, are double-precision
     -- On platforms without double-precision float atomics, this 
     -- can be a drastic drag of performance.
@@ -106,6 +109,12 @@ struct Opt_InitializationParameters {
     -- If true, a cuda timer is used to collect per-kernel timing information
     -- while the solver is running. This adds a small amount of overhead to every kernel.
     collectPerKernelTimingInfo : int
+
+    -- possible values: 'backend_cpu', 'backend_gpu', backend_cpu_mt'
+    backend : rawstring
+
+    -- only has effect for backend_cuda_mt, is set to 1 otherwise
+    numthreads : int
 }
 
 for name,type in pairs(apifunctions) do
@@ -166,6 +175,12 @@ local terra NewState(params : Opt_InitializationParameters) : &LibraryState
 
     C.lua_pushboolean(L,params.collectPerKernelTimingInfo);
     C.lua_setfield(L,LUA_GLOBALSINDEX,"_opt_collect_kernel_timing")
+
+    C.lua_pushstring(L,params.backend)
+    C.lua_setfield(L,LUA_GLOBALSINDEX,"_opt_backend")
+
+    C.lua_pushnumber(L,params.numthreads);
+    C.lua_setfield(L,LUA_GLOBALSINDEX,"_opt_numthreads")
     -- stack is now empty
 
     -- push 'package()' onto stack -- package

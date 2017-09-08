@@ -71,12 +71,12 @@ public:
     }
 
     // wrapper around addSolver() that automatically chooses GN or LM solver, depending on the solverParameters
-    void addOptSolvers(std::vector<unsigned int> dims, std::string problemFilename, bool doublePrecision = false) {
+    void addOptSolvers(std::vector<unsigned int> dims, std::string problemFilename, bool doublePrecision = false, std::string backend = "backend_cpu", int numthreads = 1) {
         if (m_combinedSolverParameters.useOpt) {
-            addSolver(std::make_shared<OptSolver>(dims, problemFilename, "gaussNewtonGPU", doublePrecision), "Opt(GN)", true);
+            addSolver(std::make_shared<OptSolver>(dims, problemFilename, "gaussNewtonGPU", doublePrecision, backend, numthreads), "Opt(GN)", true);
         }
         if (m_combinedSolverParameters.useOptLM) {
-            addSolver(std::make_shared<OptSolver>(dims, problemFilename, "LMGPU", doublePrecision), "Opt(LM)", true);
+            addSolver(std::make_shared<OptSolver>(dims, problemFilename, "LMGPU", doublePrecision, backend, numthreads), "Opt(LM)", true);
         }
     }
 

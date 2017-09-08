@@ -101,7 +101,7 @@ float *wt0, float *wt1, float *wt2) {
 
 class CombinedSolver : public CombinedSolverBase {
 public:
-    CombinedSolver(const ColorImageR32& image, const ColorImageR32G32B32& imageColor, const ColorImageR32& imageMask, std::vector<std::vector<int>>& constraints, CombinedSolverParameters params, OptImage::Location location) : m_constraints(constraints){
+    CombinedSolver(const ColorImageR32& image, const ColorImageR32G32B32& imageColor, const ColorImageR32& imageMask, std::vector<std::vector<int>>& constraints, CombinedSolverParameters params, OptImage::Location location, std::string backend, int numthreads) : m_constraints(constraints){
 		m_image = image;
 		m_imageColor = imageColor;
 		m_imageMask = imageMask;
@@ -121,7 +121,7 @@ public:
         
         /* addSolver(std::make_shared<CUDAWarpingSolver>(m_dims), "CUDA", m_combinedSolverParameters.useCUDA); */
         addSolver(std::make_shared<CeresSolverWarping>(m_dims), "Ceres", m_combinedSolverParameters.useCeres);
-        addOptSolvers(m_dims, "image_warping.t", m_combinedSolverParameters.optDoublePrecision);
+        addOptSolvers(m_dims, "image_warping.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 	}
 
 

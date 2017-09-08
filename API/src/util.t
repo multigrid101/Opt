@@ -3,6 +3,7 @@ require("precision")
 local util = {}
 local c = require('config')
 local pascalOrBetterGPU = c.pascalOrBetterGPU
+-- local backend = require(_opt_backend)
 local backend = require(c.backend)
 
 util.C = terralib.includecstring [[

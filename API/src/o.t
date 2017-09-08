@@ -29,6 +29,7 @@ local S = require("std")
 local ffi = require("ffi")
 local util = require("util")
 local optlib = require("lib")
+-- local backend = require(_opt_backend)
 local backend = require(conf.backend)
 ad = require("ad")
 require("precision") -- sets opt_float to either 'float' or 'double'
@@ -558,7 +559,7 @@ end
 -- TODO only used once and within ImageType, make private
 function ImageType:usestexture() -- texture, 2D texture
     if backend.name ~= 'CUDA' and use_bindless_texture == true then -- error if attempting to use texture-stuff with any backend other than cuda
-      error('Cannot Use texture with non-cuda Backend!!!')
+      -- error('Cannot Use texture with non-cuda Backend!!!')
     end
     local c = self.channelcount
     if use_bindless_texture and self.scalartype == float and (c == 1 or c == 2 or c == 4) then
@@ -2970,6 +2971,9 @@ terra opt.ProblemDelete(p : &opt.Problem)
     --TODO: remove from problem table
 end
 terra opt.ProblemPlan(problem : &opt.Problem, dimensions : &uint32) : &opt.Plan
+-- This function compiles the code (i.e. it creates the functions step(), etc.
+-- 'dimensions' is information required at compile-time 
+-- TODO we need a 'compiletimeParameters' struct that is passed to this function from C.
 	var p : &opt.Plan = nil 
 	problemPlan(int(int64(problem)),dimensions,&p)
 	return p

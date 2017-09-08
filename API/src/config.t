@@ -9,14 +9,13 @@ c.problemkind = 'gaussNewtonCPU'
 c.verboseAD = false
 
 -- c.numthreads = 2 -- only for backend_cpu_mt, no effect on other backends
-c.numthreads = 4 -- only for backend_cpu_mt, no effect on other backends
+-- c.numthreads = 4 -- only for backend_cpu_mt, no effect on other backends
+c.numthreads = _opt_numthreads -- only for backend_cpu_mt, no effect on other backends
 -- c.cpumap = { 0, 1, 2, 3, 4, 5, 6, 7 } -- default
 -- c.cpumap = { 1, 5, 2, 3, 4, 5, 6, 7 }
 c.nummutexes = 10000 -- adjust by hand (only has effec for backend_cpu_mt) TODO find better solution for this
 
--- c.backend = 'backend_cuda'
-c.backend = 'backend_cpu'
--- c.backend = 'backend_cpu_mt'
+c.backend = _opt_backend -- configured in cpp code
 
 c.use_contiguous_allocation = false
 -- c.use_bindless_texture = true

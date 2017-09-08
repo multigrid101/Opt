@@ -19,6 +19,12 @@ struct Opt_InitializationParameters {
 	// If true (nonzero), a cuda timer is used to collect per-kernel timing information
 	// while the solver is running. This adds a small amount of overhead to every kernel.
 	int collectPerKernelTimingInfo;
+
+        // possible values: 'backend_cuda', 'backend_cpu', 'backend_cpu_mt'
+        char* backend;
+
+        // only has effect for backend_cpu_mt, is set to 1 otherwise
+        int numthreads;
 };
 
 typedef struct Opt_InitializationParameters 	Opt_InitializationParameters;

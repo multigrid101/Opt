@@ -1,4 +1,7 @@
 #pragma once
+#include <string.h>
+
+// TODO this struct mixes compiletime and runtime information --> not good
 
 struct CombinedSolverParameters {
     bool useCUDA = false;

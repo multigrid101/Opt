@@ -1,3 +1,4 @@
+-- this file takes no input and returns compilefunc, where compilefunc:
 local S = require("std")
 local util = require("util")
 local conf = require('config')

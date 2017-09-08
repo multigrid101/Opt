@@ -143,11 +143,25 @@ int main(int argc, const char * argv[]) {
    
 
 
-	CombinedSolver solver(imageR32, imageColor, imageR32Mask, constraints, params, OptImage::Location::GPU);
-	CombinedSolver solver_cpu(imageR32, imageColor, imageR32Mask, constraints, params, OptImage::Location::CPU);
+        int numthreads = 8;
 
-    /* solver.solveAll(); */
-    solver_cpu.solveAll();
+        /* std::string backend = "backend_cpu_mt"; */
+        std::string backend = "backend_cuda";
+
+        OptImage::Location location;
+        if (backend == "backend_cuda") {
+          location = OptImage::Location::GPU;
+        } else {
+          location = OptImage::Location::CPU;
+        }
+
+	/* CombinedSolver solver(imageR32, imageColor, imageR32Mask, constraints, params, OptImage::Location::GPU, "backend_cuda", numthreads); */
+	/* CombinedSolver solver_cpu(imageR32, imageColor, imageR32Mask, constraints, params, OptImage::Location::CPU, "backend_cpu_mt", numthreads); */
+
+	CombinedSolver solver(imageR32, imageColor, imageR32Mask, constraints, params, location, backend, numthreads);
+
+    solver.solveAll();
+    /* solver_cpu.solveAll(); */
 
     ColorImageR32G32B32* res = solver.result();
 	ColorImageR8G8B8A8 out(res->getWidth(), res->getHeight());
