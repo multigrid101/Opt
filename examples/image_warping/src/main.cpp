@@ -1,7 +1,8 @@
 ﻿#include "main.h"
 #include "CombinedSolver.h"
 
-#include <boost/program_options.hpp>
+/* #include <boost/program_options.hpp> */
+#include "../../shared/ArgParser.h"
 
 static void loadConstraints(std::vector<std::vector<int> >& constraints, std::string filename) {
   std::ifstream in(filename, std::fstream::in);
@@ -35,21 +36,21 @@ int main(int argc, const char * argv[]) {
         
 
     // Declare the supported options.
-    po::options_description desc("Allowed options");
-    desc.add_options()
-      ("help", "produce help message")
-      ("backend", po::value<std::string>()->default_value("backend_cpu"), "set backend to 'backend_cuda', 'backend_cpu' or 'backend_cpu_mt'")
-      ("numthreads", po::value<int>()->default_value(1), "set the number of threads (only has effect for backend_cpu_mt)")
-    ;
+    /* po::options_description desc("Allowed options"); */
+    /* desc.add_options() */
+    /*   ("help", "produce help message") */
+    /*   ("backend", po::value<std::string>()->default_value("backend_cpu"), "set backend to 'backend_cuda', 'backend_cpu' or 'backend_cpu_mt'") */
+    /*   ("numthreads", po::value<int>()->default_value(1), "set the number of threads (only has effect for backend_cpu_mt)") */
+    /* ; */
     
-    po::variables_map vm;
-    po::store(po::parse_command_line(argc, argv, desc), vm);
-    po::notify(vm);    
+    /* po::variables_map vm; */
+    /* po::store(po::parse_command_line(argc, argv, desc), vm); */
+    /* po::notify(vm); */    
     
-    if (vm.count("help")) {
-      std::cout << desc << "\n";
-      return 1;
-    }
+    /* if (vm.count("help")) { */
+    /*   std::cout << desc << "\n"; */
+    /*   return 1; */
+    /* } */
     
     /* if (vm.count("compression")) { */
     /*   cout << "Compression level was set to " */ 
@@ -57,6 +58,8 @@ int main(int argc, const char * argv[]) {
     /* } else { */
     /*   cout << "Compression level was not set.\n"; */
     /* } */
+    ArgParser argparser;
+    argparser.parse(argc, argv);
     
 
 
@@ -142,16 +145,16 @@ int main(int argc, const char * argv[]) {
 
     CombinedSolverParameters params;
 
-    params.numIter = 19; // original
-    /* params.numIter = 1; */
+    /* params.numIter = 19; // original */
+    params.numIter = 1;
 
     params.useCUDA = false;
 
     /* params.nonLinearIter = 8; // original */
-    params.nonLinearIter = 8; // original
+    params.nonLinearIter = argparser.get<int>("nIterations");
 
     /* params.linearIter = 400; // original */
-    params.linearIter = 2; 
+    params.linearIter = argparser.get<int>("lIterations");
 
     if (performanceRun) {
         params.useCUDA = false;
@@ -177,11 +180,9 @@ int main(int argc, const char * argv[]) {
 
 
         /* int numthreads = 8; */
-        int numthreads = vm["numthreads"].as<int>();
+        int numthreads = argparser.get<int>("numthreads");
 
-        /* std::string backend = "backend_cpu_mt"; */
-        std::string backend = vm["backend"].as<std::string>();
-        /* std::string backend = "backend_cuda"; */
+        std::string backend = argparser.get<std::string>("backend");
 
         OptImage::Location location;
         if (backend == "backend_cuda") {
