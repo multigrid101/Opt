@@ -238,6 +238,7 @@ b.threadcreation_counter = global(int, 0,  'threadcreation_counter')
 
 
 local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) -- compiledKernel is the result of b.makeWrappedFunctions
+    kernelName = kernelName.."_"..tostring(ft)
 -- TODO generalize to arbitrary number of threads DONE
 -- TODO current prevention of race-conditions in atomicAdd seems to be inefficient --> introduce separate sums for each thread
 -- TODO make sure that arrays are traversed in column-major order DONE

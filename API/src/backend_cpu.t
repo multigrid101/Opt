@@ -230,7 +230,7 @@ local GRID_SIZES = c.GRID_SIZES
 
 -- TODO put in extra file for compiler stuff
 local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
-    -- kernelName = kernelName.."_"..tostring(ft)
+    kernelName = kernelName.."_"..tostring(ft)
     -- local kernelparams = compiledKernel:gettype().parameters
     -- local params = terralib.newlist {}
     -- for i = 3,#kernelparams do --skip GPU launcher and PlanData
