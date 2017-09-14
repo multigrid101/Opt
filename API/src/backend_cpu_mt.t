@@ -328,7 +328,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         -- TODO balance workload more evenly (if necessary)
         escape
             -- outermost dimension is split among threads
-            local dimsize = ispace.dims[1].size
+            local dimsize = ispace.dims[numdims].size
             local outerdim = numdims-1
             -- local outerdim = 0
             emit quote
@@ -349,6 +349,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
           -- all other dimensions traverse everything
           -- for d = 2,numdims do
           for d = 1,numdims-1 do
+            -- local dimsize = ispace.dims[numdims-d].size
             local dimsize = ispace.dims[d].size
             emit quote
               for k = 0,numthreads do
