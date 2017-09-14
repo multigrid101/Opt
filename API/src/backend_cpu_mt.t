@@ -387,7 +387,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
         for k = 0,numthreads do
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:startEvent('thread start',nil,&threadEvent)
+              pd.timer:startEvent('thread_start',nil,&threadEvent)
           end
 
           [b.threadcreation_counter] = [b.threadcreation_counter] + 1
