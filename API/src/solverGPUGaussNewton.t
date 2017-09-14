@@ -1,4 +1,9 @@
 -- this file takes no input and returns compilefunc, where compilefunc:
+-- compilefunc = function(problemSpec)
+--   makePlan = terra() ... end
+--   return makePlan
+-- end
+
 local S = require("std")
 local util = require("util")
 local conf = require('config')
