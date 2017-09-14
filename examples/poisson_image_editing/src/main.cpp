@@ -1,16 +1,21 @@
 ﻿#include "main.h"
 #include "CombinedSolver.h"
+#include "../../shared/ArgParser.h"
 
 int main(int argc, const char * argv[]) {
 	std::string inputImage0 = "../data/poisson0.png";
 	std::string inputImage1 = "../data/poisson1.png";
 	std::string inputImageMask = "../data/poisson_mask.png";
-    if (argc > 1) {
-        assert(argc > 3);
-        inputImage0 = argv[1];
-        inputImage1 = argv[2];
-        inputImageMask = argv[3];
-    }
+    /* if (argc > 1) { */
+    /*     assert(argc > 3); */
+    /*     inputImage0 = argv[1]; */
+    /*     inputImage1 = argv[2]; */
+    /*     inputImageMask = argv[3]; */
+    /* } */
+        ArgParser argparser;
+        argparser.parse(argc, argv);
+
+
 	const unsigned int offsetX = 0;
 	const unsigned int offsetY = 0;
 	const bool invertMask = false;
@@ -66,18 +71,32 @@ int main(int argc, const char * argv[]) {
     CombinedSolverParameters params;
 
     params.useOpt = true;
-    params.nonLinearIter = 1;
-    params.linearIter = 100;
+
+    /* params.nonLinearIter = 1; // original */
+    params.nonLinearIter = argparser.get<int>("nIterations");
+
+    /* params.linearIter = 100; //original */
+    params.linearIter = argparser.get<int>("lIterations");
+
+    int numthreads = argparser.get<int>("numthreads");
+    std::string backend = argparser.get<std::string>("backend");
+
+    OptImage::Location location;
+    if (backend == "backend_cuda") {
+      location = OptImage::Location::GPU;
+    } else {
+      location = OptImage::Location::CPU;
+    }
 
     // This example has a couple solvers that don't fit into the CombinedSolverParameters mold.
     bool useCUDAPatch = false;
     bool useEigen = false;
 
-    CombinedSolver solver(imageR32, image1Large, imageR32MaskLarge, params, useCUDAPatch, useEigen, OptImage::Location::GPU);
-    CombinedSolver solver_cpu(imageR32, image1Large, imageR32MaskLarge, params, useCUDAPatch, useEigen, OptImage::Location::CPU);
+    CombinedSolver solver(imageR32, image1Large, imageR32MaskLarge, params, useCUDAPatch, useEigen, location, backend, numthreads);
+    /* CombinedSolver solver_cpu(imageR32, image1Large, imageR32MaskLarge, params, useCUDAPatch, useEigen, OptImage::Location::CPU); */
 
-    /* solver.solveAll(); */
-    solver_cpu.solveAll();
+    solver.solveAll();
+    /* solver_cpu.solveAll(); */
 
     ColorImageR32G32B32A32* res = solver.result();
 	ColorImageR8G8B8A8 out(res->getWidth(), res->getHeight());

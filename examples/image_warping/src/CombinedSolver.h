@@ -109,8 +109,8 @@ public:
 
         m_location = location;
 
-        /* m_dims = { m_image.getWidth(), m_image.getHeight() }; // original */
-        m_dims = { m_image.getWidth()*10, m_image.getHeight()*10 };
+        m_dims = { m_image.getWidth(), m_image.getHeight() }; // original
+        /* m_dims = { m_image.getWidth()*10, m_image.getHeight()*10 }; */
         m_urshape       = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, location, true);
         m_warpField     = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, location, true);
         m_warpAngles    = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, location, true);

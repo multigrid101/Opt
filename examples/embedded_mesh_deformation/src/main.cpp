@@ -2,13 +2,18 @@
 #include "CombinedSolver.h"
 #include "OpenMesh.h"
 #include "LandMarkSet.h"
+#include "../../shared/ArgParser.h"
 
 int main(int argc, const char * argv[])
 {
+
+  ArgParser argparser;
+  argparser.parse(argc, argv);
+
 	std::string filename = "../data/raptor_simplify2k.off";
-	if (argc >= 2) {
-		filename = argv[1];
-	}
+	/* if (argc >= 2) { */
+	/* 	filename = argv[1]; */
+	/* } */
 
     // For now, any model must be accompanied with a identically 
     // named (besides the extension, which must be 3 characters) mrk file
@@ -48,15 +53,31 @@ int main(int argc, const char * argv[])
     /* LM is good here */
     params.useOpt = false;
     params.useOptLM = true;
-    params.numIter = 31;
-    params.nonLinearIter = 5;
-    params.linearIter = 125;
 
-    CombinedSolver solver(mesh, constraintsIdx, constraintsTarget, params, OptImage::Location::GPU);
-    CombinedSolver solver_cpu(mesh, constraintsIdx, constraintsTarget, params, OptImage::Location::CPU);
+    /* params.numIter = 31; // original */
+    params.numIter = 1;
 
-    /* solver.solveAll(); */
-    solver_cpu.solveAll();
+    /* params.nonLinearIter = 5; // original */
+    params.nonLinearIter = argparser.get<int>("nIterations");
+
+    /* params.linearIter = 125; // original */
+    params.linearIter = argparser.get<int>("lIterations");
+
+    std::string backend = argparser.get<std::string>("backend");
+    int numthreads = argparser.get<int>("numthreads");
+
+    OptImage::Location location;
+    if (backend == "backend_cuda") {
+      location = OptImage::Location::GPU;
+    } else {
+      location = OptImage::Location::CPU;
+    }
+
+    CombinedSolver solver(mesh, constraintsIdx, constraintsTarget, params, location, backend, numthreads);
+    /* CombinedSolver solver_cpu(mesh, constraintsIdx, constraintsTarget, params, OptImage::Location::CPU); */
+
+    solver.solveAll();
+    /* solver_cpu.solveAll(); */
 
     SimpleMesh* res = solver.result();
 

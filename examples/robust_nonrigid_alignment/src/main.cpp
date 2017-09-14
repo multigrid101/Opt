@@ -1,6 +1,7 @@
 ﻿#include "main.h"
 #include "CombinedSolver.h"
 #include "OpenMesh.h"
+#include "../../shared/ArgParser.h"
 
 static SimpleMesh* createMesh(std::string filename) {
     SimpleMesh* mesh = new SimpleMesh();
@@ -35,12 +36,15 @@ int main(int argc, const char * argv[])
     std::string sourceFilename = "../data/squat_source.obj";
     std::string tetmeshFilename = "../data/squat_tetmesh.ele";
 
-    if (argc > 1) {
-        assert(argc > 3);
-        targetSourceDirectory = argv[1];
-        sourceFilename = argv[2];
-        tetmeshFilename = argv[3];
-    }
+    ArgParser argparser;
+    argparser.parse(argc, argv);
+
+    /* if (argc > 1) { */
+    /*     assert(argc > 3); */
+    /*     targetSourceDirectory = argv[1]; */
+    /*     sourceFilename = argv[2]; */
+    /*     tetmeshFilename = argv[3]; */
+    /* } */
 
     std::vector<std::string> targetFiles = ml::Directory::enumerateFiles(targetSourceDirectory);
     
@@ -56,17 +60,34 @@ int main(int argc, const char * argv[])
     std::cout << "All meshes now in memory" << std::endl;
 
     CombinedSolverParameters params;
-    params.numIter = 15;
-    params.nonLinearIter = 10;
-    params.linearIter = 250;
+
+    /* params.numIter = 15;//original */
+    params.numIter = 1;
+
+    /* params.nonLinearIter = 10;//original */
+    params.nonLinearIter = argparser.get<int>("nIterations");
+
+    /* params.linearIter = 250;//original */
+    params.linearIter = argparser.get<int>("lIterations");
+
     params.useOpt = false;
     params.useOptLM = true;
 
-    CombinedSolver solver(sourceMesh, targetMeshes, sourceTetIndices, params, OptImage::Location::GPU);
-    CombinedSolver solver_cpu(sourceMesh, targetMeshes, sourceTetIndices, params, OptImage::Location::CPU);
+    int numthreads = argparser.get<int>("numthreads");
+    std::string backend = argparser.get<std::string>("backend");
 
-    /* solver.solveAll(); */
-    solver_cpu.solveAll();
+    OptImage::Location location;
+    if (backend == "backend_cuda") {
+      location = OptImage::Location::GPU;
+    } else {
+      location = OptImage::Location::CPU;
+    }
+
+    CombinedSolver solver(sourceMesh, targetMeshes, sourceTetIndices, params, location, backend, numthreads);
+    /* CombinedSolver solver_cpu(sourceMesh, targetMeshes, sourceTetIndices, params, OptImage::Location::CPU); */
+
+    solver.solveAll();
+    /* solver_cpu.solveAll(); */
 
     SimpleMesh* res = solver.result();
     

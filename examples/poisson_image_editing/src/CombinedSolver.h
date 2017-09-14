@@ -16,7 +16,7 @@
 
 class CombinedSolver : public CombinedSolverBase {
 public:
-    CombinedSolver(const ColorImageR32G32B32A32& image, const ColorImageR32G32B32A32& image1, const ColorImageR32& imageMask, CombinedSolverParameters params, bool useCUDAPatch, bool useEigen, OptImage::Location location)
+    CombinedSolver(const ColorImageR32G32B32A32& image, const ColorImageR32G32B32A32& image1, const ColorImageR32& imageMask, CombinedSolverParameters params, bool useCUDAPatch, bool useEigen, OptImage::Location location, std::string backend, int numthreads)
 	{
         m_combinedSolverParameters = params;
         m_useCUDAPatch = useCUDAPatch;
@@ -38,7 +38,7 @@ public:
         addSolver(std::make_shared<CeresSolverPoissonImageEditing>(m_dims), "Ceres", m_combinedSolverParameters.useCeres);
         addSolver(std::make_shared<EigenSolverPoissonImageEditing>(m_dims), "Eigen", m_useEigen);
         addSolver(std::make_shared<CUDAPatchSolverWarping>(m_dims), "CUDA Patch", m_useCUDAPatch);
-        addOptSolvers(m_dims, "poisson_image_editing.t", m_combinedSolverParameters.optDoublePrecision);
+        addOptSolvers(m_dims, "poisson_image_editing.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		
 	}
 

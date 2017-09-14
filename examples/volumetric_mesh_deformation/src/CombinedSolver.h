@@ -13,7 +13,7 @@
 class CombinedSolver : public CombinedSolverBase
 {
 	public:
-        CombinedSolver(const SimpleMesh* mesh, int3 voxelGridSize, CombinedSolverParameters params, OptImage::Location location)
+        CombinedSolver(const SimpleMesh* mesh, int3 voxelGridSize, CombinedSolverParameters params, OptImage::Location location, std::string backend, int numthreads)
 		{
             m_combinedSolverParameters = params;
 
@@ -23,6 +23,7 @@ class CombinedSolver : public CombinedSolverBase
 
             m_dims      = voxelGridSize;
 			m_nNodes    = (m_dims.x + 1)*(m_dims.y + 1)*(m_dims.z + 1);
+                        printf("dims inside cpp are %d %d %d\n", m_dims.x, m_dims.y, m_dims.z);
 			
 			unsigned int N = (unsigned int)mesh->n_vertices();
 		
@@ -39,7 +40,7 @@ class CombinedSolver : public CombinedSolverBase
             
             addSolver(std::make_shared<CUDAWarpingSolver>(dims), "CUDA", m_combinedSolverParameters.useCUDA);
             addSolver(std::make_shared<CeresSolver>(dims), "Ceres", m_combinedSolverParameters.useCeres);
-            addOptSolvers(dims, "volumetric_mesh_deformation.t", m_combinedSolverParameters.optDoublePrecision);
+            addOptSolvers(dims, "volumetric_mesh_deformation.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		}
 
         virtual void combinedSolveInit() override {

@@ -154,6 +154,7 @@ int main(int argc, const char * argv[]) {
     params.nonLinearIter = argparser.get<int>("nIterations");
 
     /* params.linearIter = 400; // original */
+
     params.linearIter = argparser.get<int>("lIterations");
 
     if (performanceRun) {

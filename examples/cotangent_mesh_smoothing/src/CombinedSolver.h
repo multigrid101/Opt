@@ -13,7 +13,7 @@
 class CombinedSolver : public CombinedSolverBase
 {
 public:
-    CombinedSolver(const SimpleMesh* mesh, bool performanceRun, CombinedSolverParameters params, float weightFit, float weightReg, OptImage::Location location)
+    CombinedSolver(const SimpleMesh* mesh, bool performanceRun, CombinedSolverParameters params, float weightFit, float weightReg, OptImage::Location location, std::string backend, int numthreads)
     {
         m_weightFitSqrt = sqrtf(weightFit);
         m_weightRegSqrt = sqrtf(weightReg);
@@ -32,7 +32,7 @@ public:
         m_target = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
 
         std::cout << "compiling... ";
-        addOptSolvers(dims, "cotangent_mesh_smoothing.t", m_combinedSolverParameters.optDoublePrecision);
+        addOptSolvers(dims, "cotangent_mesh_smoothing.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
         std::cout << " done!" << std::endl;
     }
 

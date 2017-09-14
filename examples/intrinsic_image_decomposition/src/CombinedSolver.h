@@ -11,19 +11,22 @@ class CombinedSolver : public CombinedSolverBase
 {
 	public:
 	
-        CombinedSolver(const ColorImageR32G32B32A32& image, const CombinedSolverParameters& params, OptImage::Location location) {
+        CombinedSolver(const ColorImageR32G32B32A32& image, const CombinedSolverParameters& params, OptImage::Location location, std::string backend, int numthreads) {
 			m_image = image;
             m_combinedSolverParameters = params;
             m_location = location;
 
             std::vector<unsigned int> dims = { m_image.getWidth(), m_image.getHeight() };
             unsigned int N = dims[0] * dims[1];
+            printf("dims inside cpp are %d and %d\n", dims[0], dims[1]);
+
+
             m_targetFloat3 = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
             m_imageFloat3Albedo = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
             m_imageFloatIllumination = createEmptyOptImage(dims, OptImage::Type::FLOAT, 1, location, true);
 		
 			resetGPUMemory();
-            addOptSolvers(dims, "intrinsic_image_decomposition.t", m_combinedSolverParameters.optDoublePrecision);
+            addOptSolvers(dims, "intrinsic_image_decomposition.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		}
 
         virtual void combinedSolveInit() override { 

@@ -1,22 +1,27 @@
 ﻿#include "main.h"
 #include "CombinedSolver.h"
 #include "OpenMesh.h"
+#include "../../shared/ArgParser.h"
 
 int main(int argc, const char * argv[])
 {
+    ArgParser argparser;
+    argparser.parse(argc, argv);
+
+
     std::string filename = "../data/head.ply";
-    if (argc >= 2) {
-        filename = argv[1];
-    }
+    /* if (argc >= 2) { */
+    /*     filename = argv[1]; */
+    /* } */
     bool performanceRun = false;
-    if (argc >= 3) {
-        if (std::string(argv[2]) == "perf") {
-            performanceRun = true;
-        }
-        else {
-            printf("Invalid second parameter: %s\n", argv[2]);
-        }
-    }
+    /* if (argc >= 3) { */
+    /*     if (std::string(argv[2]) == "perf") { */
+    /*         performanceRun = true; */
+    /*     } */
+    /*     else { */
+    /*         printf("Invalid second parameter: %s\n", argv[2]); */
+    /*     } */
+    /* } */
 
 
     SimpleMesh* mesh = new SimpleMesh();
@@ -29,17 +34,33 @@ int main(int argc, const char * argv[])
     CombinedSolverParameters params;
     params.useOpt = true;
     params.useOptLM = false;
-    params.nonLinearIter = 5;
-    params.linearIter = 25;
+
+    /* params.nonLinearIter = 5; //original */
+    params.nonLinearIter = argparser.get<int>("nIterations");
+
+
+    /* params.linearIter = 25; //original */
+    params.linearIter = argparser.get<int>("lIterations");
+
     float weightFit = 1.0f;
     float weightReg = 0.5f;
     weightReg = 5.0f;
 
-    CombinedSolver solver(mesh, performanceRun, params, weightFit, weightReg, OptImage::Location::GPU);
-    CombinedSolver solver_cpu(mesh, performanceRun, params, weightFit, weightReg, OptImage::Location::CPU);
+    int numthreads = argparser.get<int>("numthreads");
+    std::string backend = argparser.get<std::string>("backend");
 
-    /* solver.solveAll(); */
-    solver_cpu.solveAll();
+    OptImage::Location location;
+    if (backend == "backend_cuda") {
+      location = OptImage::Location::GPU;
+    } else {
+      location = OptImage::Location::CPU;
+    }
+
+    CombinedSolver solver(mesh, performanceRun, params, weightFit, weightReg, location, backend, numthreads);
+    /* CombinedSolver solver_cpu(mesh, performanceRun, params, weightFit, weightReg, OptImage::Location::CPU); */
+
+    solver.solveAll();
+    /* solver_cpu.solveAll(); */
 
     SimpleMesh* res = solver.result();
     if (!OpenMesh::IO::write_mesh(*res, "out.off"))

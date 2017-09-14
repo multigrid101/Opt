@@ -17,7 +17,7 @@
 class CombinedSolver : public CombinedSolverBase
 {
 	public:
-        CombinedSolver(const SimpleMesh* mesh, std::vector<int> constraintsIdx, std::vector<std::vector<float>> constraintsTarget, CombinedSolverParameters params, float weightFit, float weightReg, OptImage::Location location) :
+        CombinedSolver(const SimpleMesh* mesh, std::vector<int> constraintsIdx, std::vector<std::vector<float>> constraintsTarget, CombinedSolverParameters params, float weightFit, float weightReg, OptImage::Location location, std::string backend, int numthreads) :
             m_constraintsIdx(constraintsIdx), m_constraintsTarget(constraintsTarget)
 		{
             m_weightFitSqrt = sqrtf(weightFit);
@@ -42,7 +42,7 @@ class CombinedSolver : public CombinedSolverBase
             
             addSolver(std::make_shared<CUDAWarpingSolver>(N, d_numNeighbours, d_neighbourIdx, d_neighbourOffset), "CUDA", m_combinedSolverParameters.useCUDA);
             addSolver(std::make_shared<CeresSolver>(m_dims, &m_initial), "Ceres", m_combinedSolverParameters.useCeres);
-            addOptSolvers(m_dims, "arap_mesh_deformation.t", m_combinedSolverParameters.optDoublePrecision);
+            addOptSolvers(m_dims, "arap_mesh_deformation.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		} 
 
         virtual void combinedSolveInit() override {

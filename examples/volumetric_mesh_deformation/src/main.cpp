@@ -1,13 +1,16 @@
 ﻿#include "mLibInclude.h"
 #include "CombinedSolver.h"
 #include "OpenMesh.h"
+#include "../../shared/ArgParser.h"
 
 int main(int argc, const char * argv[])
 {
 	std::string filename = "../data/head.ply";
-	if (argc >= 2) {
-		filename = argv[1];
-	}
+	/* if (argc >= 2) { */
+	/* 	filename = argv[1]; */
+	/* } */
+        ArgParser argparser;
+        argparser.parse(argc, argv);
 
 	SimpleMesh* mesh = new SimpleMesh();
 
@@ -20,16 +23,30 @@ int main(int argc, const char * argv[])
 	printf("Faces: %d\nVertices: %d\n", (int)mesh->n_faces(), (int)mesh->n_vertices());
 
     CombinedSolverParameters params;
-    params.nonLinearIter = 20;
-    params.linearIter = 60;
+
+    /* params.nonLinearIter = 20;//original */
+    params.nonLinearIter = argparser.get<int>("nIterations");
+
+    /* params.linearIter = 60;//original */
+    params.linearIter = argparser.get<int>("lIterations");
 
     int3 voxelGridSize = make_int3(5, 20, 5);
 
-    CombinedSolver solver(mesh, voxelGridSize, params, OptImage::Location::GPU);
-    CombinedSolver solver_cpu(mesh, voxelGridSize, params, OptImage::Location::CPU);
+    int numthreads = argparser.get<int>("numthreads");
+    std::string backend = argparser.get<std::string>("backend");
 
-    /* solver.solveAll(); */
-    solver_cpu.solveAll();
+    OptImage::Location location;
+    if (backend == "backend_cuda") {
+      location = OptImage::Location::GPU;
+    } else {
+      location = OptImage::Location::CPU;
+    }
+
+    CombinedSolver solver(mesh, voxelGridSize, params, location, backend, numthreads);
+    /* CombinedSolver solver_cpu(mesh, voxelGridSize, params, OptImage::Location::CPU); */
+
+    solver.solveAll();
+    /* solver_cpu.solveAll(); */
 
     SimpleMesh* res = solver.result();
     solver.saveGraphResults();

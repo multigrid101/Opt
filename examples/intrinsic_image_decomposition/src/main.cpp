@@ -1,12 +1,17 @@
 ﻿#include "main.h"
 #include "CombinedSolver.h"
 #include "../../shared/CombinedSolverParameters.h"
+#include "../../shared/ArgParser.h"
+
+
 int main(int argc, const char * argv[])
 {
     std::string filename = "../data/ye_high2.png";
-    if (argc > 1) {
-        filename = argv[1];
-    }
+    /* if (argc > 1) { */
+    /*     filename = argv[1]; */
+    /* } */
+    ArgParser argparser;
+    argparser.parse(argc, argv);
 
     ColorImageR8G8B8A8	   image = LodePNG::load(filename);
 	ColorImageR32G32B32A32 imageR32(image.getWidth(), image.getHeight());
@@ -18,14 +23,29 @@ int main(int argc, const char * argv[])
 	
 
     CombinedSolverParameters params;
-    params.nonLinearIter = 7;
-    params.linearIter = 10;
 
-    CombinedSolver solver(imageR32, params, OptImage::Location::GPU);
-    CombinedSolver solver_cpu(imageR32, params, OptImage::Location::CPU);
+    /* params.nonLinearIter = 7;// original */
+    params.nonLinearIter = argparser.get<int>("nIterations");
 
-    /* solver.solveAll(); */
-    solver_cpu.solveAll();
+    /* params.linearIter = 10; original */
+    params.linearIter = argparser.get<int>("lIterations");
+
+    int numthreads = argparser.get<int>("numthreads");
+    std::string backend = argparser.get<std::string>("backend");
+
+    OptImage::Location location;
+    if (backend == "backend_cuda") {
+      location = OptImage::Location::GPU;
+    } else {
+      location = OptImage::Location::CPU;
+    }
+
+
+    CombinedSolver solver(imageR32, params, location, backend, numthreads);
+    /* CombinedSolver solver_cpu(imageR32, params, OptImage::Location::CPU); */
+
+    solver.solveAll();
+    /* solver_cpu.solveAll(); */
 
     ColorImageR32G32B32A32* res = solver.getAlbedo();
 	ColorImageR8G8B8A8 out(res->getWidth(), res->getHeight());

@@ -8,32 +8,38 @@
 #include <OpenMesh/Tools/Subdivider/Uniform/LoopT.hh>
 #include <OpenMesh/Tools/Subdivider/Uniform/CatmullClarkT.hh>
 #include <OpenMesh/Tools/Subdivider/Uniform/Sqrt3T.hh>
+
+#include "../../shared/ArgParser.h"
 int main(int argc, const char * argv[]) {
 
     std::string filename = "../data/small_armadillo.ply";
 
-    if (argc >= 2) {
-            filename = argv[1];
-    }
+    /* if (argc >= 2) { */
+    /*         filename = argv[1]; */
+    /* } */
+
 
     // For now, any model must be accompanied with a identically 
     // named (besides the extension, which must be 3 characters) mrk file
     std::string markerFilename = filename.substr(0, filename.size() - 3) + "mrk";
     bool performanceRun = false;
-    if (argc >= 3) {
-        if (std::string(argv[2]) == "perf") {
-            performanceRun = true;
-        }
-        else {
-            printf("Invalid second parameter: %s\n", argv[2]);
-        }
-    }
+    /* if (argc >= 3) { */
+    /*     if (std::string(argv[2]) == "perf") { */
+    /*         performanceRun = true; */
+    /*     } */
+    /*     else { */
+    /*         printf("Invalid second parameter: %s\n", argv[2]); */
+    /*     } */
+    /* } */
     int subdivisionFactor = 0;
     bool lmOnlyFullSolve = false;
-    if (argc > 3) {
-            lmOnlyFullSolve = true;
-            subdivisionFactor = atoi(argv[3]);
-    }
+    /* if (argc > 3) { */
+    /*         lmOnlyFullSolve = true; */
+    /*         subdivisionFactor = atoi(argv[3]); */
+    /* } */
+
+    ArgParser argparser;
+    argparser.parse(argc, argv);
 
     // Load Constraints
     LandMarkSet markersMesh;
@@ -80,9 +86,9 @@ int main(int argc, const char * argv[]) {
     /* params.numIter = 10; */ //original
     /* params.nonLinearIter = 20; */ //original
     /* params.linearIter = 100; */ //original
-    params.numIter = 1;
-    params.nonLinearIter = 2;
-    params.linearIter = 2;
+    /* params.numIter = 1; */
+    params.nonLinearIter = argparser.get<int>("nIterations");
+    params.linearIter = argparser.get<int>("lIterations");
     params.useOpt = true;
     if (performanceRun) {
         params.useCUDA = false;
@@ -104,6 +110,17 @@ int main(int argc, const char * argv[]) {
         }
     }
 
+    int numthreads = argparser.get<int>("numthreads");
+
+    std::string backend = argparser.get<std::string>("backend");
+
+    OptImage::Location location;
+    if (backend == "backend_cuda") {
+      location = OptImage::Location::GPU;
+    } else {
+      location = OptImage::Location::CPU;
+    }
+
     params.optDoublePrecision = false;
 
     // load scalar problemparameters
@@ -111,11 +128,11 @@ int main(int argc, const char * argv[]) {
     float weightReg = 1.0f;
 
     // Define and call solver
-    CombinedSolver solver(mesh, constraintsIdx, constraintsTarget, params, weightFit, weightReg, OptImage::Location::GPU);
-    CombinedSolver solver_cpu(mesh, constraintsIdx, constraintsTarget, params, weightFit, weightReg, OptImage::Location::CPU);
+    CombinedSolver solver(mesh, constraintsIdx, constraintsTarget, params, weightFit, weightReg, location, backend, numthreads);
+    /* CombinedSolver solver_cpu(mesh, constraintsIdx, constraintsTarget, params, weightFit, weightReg, OptImage::Location::CPU); */
 
     solver.solveAll();
-    solver_cpu.solveAll();
+    /* solver_cpu.solveAll(); */
 
     
     // write results to file

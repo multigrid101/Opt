@@ -69,7 +69,7 @@ class CombinedSolver : public CombinedSolverBase
 {
 
 	public:
-        CombinedSolver(const SimpleMesh* sourceMesh, const std::vector<SimpleMesh*>& targetMeshes, const std::vector<int4>& sourceTetIndices, CombinedSolverParameters params, OptImage::Location location)
+        CombinedSolver(const SimpleMesh* sourceMesh, const std::vector<SimpleMesh*>& targetMeshes, const std::vector<int4>& sourceTetIndices, CombinedSolverParameters params, OptImage::Location location, std::string backend, int numthreads)
 		{
             m_combinedSolverParameters = params;
             m_result = *sourceMesh;
@@ -129,7 +129,7 @@ class CombinedSolver : public CombinedSolverBase
             int failure = OpenMesh::IO::write_mesh(m_result, "out_noisetemplate.ply", options);
             assert(failure);
 
-            addOptSolvers(dims, "robust_nonrigid_alignment.t", m_combinedSolverParameters.optDoublePrecision);
+            addOptSolvers(dims, "robust_nonrigid_alignment.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		} 
 
 
