@@ -915,7 +915,7 @@ return function(problemSpec)
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
                     -- util.atomicAdd_nosync((pd.modelCost.data[ [backend.threadarg_val] ]), cost)
-                    util.atomicAdd_nosync([backend.ReduceVar.getData( `pd.modelCost, backend.threadarg_val )], cost)
+                    util.atomicAdd_nosync([backend.ReduceVar.getDataPtr( `pd.modelCost, backend.threadarg_val )], cost)
                 end
             end
 
@@ -1112,7 +1112,7 @@ return function(problemSpec)
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
                     -- util.atomicAdd_nosync((pd.modelCost.data[ [backend.threadarg_val] ]), cost)
-                    util.atomicAdd_nosync([backend.ReduceVar.getData( `pd.modelCost, backend.threadarg_val )], cost)
+                    util.atomicAdd_nosync([backend.ReduceVar.getDataPtr( `pd.modelCost, backend.threadarg_val )], cost)
                 end
             end
         end
