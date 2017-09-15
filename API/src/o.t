@@ -194,7 +194,7 @@ Image = (string name, ImageType type, boolean scalar, ImageLocation location)
 ImageVector = (Image* images)
 ProblemParam = ImageParam(ImageType imagetype, boolean isunknown)
              | ScalarParam(TerraType type)
-             | GraphParam(TerraType type, IndexSpace ispace)
+             | GraphParam(TerraType type, IndexSpace ispace, boolean isgraph)
              attributes (string name, any idx)
 
 VarDef =  ImageAccess(Image image,  Shape _shape, Index index, number channel) unique
@@ -282,7 +282,10 @@ function ProblemSpec:registername(name)
 end
 
 -- TODO these two need to go somewhere else
-function ProblemParam:terratype() return self.type end
+function ProblemParam:terratype()
+-- this is used by graphparam, scalarparam and imageparam
+  return self.type
+ end
 function ImageParam:terratype() return self.imagetype:terratype() end
 
 
@@ -313,17 +316,85 @@ function ProblemSpec:ParameterType() -- returns self.ProblemParameters, which is
     self:Stage "functions"
     if not self.ProblemParameters then
         self.ProblemParameters = terralib.types.newstruct("ProblemParameters")
-        print('1')
+
         self.ProblemParameters.entries:insert { "X" , self:UnknownType():terratype() }
-        print('2')
+
         for i,p in ipairs(self.parameters) do
             local n,t = p.name,p:terratype()
-        print('3')
-            if not p.isunknown then self.ProblemParameters.entries:insert { n, t } end
-        print('4')
+            if not p.isunknown then
+              self.ProblemParameters.entries:insert { n, t }
+            end
         end
+        -- error()
     end
         print('5')
+
+        self.ProblemParameters:printpretty()
+        -- error()
+
+    self.ProblemParameters.methods.totalbytes = terra(this : &self.ProblemParameters)
+      var size = 0
+
+      escape -- calculate total number of bytes required to hold all images in a single array
+          for i,ip in ipairs(self.parameters) do
+
+              print("")
+              print(ip)
+              for k,v in pairs(ip) do print(k,v) end
+              print("")
+
+              if ip.isunknown then
+                emit quote 
+                    size = size + this.X.[ip.name]:totalbytes()
+                end
+              elseif ip.imagetype or ip.isgraph then
+                emit quote 
+                    size = size + this.[ip.name]:totalbytes()
+                end
+              end
+          end
+          -- error()
+      end
+
+      return size
+    end
+    print(self.ProblemParameters.methods.totalbytes)
+
+
+    self.ProblemParameters.methods.printAllocationInfo = terra(this : &self.ProblemParameters)
+      C.printf("Layout of ProblemParameters:\n")
+
+      var size = 0
+      var paramsize = 0
+
+      escape -- calculate total number of bytes required to hold all images in a single array
+          for i,ip in ipairs(self.parameters) do
+
+              
+
+
+              if ip.isunknown then
+                emit quote 
+                    paramsize = this.X.[ip.name]:totalbytes()
+                    size = size + paramsize
+                    C.printf("Param %s needs %d bytes\n", ip.name, paramsize)
+                end
+              elseif ip.imagetype or ip.isgraph then
+                emit quote 
+                    paramsize = this.[ip.name]:totalbytes()
+                    size = size + paramsize
+                    C.printf("Param %s needs %d bytes\n", ip.name, paramsize)
+                end
+              end
+          end
+          -- error()
+      end
+
+      C.printf("total usage of ProblemParameters is %d bytes\n", size)
+    end
+    -- error()
+
+
     return self.ProblemParameters
 end
 
@@ -867,6 +938,18 @@ function UnknownType:terratype()
         T.entries:insert { ip.name, ip.imagetype:terratype() }
     end
 
+    terra T:totalbytes()
+        var size = 0
+        escape -- calculate total number of bytes required to hold all images in a single array
+            for i,ip in ipairs(images) do
+                emit quote 
+                    size = size + self.[ip.name]:totalbytes()
+                end
+            end
+        end
+        return size
+    end
+
     --- initGPU START
     if use_contiguous_allocation then
         T.entries:insert { "_contiguousallocation", &opaque }
@@ -1010,16 +1093,27 @@ function ProblemSpec:Graph(name, ispace, ...)
     local mm = GraphType.metamethods
     mm.idx = toispace(ispace) -- the index space (numedges of the graph)
     mm.elements = terralib.newlist()
+
+    local numverticesPerHyperedge = 0
+    local graphispace
     for i = 1, select("#",...),3 do
         local name,dims,didx = select(i,...) --TODO: we don't bother to track the dimensions of these things now
         local ispace = toispace(dims)
+        graphispace = ispace
         local Index = ispace:indextype()
         GraphType.entries:insert {name, &Index}
         mm.elements:insert( { name = name, type = Index, idx = assert(tonumber(didx))} )
+        numverticesPerHyperedge = numverticesPerHyperedge + 1
     end
 
+    terra GraphType:totalbytes()
+      return [graphispace:cardinality()] * numverticesPerHyperedge * sizeof([graphispace:indextype()])
+    end
+    -- GraphType:printpretty()
+    -- error()
+
     -- TODO IMPORTANT> need to make the 6 below more general (really???)
-    self:newparameter(GraphParam(GraphType, toispace(ispace),name,6))
+    self:newparameter(GraphParam(GraphType, toispace(ispace), true,name,6))
 end
 
 -- TODO next two lines only used in 'problemPlan()', two functions below, so make local there

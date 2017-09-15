@@ -234,6 +234,13 @@ return function(problemSpec)
         Jp : &float
     }
 
+    terra PlanData:printAllocationInfo()
+      C.printf('Layout of PlanData:\n')
+      C.printf("parameters uses %d bytes\n", self.parameters:totalbytes())
+      C.printf("12 tmp vars of TUnknownType use %d bytes each\n", self.delta:totalbytes())
+      C.printf("total usage of PlanData: %d bytes\n", self.parameters:totalbytes() + 12*self.delta:totalbytes())
+    end
+
     if initialization_parameters.use_cusparse then
         PlanData.entries:insert {"handle", CUsp.cusparseHandle_t }
         PlanData.entries:insert {"desc", CUsp.cusparseMatDescr_t }
@@ -1830,6 +1837,11 @@ return function(problemSpec)
             pd.preconditioner:initGPU()
             pd.g:initGPU()
             pd.prevX:initGPU()
+
+            C.printf("allocating %d bytes for each TUnknownType variable\n", pd.p:totalbytes())
+            C.printf("allocating %d bytes for the Parameters variable\n", pd.parameters:totalbytes())
+            pd.parameters:printAllocationInfo()
+            pd:printAllocationInfo()
 
             initializeSolverParameters(&pd.solverparameters)
             
