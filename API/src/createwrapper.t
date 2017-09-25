@@ -2,6 +2,7 @@ local libraryname, sourcedirectory, main, headerfile, outputname, embedsource = 
 embedsource = "true" == embedsource or false
 
 local ffi = require("ffi")
+local I = require(sourcedirectory .. '/ittnotify')
 
 terralib.includepath = terralib.terrahome.."/include;."
 local C,CN = terralib.includecstring[[ 

@@ -18,6 +18,7 @@ util.C = terralib.includecstring [[
 #ifdef _WIN32
 	#include <io.h>
 #endif
+#include "/opt/intel/vtune_amplifier_xe_2017/include/ittnotify.h"
 ]]
 local C = util.C
 

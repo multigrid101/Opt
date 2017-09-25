@@ -5,6 +5,7 @@
 -- end
 
 local S = require("std")
+local I = require('ittnotify')
 local util = require("util")
 local conf = require('config')
 local backend = require(conf.backend)
@@ -1412,6 +1413,9 @@ return function(problemSpec)
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra init(data_ : &opaque, params_ : &&opaque)
       C.printf('starting init\n')
+        var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
+        var name : &I.__itt_string_handle  = I.__itt_string_handle_create("init()")
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
         
        escape
          if backend.name == 'CPUMT' then
@@ -1485,6 +1489,7 @@ return function(problemSpec)
        gpu.precompute(pd)
        pd.prevCost = computeCost(pd)
       C.printf('stopping init\n')
+        I.__itt_task_end(domain)
     end
     print(init)
     -- error()
@@ -1500,6 +1505,10 @@ return function(problemSpec)
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra step(data_ : &opaque, params_ : &&opaque)
         -- [backend.threadcreation_counter] = 0
+            var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
+            var name : &I.__itt_string_handle  = I.__itt_string_handle_create("step()")
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
         var pd = [&PlanData](data_)
         var residual_reset_period : int         = pd.solverparameters.residual_reset_period
         var min_relative_decrease : opt_float   = pd.solverparameters.min_relative_decrease
@@ -1759,7 +1768,8 @@ return function(problemSpec)
 
                         pd.solverparameters.nIter = pd.solverparameters.nIter + 1
         -- C.printf('created %d threads in this step \n', [backend.threadcreation_counter])
-                        return 1
+                    I.__itt_task_end(domain)
+                    return 1
         else
             cleanup(pd)
             return 0
@@ -1817,7 +1827,22 @@ return function(problemSpec)
 
     -- TODO put in extra file 'solverskeleton.t' or something similar (or maybe keep only this and put everything above in solverskeleton.t)
     -- TODO why is all this stuff in "make plan" and not in init? Picture data is initialized in 'init', intermediate data is initialized here.
+    -- for k,v in pairs(C) do print(k,v) end
+    -- error()
+
+    C.__itt_null = global(C.__itt_id, nil, "__itt_null")
+    print("HERE")
+
+
     local terra makePlan() : &opt.Plan
+            C.__itt_null.d1 = 0
+            C.__itt_null.d2 = 0
+            C.__itt_null.d3 = 0
+
+            var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
+            var name : &I.__itt_string_handle  = I.__itt_string_handle_create("makePlan")
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
     C.printf('starting makeplan\n')
             var pd = PlanData.alloc() -- this seems to be sort-of like a constructor call of the "PlanData" class
             pd.plan.data = pd
@@ -1837,6 +1862,8 @@ return function(problemSpec)
             pd.preconditioner:initGPU()
             pd.g:initGPU()
             pd.prevX:initGPU()
+
+
 
             C.printf("allocating %d bytes for each TUnknownType variable\n", pd.p:totalbytes())
             C.printf("allocating %d bytes for the Parameters variable\n", pd.parameters:totalbytes())
@@ -1900,6 +1927,7 @@ return function(problemSpec)
             pd.JTJ_csrRowPtrA = nil
 
     C.printf('stopping makeplan\n')
+        I.__itt_task_end(domain)
             return &pd.plan
     end
     print(makePlan)

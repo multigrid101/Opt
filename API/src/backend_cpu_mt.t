@@ -383,6 +383,11 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
             pd.timer:startEvent(kernelName,nil,&endEvent)
         end
 
+        var name = I.__itt_string_handle_create(kernelName)
+        var domain = I.__itt_domain_create("Main.Domain")
+
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
         
 
         for k = 0,numthreads do
@@ -410,6 +415,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         if ([_opt_collect_kernel_timing]) then
             pd.timer:endEvent(nil,endEvent)
         end
+        I.__itt_task_end(domain)
 
 
     end

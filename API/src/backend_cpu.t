@@ -10,6 +10,7 @@ local C = terralib.includecstring [[
 	#include <io.h>
 #endif
 ]]
+local I = require('ittnotify')
 
 b.name = 'CPU'
 b.numthreads = 1 -- DO NOT CHANGE THIS
@@ -275,10 +276,17 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
     --     end
 
     --     cd(C.cudaGetLastError())
+
+        var name = I.__itt_string_handle_create(kernelName)
+        var domain = I.__itt_domain_create("Main.Domain")
+
+
         var endEvent : C.cudaEvent_t 
         if ([_opt_collect_kernel_timing]) then
             pd.timer:startEvent(kernelName,nil,&endEvent)
         end
+
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
         
       compiledKernel(@pd)
@@ -286,8 +294,11 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
         if ([_opt_collect_kernel_timing]) then
             pd.timer:endEvent(nil,endEvent)
         end
+
+        I.__itt_task_end(domain)
     end
     -- print(GPULauncher)
+    -- error()
     return GPULauncher
 end
 

@@ -14,7 +14,7 @@ endif
 
 FLAGS += -O3 -g -std=c++11 -Isrc -Isrc/cutil/inc -I../../API/release/include -I$(TERRAHOME)/include -I$(CUDAHOME)/include -I../external/mLib/include -I../external -I../external/OpenMesh/include 
 NVCCFLAGS += -arch sm_30 $(FLAGS)
-LFLAGS += -std=c++11 -L../../API/release/lib -L$(CUDAHOME)/lib$(S4) -lcudart -L$(TERRAHOME)/lib -lterra -ldl -lboost_program_options
+LFLAGS += -std=c++11 -L../../API/release/lib -L$(CUDAHOME)/lib$(S4) -lcudart -L$(TERRAHOME)/lib -lterra -ldl -lboost_program_options -L /opt/intel/vtune_amplifier_xe_2017/lib64 -littnotify
 UNAME := $(shell uname)
 
 ifeq ($(UNAME), Darwin)
@@ -41,7 +41,7 @@ build/%.o:	$(SRC)/%.cu
 	$(NVCC) $(NVCCFLAGS) $< -c -o $@
 
 $(EXECUTABLE):	$(OBJS) $(OPTLIB)
-	$(CXX) $^ -o $@ $(LFLAGS)
+	$(CXX) $^ $(LFLAGS) -o $@ -rdynamic
 
 clean:
 	rm -rf build/*.o build/*.d
