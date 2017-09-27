@@ -3083,7 +3083,7 @@ terra opt.ProblemInit(plan : &opt.Plan, params : &&opaque)
     return plan.init(plan.data, params)
 end
 terra opt.ProblemStep(plan : &opt.Plan, params : &&opaque) : int
-    C.printf('doing a step\n')
+    -- C.printf('doing a step\n')
     return plan.step(plan.data, params) -- this seems to be the 'step' function defined in solverGPUGaussNewton.t
 end
 terra opt.ProblemSolve(plan : &opt.Plan, params : &&opaque)
