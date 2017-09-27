@@ -20,6 +20,7 @@ class Test:
         self._referenceCost = None
         self._tolerance = None # relative tolerance
         self._checkResult = False
+        self._printOutput = False # if true, self._output is printed after test completion
 
     def setBackend(self, backend):
         self._backend = backend
@@ -56,7 +57,8 @@ class Test:
                 ]
         process = sp.Popen(callcommand, stdout=sp.PIPE)
         self._output = process.communicate()[0]
-        # print self._output
+        if self._printOutput == True:
+            print self._output
 
         os.chdir("..")
 
