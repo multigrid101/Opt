@@ -133,7 +133,7 @@ class TestGroup:
         numthreadslist.sort()
         numthreadslist = [str(n) for n in numthreadslist] # convert to string values
 
-        numthreadsline = "{:50}".format("numthreads") + "".join(["{:10}".format(str(n)) for n in numthreadslist])
+        numthreadsline = "{:50}".format("numthreads") + "{:^10}".format("cpu") + "".join(["{:^10}".format(str(n)) for n in numthreadslist])
         print numthreadsline
 
         # get kernelnames
@@ -144,11 +144,13 @@ class TestGroup:
             absline = line + ("{:50}".format(name + " (abs)"))
             relline = line + ("{:50}".format(name + " (rel)"))
             abstimes = []
+            t = self.getTestWithBackendAndNumthreads('backend_cpu', 1)
+            abstimes.append(t.getTimeForKernel(name))
             for num in numthreadslist:
                 t = self.getTestWithBackendAndNumthreads('backend_cpu_mt', num)
                 abstimes.append(t.getTimeForKernel(name))
 
-            reltimes = [1.0/(t/abstimes[0]) for t in abstimes]
+            reltimes = [1.0/((t+1e-16)/abstimes[1]) for t in abstimes]
             absline = absline + "".join(["{:10.5}".format(t) for t in abstimes])
             relline = relline + "".join(["{:10.5}".format(t) for t in reltimes])
             print absline

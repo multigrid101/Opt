@@ -33,7 +33,13 @@ class TimingInfoAll:
         return [ti._kernelName for key, ti in self._timeInfos.iteritems()]
 
     def getTimeForKernel(self, kernelName):
-        return self._timeInfos[kernelName].getTimingAverage()
+        if kernelName != 'thread_start':
+            return self._timeInfos[kernelName].getTimingAverage()
+        else: # kernelName is thread_start
+            if self._timeInfos.has_key('thread_start'):
+                return self._timeInfos['thread_start'].getTimingAverage()
+            else:
+                return 0.0
 
     def parseOutput(self, output):
         rs = timeInfoAll.scanString(output)
