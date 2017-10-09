@@ -845,6 +845,12 @@ function ImageType:terratype()
     end
 
 
+    terra Image:cardinality()
+    -- returns e.g. the number of pixels in an image
+      return cardinality
+    end
+
+
     -- setGPUptr START
     if textured then -- TODO textured and pitched are gpu concepts, so refactor them to that backend
         local W,H = cardinality,0
