@@ -379,9 +379,13 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         -- C.pthread_create(&t2, nil, threadLauncher, &tdata2)
         var endEvent : C.cudaEvent_t 
         var threadEvent : C.cudaEvent_t 
+        var kernelEvent : C.cudaEvent_t 
         if ([_opt_collect_kernel_timing]) then
             pd.timer:startEvent(kernelName,nil,&endEvent)
         end
+        -- if ([_opt_collect_kernel_timing]) then
+        --     pd.timer:startEvent('kernel',nil,&kernelEvent)
+        -- end
 
         var name = I.__itt_string_handle_create(kernelName)
         var domain = I.__itt_domain_create("Main.Domain")
@@ -407,11 +411,20 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         -- C.pthread_join(t1, nil)
         -- C.pthread_join(t2, nil)
         for k = 0,numthreads do
+          -- if ([_opt_collect_kernel_timing]) then
+          --     pd.timer:startEvent('thread_start',nil,&threadEvent)
+          -- end
 
           C.pthread_join(threads[k], nil)
 
+          -- if ([_opt_collect_kernel_timing]) then
+          --     pd.timer:endEvent(nil,threadEvent)
+          -- end
         end
 
+        -- if ([_opt_collect_kernel_timing]) then
+        --     pd.timer:endEvent(nil,kernelEvent)
+        -- end
         if ([_opt_collect_kernel_timing]) then
             pd.timer:endEvent(nil,endEvent)
         end
