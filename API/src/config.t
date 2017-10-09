@@ -13,7 +13,10 @@ c.verboseAD = false
 c.numthreads = _opt_numthreads -- only for backend_cpu_mt, no effect on other backends
 -- c.cpumap = { 0, 1, 2, 3, 4, 5, 6, 7 } -- default
 -- c.cpumap = { 1, 5, 2, 3, 4, 5, 6, 7 }
+
+-- NOTE: The size of a single mutex is TODO
 c.nummutexes = 10000 -- adjust by hand (only has effec for backend_cpu_mt) TODO find better solution for this
+-- c.nummutexes = 386 -- adjust by hand (only has effec for backend_cpu_mt) TODO find better solution for this
 
 c.backend = _opt_backend -- configured in cpp code
 

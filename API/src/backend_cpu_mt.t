@@ -488,6 +488,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
         -- [pd_sym].scanAlphaNumerator[0] = [pd_sym].scanAlphaNumerator[0] + [pd_sym].scanAlphaNumerator[1]
         -- [pd_sym].scanBetaNumerator[0] = [pd_sym].scanBetaNumerator[0] + [pd_sym].scanBetaNumerator[1]
       end
+      wrappedfunc:setname('wrappedfunc')
       print(wrappedfunc)
       -- error()
 
@@ -542,7 +543,8 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
     -- for k,v in pairs(kernelFunctions) do print(k,v) end
     local kernels = kernelFunctions
     -- print('\ncompiled cuda kernels')
-    -- for k,v in pairs(kernels) do print(k,v) end -- end
+    for k,v in pairs(kernels) do print(k,v) end -- end
+    -- error()
     
     -- step 2: generate wrapper functions around each named thing
     local grouplaunchers = {}
