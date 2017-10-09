@@ -23,6 +23,7 @@ b.numthreads = numthreads
 -- OPTION 1: add into directly into global sum
 -- OPTION 2: have each thread add into its own sum. (i.e. have 'sum' as a float[numthreads]) --> more efficient but harder to implement
 b.summutex_sym = global(C.pthread_mutex_t[c.nummutexes], nil,  'summutex')
+local tid_key = global(C.pthread_key_t, nil,  'tid_key')
 
 b.threadarg = symbol(int, 'thread_id')
 b.threadarg_val = b.threadarg -- need second variable to provide default arguments for other backends
@@ -281,6 +282,7 @@ end
 function b.make_Image_atomicAddChannel(imagetype_terra, indextype_terra, scalartype_terra)
 --TODO
   local atomicAddChannel = terra(self : &imagetype_terra, idx : indextype_terra, c : int32, value : scalartype_terra)
+      var tid = [int64](C.pthread_getspecific(tid_key))
       var addr : &scalartype_terra = &self.data[idx:tooffset()].data[c]
       b.atomicAdd_sync(addr,value, idx.d0)
   end
@@ -324,6 +326,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         var kmin = threaddata.kmin
         var kmax = threaddata.kmax
         var tid = threaddata.tid
+        C.pthread_setspecific(tid_key, [&opaque](tid-1))
 
         var cpuset = threaddata.cpuset
         
@@ -355,6 +358,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
         var threads : C.pthread_t[numthreads]
 
+        C.pthread_key_create(&tid_key, nil)
         -- if config.cpumap is not set, then let OS take care of threadmapping
         escape
           -- set cpu affinities
