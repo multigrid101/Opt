@@ -294,6 +294,68 @@ function b.getKernelArglist(indexspace) -- TODO should this result be cached or 
     return arglist
 end
 
+
+function b.make_Image_initGPU(imagetype_terra)
+    local initGPU= terra(self : &imagetype_terra)
+        var data : &uint8 -- we cast this to the correct type later inside setGPUptr
+
+        b.cd( b.allocateDevice(&data, self:totalbytes(), uint8) )
+        b.cd( b.memsetDevice(data, 0, self:totalbytes()) )
+
+        self:initFromGPUptr(data) -- (short explanataion): set self.data = data (and cast to appropriate ptr-type)
+    end
+    initGPU:setname('Image.initGPU')
+
+   return initGPU
+end
+
+-- IMAGE SPECIALIZATION START
+function b.make_Image_metamethods__apply(imagetype_terra, indextype_terra, vectortype_terra, loadAsVector, VT)
+    local metamethods__apply
+    if loadAsVector then
+        metamethods__apply = terra(self : &imagetype_terra, idx : indextype_terra) : vectortype_terra
+            var a = VT(self.data)[idx:tooffset()]
+            return @[&vectortype_terra](&a)
+        end
+    else
+        metamethods__apply = terra(self : &imagetype_terra, idx : indextype_terra) : vectortype_terra
+            var r = self.data[idx:tooffset()]
+            return r
+        end
+    end
+    metamethods__apply:setname('Image.metamethods.__apply')
+
+    return metamethods__apply
+end
+
+function b.make_Image_metamethods__update(imagetype_terra, indextype_terra, vectortype_terra, loadAsVector, VT)
+    local metamethods__update
+    if loadAsVector then
+        metamethods__update = terra(self : &imagetype_terra, idx : indextype_terra, v : vectortype_terra)
+      -- TODO backend-specific
+            VT(self.data)[idx:tooffset()] = @VT(&v)
+        end
+    else
+        metamethods__update = terra(self : &imagetype_terra, idx : indextype_terra, v : vectortype_terra)
+      -- TODO backend-specific
+            self.data[idx:tooffset()] = v
+        end
+    end
+    metamethods__update:setname('Image.metamethods.__update')
+
+    return metamethods__update
+end
+
+function b.make_Image_atomicAddChannel(imagetype_terra, indextype_terra, scalartype_terra)
+  local atomicAddChannel = terra(self : &imagetype_terra, idx : indextype_terra, c : int32, value : scalartype_terra)
+      var addr : &scalartype_terra = &self.data[idx:tooffset()].data[c]
+      b.atomicAdd_sync(addr,value, idx.d0)
+  end
+  atomicAddChannel:setname('Image.atomicAddChannel')
+
+  return atomicAddChannel
+end
+-- IMAGE SPECIALIZATION END
 ------------------------------------------------------------------------------ wrap and compile kernels
 -- TODO choose better name and put with other general purpose stuff
 -- TODO this seems to be re-defined in solver AND o.t

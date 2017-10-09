@@ -742,18 +742,22 @@ function ImageType:terratype()
                 "=f,=f,=f,=f,l,r",false, self.tex,idx:tooffset())
             return @[&vectortype](&read)
         end
-    elseif self:LoadAsVector() then -- QUES seems to use "linear" index of idx
-        terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
-            var a = VT(self.data)[idx:tooffset()]
-            return @[&vectortype](&a)
-        end
-    else    -- QUES seems to use "linear" index of idx
-        terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
-            -- C.printf('inside __apply: before loading (offset is): %d\n', idx:tooffset())
-            var r = self.data[idx:tooffset()]
-            -- C.printf('inside __apply: after loading\n')
-            return r
-        end
+    -- elseif self:LoadAsVector() then -- QUES seems to use "linear" index of idx
+    --     terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
+    --   -- TODO backend-specific
+    --         var a = VT(self.data)[idx:tooffset()]
+    --         return @[&vectortype](&a)
+    --     end
+    -- else    -- QUES seems to use "linear" index of idx
+    --     terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
+    --   -- TODO backend-specific
+    --         -- C.printf('inside __apply: before loading (offset is): %d\n', idx:tooffset())
+    --         var r = self.data[idx:tooffset()]
+    --         -- C.printf('inside __apply: after loading\n')
+    --         return r
+    --     end
+    else
+      Image.metamethods.__apply = backend.make_Image_metamethods__apply(Image, Index, vectortype, self:LoadAsVector(), VT)
     end
     -- Image.metamethods.__apply() END
     print(Image.metamethods.__apply)
@@ -761,23 +765,28 @@ function ImageType:terratype()
 
     -- writes
     -- Image.metamethods.__upate() START
-    if self:LoadAsVector() then
-        terra Image.metamethods.__update(self : &Image, idx : Index, v : vectortype)
-            VT(self.data)[idx:tooffset()] = @VT(&v)
-        end
-    else
-        terra Image.metamethods.__update(self : &Image, idx : Index, v : vectortype)
-            self.data[idx:tooffset()] = v
-        end
-    end
+    -- if self:LoadAsVector() then
+    --     terra Image.metamethods.__update(self : &Image, idx : Index, v : vectortype)
+    --   -- TODO backend-specific
+    --         VT(self.data)[idx:tooffset()] = @VT(&v)
+    --     end
+    -- else
+    --     terra Image.metamethods.__update(self : &Image, idx : Index, v : vectortype)
+    --   -- TODO backend-specific
+    --         self.data[idx:tooffset()] = v
+    --     end
+    -- end
+    Image.metamethods.__update = backend.make_Image_metamethods__update(Image, Index, vectortype, self:LoadAsVector(), VT)
     -- Image.metamethods.__update() END
 
     if scalartype == float or scalartype == double then -- TODO QUES: can scalartype be anything else???
     -- TODO are these functions even used? --> seems to be used in generated code that comes out of 'createfunction' 
-        terra Image:atomicAddChannel(idx : Index, c : int32, v : scalartype)
-            var addr : &scalartype = &self.data[idx:tooffset()].data[c]
-            util.atomicAdd_sync(addr,v, idx.d0)
-        end
+        -- terra Image:atomicAddChannel(idx : Index, c : int32, v : scalartype)
+        -- -- TODO backend-specific
+        --     var addr : &scalartype = &self.data[idx:tooffset()].data[c]
+        --     util.atomicAdd_sync(addr,v, idx.d0)
+        -- end
+        Image.methods.atomicAddChannel = backend.make_Image_atomicAddChannel(Image, Index, scalartype)
         terra Image:atomicAdd(idx : Index, v : vectortype) -- only for hand written stuff
             for i = 0,channelcount do
                 self:atomicAddChannel(idx,i,v(i))
@@ -846,20 +855,25 @@ function ImageType:terratype()
     end
 
     -- initGPU() START
-    terra Image:initGPU()
-        var data : &uint8
-        -- cd(C.cudaMalloc([&&opaque](&data), self:totalbytes()))
-        cd( backend.allocateDevice(&data, self:totalbytes(), uint8) )
-        -- cd(C.cudaMemset([&opaque](data), 0, self:totalbytes()))
-        cd( backend.memsetDevice(data, 0, self:totalbytes()) )
-        self:initFromGPUptr(data) -- (short explanataion): set self.data = data (and cast to appropriate ptr-type)
-    end
+    -- terra Image:initGPU() -- TODO backend-specific
+    --     var data : &uint8 -- we cast this to the correct type later inside setGPUptr
+    --     -- cd(C.cudaMalloc([&&opaque](&data), self:totalbytes()))
+    --     cd( backend.allocateDevice(&data, self:totalbytes(), uint8) )
+    --     -- cd(C.cudaMemset([&opaque](data), 0, self:totalbytes()))
+    --     cd( backend.memsetDevice(data, 0, self:totalbytes()) )
+    --     self:initFromGPUptr(data) -- (short explanataion): set self.data = data (and cast to appropriate ptr-type)
+    -- end
+    Image.methods.initGPU = backend.make_Image_initGPU(Image)
     print(Image.methods.initGPU)
     -- terra Image:initGPU()
     --         self.data = [&vectortype](C.malloc(self:totalbytes()))
     --         C.memset(self.data,0,self:totalbytes())
     -- end
     -- initGPU() END
+
+    -- TODO backend-specific:
+    -- need functions to set multithread-version helper arrays to zero and
+    -- add up helper arrays
 
     return Image
 end
