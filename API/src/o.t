@@ -558,6 +558,10 @@ function IndexSpace:indextype()
         return offset
     end
     terra Index:tooffset()
+    -- returns linear index as used in single-threaded version. If some function
+    -- wants to to multithread-specific stuff, it needs to use this function to
+    -- its own calculations.
+    -- example: for idx = {d0, d1} we get 'return dimsize1*(@self).d1 + (@self).d0'
         return [genoffset(self)]
     end
     print(Index.methods.tooffset)
@@ -700,20 +704,26 @@ local terra wrapBindlessTexture(data : &uint8, channelcount : int, width : int, 
     return tex
 end
 
-function ImageType:ElementType() return util.Vector(self.scalartype,self.channelcount) end
+function ImageType:ElementType()
+  return util.Vector(self.scalartype,self.channelcount)
+end
 
 -- TODO QUES: why do we need this special case?
-function ImageType:LoadAsVector() return self.channelcount == 2 or self.channelcount == 4 end
+function ImageType:LoadAsVector()
+  return self.channelcount == 2 or self.channelcount == 4
+end
 
 function ImageType:terratype()
     if self._terratype then return self._terratype end
     local scalartype = self.scalartype -- is float or double for e.g. opt_float3
     local vectortype = self:ElementType() -- returns util.Vector(scalartype,channelcount), e.g. opt_float3
+
     local struct Image {
         data : &vectortype -- e.g. &float, &double, &opt_float3, ...
         tex  : C.cudaTextureObject_t; -- <-- this member is not required unless GPU is used.
     }
     self._terratype = Image
+
     local channelcount = self.channelcount -- is 3 for opt_float3
     local textured, pitched = self:usestexture() -- for non-cuda, this is false,false or throws error
     local Index = self.ispace:indextype()
@@ -729,6 +739,7 @@ function ImageType:terratype()
     -- reads
     -- Image.metamethods.__apply() START
     if pitched then -- QUES seems to use x,y field of idx
+    -- TODO refactor to GPU backend
         terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
             var read = terralib.asm([tuple(float,float,float,float)],
                 "tex.2d.v4.f32.s32  {$0,$1,$2,$3}, [$4,{$5,$6}];",
@@ -736,12 +747,14 @@ function ImageType:terratype()
             return @[&vectortype](&read)
         end
     elseif textured then -- QUES seems to use "linear" index of idx
+    -- TODO refactor to GPU backend
         terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
             var read = terralib.asm([tuple(float,float,float,float)],
                 "tex.1d.v4.f32.s32  {$0,$1,$2,$3}, [$4,{$5}];",
                 "=f,=f,=f,=f,l,r",false, self.tex,idx:tooffset())
             return @[&vectortype](&read)
         end
+-- function b.make_Image_metamethods__apply(imagetype_terra, indextype_terra, vectortype_terra, loadAsVector, VT)
     -- elseif self:LoadAsVector() then -- QUES seems to use "linear" index of idx
     --     terra Image.metamethods.__apply(self : &Image, idx : Index) : vectortype
     --   -- TODO backend-specific
@@ -780,6 +793,7 @@ function ImageType:terratype()
     -- Image.metamethods.__update() END
 
     if scalartype == float or scalartype == double then -- TODO QUES: can scalartype be anything else???
+    -- QUES: what happens if scalartype is none of the above? function won't be defined....
     -- TODO are these functions even used? --> seems to be used in generated code that comes out of 'createfunction' 
         -- terra Image:atomicAddChannel(idx : Index, c : int32, v : scalartype)
         -- -- TODO backend-specific
@@ -820,12 +834,19 @@ function ImageType:terratype()
     -- lerp stuff END
 
 
+    -- use extra local var because 'self' refers to terra-object inside
+    -- totalbytes() but we need it to refer to lua object
     local cardinality = self.ispace:cardinality()
-    terra Image:totalbytes() return sizeof(vectortype)*cardinality end
+    terra Image:totalbytes()
+    -- returns number of bytes required in the **single-threaded** version. If
+    -- other functions need e.g. extra variables for each thread, it is their
+    -- responsibility to allocate (and calculate) the extra space
+      return sizeof(vectortype)*cardinality
+    end
 
 
     -- setGPUptr START
-    if textured then
+    if textured then -- TODO textured and pitched are gpu concepts, so refactor them to that backend
         local W,H = cardinality,0
         if pitched then
             W, H = self.ispace.dims[1].size, self.ispace.dims[2].size
@@ -840,7 +861,9 @@ function ImageType:terratype()
             self.data = [&vectortype](ptr)
         end
     else
-        terra Image:setGPUptr(ptr : &uint8) self.data = [&vectortype](ptr) end
+        terra Image:setGPUptr(ptr : &uint8)
+          self.data = [&vectortype](ptr)
+        end
     end
     print(Image.methods.setGPUptr)
     -- error()
@@ -865,6 +888,7 @@ function ImageType:terratype()
     -- end
     Image.methods.initGPU = backend.make_Image_initGPU(Image)
     print(Image.methods.initGPU)
+    -- error()
     -- terra Image:initGPU()
     --         self.data = [&vectortype](C.malloc(self:totalbytes()))
     --         C.memset(self.data,0,self:totalbytes())
