@@ -37,6 +37,7 @@ numthreads = ["1", "2", "4", "8"]
 
 for homedir in folders:
     tests = TestGroup()
+    print 'begin ' + homedir
     for backend in backends:
         for num in numthreads:
             test = Test(homedir)
@@ -45,7 +46,9 @@ for homedir in folders:
             test.setTolerance(1e-6)
             test.setReferenceCost(referenceCosts[homedir])
             test._checkResult = True
+            test._printOutput = True
             tests.addTest(test)
 
     tests.runAll()
+    print 'end homedir'
 

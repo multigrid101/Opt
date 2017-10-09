@@ -126,14 +126,14 @@ class TestGroup:
     def addTest(self, test):
         self._tests.append(test)
 
-    def printScalingInfo(self):
+    def printScalingInfo(self, relorabs):
         testlist = self.getTestsWithBackend('backend_cpu_mt')
         numthreadslist = [t.getNumthreads() for t in testlist]
         numthreadslist = list(set(numthreadslist)) # eliminate duplicates and sort
         numthreadslist.sort()
         numthreadslist = [str(n) for n in numthreadslist] # convert to string values
 
-        numthreadsline = "{:50}".format("numthreads") + "{:^10}".format("cpu") + "".join(["{:^10}".format(str(n)) for n in numthreadslist])
+        numthreadsline = "{:50}".format("numthreads") + "{:^10}".format("cuda") + "{:^10}".format("cpu") + "".join(["{:^10}".format(str(n)) for n in numthreadslist])
         print numthreadsline
 
         # get kernelnames
@@ -141,21 +141,29 @@ class TestGroup:
         kernelNames = testlist[0]._timeInfoAll.getKernelNames()
         for name in kernelNames:
             line = ""
-            absline = line + ("{:50}".format(name + " (abs)"))
-            relline = line + ("{:50}".format(name + " (rel)"))
+            absline = line + ("{:50}".format(name + "(abs)"))
+            relline = line + ("{:50}".format(name + "(rel)"))
             abstimes = []
+
             t = self.getTestWithBackendAndNumthreads('backend_cpu', 1)
             abstimes.append(t.getTimeForKernel(name))
+
+            t = self.getTestWithBackendAndNumthreads('backend_cuda', 1)
+            abstimes.append(t.getTimeForKernel(name))
+
             for num in numthreadslist:
                 t = self.getTestWithBackendAndNumthreads('backend_cpu_mt', num)
                 abstimes.append(t.getTimeForKernel(name))
 
-            reltimes = [1.0/((t+1e-16)/abstimes[1]) for t in abstimes]
+            reltimes = [1.0/((t+1e-10)/abstimes[2]) for t in abstimes]
             absline = absline + "".join(["{:10.5}".format(t) for t in abstimes])
             relline = relline + "".join(["{:10.5}".format(t) for t in reltimes])
-            print absline
-            print relline
-            print ""
+
+            if relorabs == 'abs':
+                print absline
+            elif relorabs == 'rel':
+                print relline
+        print "\n\n"
 
     def getTestsWithBackend(self, backend):
         l = [t for t in self._tests if t.getBackend() == backend]
@@ -179,5 +187,6 @@ class TestGroup:
                 test.run()
                 test.printInfoEnd()       
 
-        self.printScalingInfo()
+        self.printScalingInfo('abs')
+        self.printScalingInfo('rel')
 
