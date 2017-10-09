@@ -92,7 +92,6 @@ if c.opt_float == float then
     b.atomicAdd_nosync = atomicAdd_nosync
 
     b.atomicAdd_sync = atomicAdd_sync
-    -- b.atomicAdd_sync = atomicAdd_nosync
     -- TODO copy this implementation downwards when finished (or remove duplicates)
 else
     struct ULLDouble {
@@ -292,6 +291,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
         -- if config.cpumap is not set, then let OS take care of threadmapping
         escape
+          -- set cpu affinities
           if c.cpumap then
             emit quote
               var cpusets : C.cpu_set_t[numthreads]
@@ -305,7 +305,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
                 end
               end
 
-              -- CPU_ZERO macro
+              -- CPU_ZERO macro -- TODO refactor these macros
               for k = 0,numthreads do
                 C.memset ( &(cpusets[k]) , 0, sizeof (C.cpu_set_t)) -- 0 is the integer value of '\0'
               end
@@ -324,8 +324,8 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
           end
         end
 
-        -- TODO this is not the correct way to split up the work, will only work for one dimension.
         -- TODO balance workload more evenly (if necessary)
+        -- set threadData values, i.e. kmin, kmax, etc.
         escape
             -- outermost dimension is split among threads
             local dimsize = ispace.dims[numdims].size
@@ -563,12 +563,14 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
         end
         grouplaunchers[name] = fn 
     end
+    -- error()
 
     print('\n\n\n')
     print('START inside backend.makeWrappedFunctions: the grouplaunchers')
     printt(grouplaunchers)
     print('END inside backend.makeWrappedFunctions: the grouplaunchers')
     print('\n\n\n')
+    -- error()
 
     return grouplaunchers
 end
