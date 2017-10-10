@@ -235,6 +235,7 @@ return function(problemSpec)
         Jp : &float
     }
 
+
     terra PlanData:printAllocationInfo()
       C.printf('Layout of PlanData:\n')
       C.printf("parameters uses %d bytes\n", self.parameters:totalbytes())
@@ -456,6 +457,7 @@ return function(problemSpec)
                 unknownWideReduction(idx,d,[backend.ReduceVar.getDataPtr( `pd.scanAlphaNumerator, backend.threadarg_val )])
             end
         end
+        kernels.PCGInit1.listOfAtomicAddVars = {}
         
         terra kernels.PCGInit1_Finish(pd : PlanData, [kernelArglist], [backend.threadarg])	--only called for graphs (i.e. if graphs are used)
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
@@ -480,6 +482,7 @@ return function(problemSpec)
             -- unknownWideReduction(idx,d,(pd.scanAlphaNumerator:getDataPtr( [backend.threadarg_val] )))
             unknownWideReduction(idx,d,[backend.ReduceVar.getDataPtr( `pd.scanAlphaNumerator, backend.threadarg_val )])
         end
+        kernels.PCGInit1_Finish.listOfAtomicAddVars = {}
 
         terra kernels.PCGStep1(pd : PlanData, [kernelArglist], [backend.threadarg])
         -- writes: Ap_X (0.3 GiB)
@@ -503,6 +506,7 @@ return function(problemSpec)
                 unknownWideReduction(idx,d, [backend.ReduceVar.getDataPtr( `pd.scanAlphaDenominator, backend.threadarg_val )])
             end
         end
+        kernels.PCGStep1.listOfAtomicAddVars = {}
         print(fmap.applyJTJ)
         -- error()
 
@@ -516,6 +520,7 @@ return function(problemSpec)
                 -- unknownWideReduction(idx,d,(pd.scanAlphaDenominator.data[ [backend.threadarg_val] ]))
                 unknownWideReduction(idx,d, [backend.ReduceVar.getDataPtr( `pd.scanAlphaDenominator, backend.threadarg_val )])
             end
+            kernels.PCGStep1_Finish.listOfAtomicAddVars = {}
         end
 
         terra kernels.PCGStep2(pd : PlanData, [kernelArglist], [backend.threadarg])
@@ -584,6 +589,7 @@ return function(problemSpec)
                 unknownWideReduction(idx,q,[backend.ReduceVar.getDataPtr( `pd.q, backend.threadarg_val )])
             end
         end
+        kernels.PCGStep2.listOfAtomicAddVars = {}
 
         terra kernels.PCGStep2_1stHalf(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
@@ -611,6 +617,7 @@ return function(problemSpec)
                 pd.delta(idx) = pd.delta(idx)+alpha*pd.p(idx)       -- do a descent step
             end
         end
+        kernels.PCGStep2_1stHalf.listOfAtomicAddVars = {}
 
         terra kernels.PCGStep2_2ndHalf(pd : PlanData, [kernelArglist], [backend.threadarg])
             var betaNum = opt_float(0.0f) 
@@ -646,6 +653,7 @@ return function(problemSpec)
                 unknownWideReduction(idx,q,[backend.ReduceVar.getDataPtr( `pd.q, backend.threadarg_val )])
             end
         end
+        kernels.PCGStep2_2ndHalf.listOfAtomicAddVars = {}
 
         -- TEST START
         local unroll = function(sum, a, n)
@@ -690,6 +698,7 @@ return function(problemSpec)
                 pd.p(idx) = pd.z(idx)+beta*pd.p(idx)			    -- update decent direction
             end
         end
+        kernels.PCGStep3.listOfAtomicAddVars = {}
         print(kernels.PCGStep3)
         -- kernels.PCGStep3:disas()
         -- terralib.saveobj('PCGStep3.o', {bla = kernels.PCGStep3})
@@ -701,6 +710,7 @@ return function(problemSpec)
                 pd.parameters.X(idx) = pd.parameters.X(idx) + pd.delta(idx)
             end
         end	
+        kernels.PCGLinearUpdate.listOfAtomicAddVars = {}
         
         terra kernels.revertUpdate(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
@@ -708,6 +718,7 @@ return function(problemSpec)
                 pd.parameters.X(idx) = pd.prevX(idx)
             end
         end	
+        kernels.revertUpdate.listOfAtomicAddVars = {}
 
         terra kernels.computeAdelta(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
@@ -715,6 +726,7 @@ return function(problemSpec)
                 pd.Adelta(idx) = fmap.applyJTJ(idx, pd.parameters, pd.delta, pd.CtC)
             end
         end
+        kernels.computeAdelta.listOfAtomicAddVars = {}
 
         terra kernels.savePreviousUnknowns(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
@@ -722,6 +734,7 @@ return function(problemSpec)
                 pd.prevX(idx) = pd.parameters.X(idx)
             end
         end 
+        kernels.savePreviousUnknowns.listOfAtomicAddVars = {}
 
             -- print(fmap.cost)
             -- error()
@@ -830,12 +843,14 @@ return function(problemSpec)
                 util.atomicAdd_nosync( [backend.ReduceVar.getDataPtr(`pd.scratch, backend.threadarg_val )] , cost)
             end
         end
+        kernels.computeCost.listOfAtomicAddVars = {}
         print(kernels.computeCost)
         -- error()
 
         if not fmap.dumpJ then
             terra kernels.saveJToCRS(pd : PlanData, [kernelArglist], [backend.threadarg])
             end
+            kernels.saveJToCRS.listOfAtomicAddVars = {}
         else
             terra kernels.saveJToCRS(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
@@ -844,6 +859,7 @@ return function(problemSpec)
                     [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,idx,pd)]
                 end
             end
+            kernels.saveJToCRS.listOfAtomicAddVars = {}
         end
         
 
@@ -854,6 +870,7 @@ return function(problemSpec)
                    fmap.precompute(idx,pd.parameters)
                 end
             end
+            kernels.precompute.listOfAtomicAddVars = {}
         end
 
         if problemSpec:UsesLambda() then
@@ -864,6 +881,7 @@ return function(problemSpec)
                     pd.CtC(idx) = CtC    
                 end 
             end
+            kernels.PCGComputeCtC.listOfAtomicAddVars = {}
 
             terra kernels.PCGSaveSSq(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
@@ -871,6 +889,7 @@ return function(problemSpec)
                     pd.SSq(idx) = pd.preconditioner(idx)       
                 end 
             end
+            kernels.PCGSaveSSq.listOfAtomicAddVars = {}
 
             terra kernels.PCGFinalizeDiagonal(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
@@ -911,6 +930,7 @@ return function(problemSpec)
                 -- unknownWideReduction(idx,d,(pd.scanAlphaNumerator:getDataPtr( [backend.threadarg_val] )))
                 unknownWideReduction(idx,d, [backend.ReduceVar.getDataPtr( `pd.scanAlphaNumerator, backend.threadarg_val)] )
             end
+            kernels.PCGFinalizeDiagonal.listOfAtomicAddVars = {}
 
             terra kernels.computeModelCost(pd : PlanData, [kernelArglist], [backend.threadarg])            
                 var cost : opt_float = opt_float(0.0f)
@@ -926,6 +946,7 @@ return function(problemSpec)
                     util.atomicAdd_nosync([backend.ReduceVar.getDataPtr( `pd.modelCost, backend.threadarg_val )], cost)
                 end
             end
+            kernels.computeModelCost.listOfAtomicAddVars = {}
 
         end -- :UsesLambda()
 
@@ -1001,6 +1022,7 @@ return function(problemSpec)
                 fmap.evalJTF(tIdx.d0, pd.parameters, pd.r, pd.preconditioner)
             end
         end    
+        kernels.PCGInit1_Graph.listOfAtomicAddVars = {'r', 'preconditioner'}
         print(fmap.evalJTF)
         -- error()
 
@@ -1035,6 +1057,9 @@ return function(problemSpec)
                 end
             end
         end
+        kernels.PCGStep1_Graph.listOfAtomicAddVars = {'p', 'Ap_X'}
+        print(fmap.applyJTJ)
+        -- error()
 
         terra kernels.computeAdelta_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             -- var tIdx = 0 
@@ -1044,6 +1069,7 @@ return function(problemSpec)
                 fmap.applyJTJ(tIdx.d0, pd.parameters, pd.delta, pd.Adelta)
             end
         end
+        kernels.computeAdelta_Graph.listOfAtomicAddVars = {'delta', 'Adelta'}
 
         -- FOR COMPARISON WITH GRAPH VERSION
         -- terra kernels.computeCost(pd : PlanData)
@@ -1059,8 +1085,6 @@ return function(problemSpec)
         --         util.atomicAdd_nosync(pd.scratch, cost)
         --     end
         -- end
-        print(fmap.cost)
-        -- error()
         terra kernels.computeCost_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             var cost : opt_float = opt_float(0.0f)
             -- var tIdx = 0
@@ -1076,12 +1100,15 @@ return function(problemSpec)
                 util.atomicAdd_nosync( [backend.ReduceVar.getDataPtr( `pd.scratch, backend.threadarg_val)], cost)
             end
         end
-        print(kernels.computeModelCost_Graph)
+        kernels.computeCost_Graph.listOfAtomicAddVars = {}
+        -- print(kernels.computeModelCost_Graph)
+        print(fmap.cost)
         -- error()
 
         if not fmap.dumpJ then
             terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             end
+            kernels.saveJToCRS_Graph.listOfAtomicAddVars = {}
         else
             terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
                 -- var tIdx = 0
@@ -1094,6 +1121,8 @@ return function(problemSpec)
                     [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,asdf,pd)]
                 end
             end
+            -- print(kernels.saveJToCRS_Graph)
+            kernels.saveJToCRS_Graph.listOfAtomicAddVars = {}
         end
 
         -- Index:printpretty()
@@ -1108,6 +1137,9 @@ return function(problemSpec)
                     fmap.computeCtC(tIdx.d0, pd.parameters, pd.CtC)
                 end
             end    
+            kernels.PCGComputeCtC_Graph.listOfAtomicAddVars = {'CtC'}
+            print(fmap.computeCtC)
+            -- error()
 
             terra kernels.computeModelCost_Graph(pd : PlanData, [kernelArglist], [backend.threadarg]) 
                 var cost : opt_float = opt_float(0.0f)
@@ -1123,7 +1155,10 @@ return function(problemSpec)
                     util.atomicAdd_nosync([backend.ReduceVar.getDataPtr( `pd.modelCost, backend.threadarg_val )], cost)
                 end
             end
+            kernels.computeModelCost_Graph.listOfAtomicAddVars = {'delta'}
+            print(fmap.modelcost)
         end
+        -- error()
 
         return kernels
     end

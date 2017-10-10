@@ -83,9 +83,9 @@ b.ReduceVarHost.reduceAllThreads2 = b.ReduceVar.reduceAllThreads
 if c.opt_float == float then
 
     local terra atomicAdd_sync(sum : &float, value : float, offset : int)
-      C.pthread_mutex_lock(&([b.summutex_sym][offset]))
+      -- C.pthread_mutex_lock(&([b.summutex_sym][offset]))
       @sum = @sum + value
-      C.pthread_mutex_unlock(&([b.summutex_sym][offset]))
+      -- C.pthread_mutex_unlock(&([b.summutex_sym][offset]))
     end
     local terra atomicAdd_nosync(sum : &float, value : float)
       @sum = @sum + value
@@ -120,9 +120,9 @@ else
     -- if pascalOrBetterGPU then
     if true then
         local terra atomicAdd_sync(sum : &double, value : double, offset: int)
-          C.pthread_mutex_lock(&([b.summutex_sym][offset]))
+          -- C.pthread_mutex_lock(&([b.summutex_sym][offset]))
           @sum = @sum + value
-          C.pthread_mutex_unlock(&([b.summutex_sym][offset]))
+          -- C.pthread_mutex_unlock(&([b.summutex_sym][offset]))
         end
         local terra atomicAdd_nosync(sum : &float, value : float)
           @sum = @sum + value
@@ -133,9 +133,9 @@ else
         -- b.atomicAdd_sync = atomicAdd_nosync
     else
         local terra atomicAdd_sync(sum : &double, value : double, offset : int)
-          C.pthread_mutex_lock(&([b.summutex_sym][offset]))
+          -- C.pthread_mutex_lock(&([b.summutex_sym][offset]))
           @sum = @sum + value
-          C.pthread_mutex_unlock(&([b.summutex_sym][offset]))
+          -- C.pthread_mutex_unlock(&([b.summutex_sym][offset]))
         end
         local terra atomicAdd_nosync(sum : &float, value : float)
           @sum = @sum + value
@@ -226,12 +226,27 @@ end)
 
 
 -- IMAGE SPECIALIZATION START
+-- TODO find out how we can avoid the extra helper arrays for pixel data, we only
+-- need them for graph-data
+-- --> it seems that atomicAdd is only used for graphs anyway, so at the moment we allocate
+-- the extra arrays but they will not be used or traversed.
+-- TODO perform initialization and summation on extra arrays in parallel
 function b.make_Image_initGPU(imagetype_terra)
 -- we allocate (numthreads+1) arrays.
 -- so for 2 threads, we have three arrays. the first one holds the actual values,
 -- the other ones are temporary arrays used for summation etc.
+-- example: 3 threads and array with 5 elements (for single threads)
+-- | 0  | 1  | 2  | 3  | 4  | values
+-- | 5  | 6  | 7  | 8  | 9  | thread 0 helper
+-- | 10 | 11 | 12 | 13 | 14 | thread 1 helper
+-- | 15 | 16 | 17 | 18 | 19 | thread 2 helper
+--
+-- if 'tid' is the thread id, and idx \in {0,1,2,3,4}, then the helpers can be
+-- accessed via:
+-- helper_idx = idx + length*(tid+1)
     local initGPU= terra(self : &imagetype_terra)
         var data : &uint8 -- we cast this to the correct type later inside setGPUptr
+        -- C.printf('allocating space for %d arrays, with %d elements (%d bytes) each\n', numthreads+1, self:cardinality(), self:totalbytes())
 
         b.cd( b.allocateDevice(&data, (numthreads+1)*self:totalbytes(), uint8) )
         b.cd( b.memsetDevice(data, 0, (numthreads+1)*self:totalbytes()) )
@@ -244,7 +259,7 @@ function b.make_Image_initGPU(imagetype_terra)
 end
 
 function b.make_Image_metamethods__apply(imagetype_terra, indextype_terra, vectortype_terra, loadAsVector, VT)
--- TODO
+-- TODO --> move this back to o.t
     local metamethods__apply
     if loadAsVector then
         metamethods__apply = terra(self : &imagetype_terra, idx : indextype_terra) : vectortype_terra
@@ -263,7 +278,7 @@ function b.make_Image_metamethods__apply(imagetype_terra, indextype_terra, vecto
 end
 
 function b.make_Image_metamethods__update(imagetype_terra, indextype_terra, vectortype_terra, loadAsVector, VT)
---TODO
+--TODO --> move this back to o.t
     local metamethods__update
     if loadAsVector then
         metamethods__update = terra(self : &imagetype_terra, idx : indextype_terra, v : vectortype_terra)
@@ -283,7 +298,9 @@ function b.make_Image_atomicAddChannel(imagetype_terra, indextype_terra, scalart
 --TODO
   local atomicAddChannel = terra(self : &imagetype_terra, idx : indextype_terra, c : int32, value : scalartype_terra)
       var tid = [int64](C.pthread_getspecific(tid_key))
-      var addr : &scalartype_terra = &self.data[idx:tooffset()].data[c]
+      -- C.printf('performing atomicAdd on element %d from thread %d, i.e. accessing element %d\n', idx:tooffset(), tid, self:cardinality()*(tid+1) + idx:tooffset())
+      -- var addr : &scalartype_terra = &self.data[idx:tooffset()].data[c]
+      var addr : &scalartype_terra = &self.data[idx:tooffset() + self:cardinality()*(tid+1)].data[c]
       b.atomicAdd_sync(addr,value, idx.d0)
   end
   atomicAddChannel:setname('Image.atomicAddChannel')
@@ -304,7 +321,13 @@ local GRID_SIZES = c.GRID_SIZES
 b.threadcreation_counter = global(int, 0,  'threadcreation_counter')
 
 
+
 local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) -- compiledKernel is the result of b.makeWrappedFunctions
+-- for k,v in pairs(compiledKernel) do print(k,v) end
+print('ASDF')
+printt(compiledKernel.listOfAtomicAddVars)
+print('ASDF')
+-- error()
     kernelName = kernelName.."_"..tostring(ft)
 -- TODO generalize to arbitrary number of threads DONE
 -- TODO current prevention of race-conditions in atomicAdd seems to be inefficient --> introduce separate sums for each thread
@@ -348,6 +371,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         -- var [b.summutex_sym]
 
 
+
         -- var tdata1 : thread_data
         -- var tdata2 : thread_data
 
@@ -359,6 +383,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         var threads : C.pthread_t[numthreads]
 
         C.pthread_key_create(&tid_key, nil)
+
         -- if config.cpumap is not set, then let OS take care of threadmapping
         escape
           -- set cpu affinities
@@ -462,6 +487,18 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
+        -- REDUCEVECTOR INIT
+        -- pd:setHelperArraysToZero()
+        escape
+          for _,varname in pairs(compiledKernel.listOfAtomicAddVars) do
+            print(varname)
+            emit quote
+              pd.[varname]:setHelperArraysToZero()
+            end
+          end
+        end
+        -- TODO find out if we need to optimize
+
         
 
         for k = 0,numthreads do
@@ -492,12 +529,26 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
           -- end
         end
 
+        -- REDUCEVECTOR SUM UP
+        -- pd:sumUpHelperArrays()
+        escape
+          for _,varname in pairs(compiledKernel.listOfAtomicAddVars) do
+            print(varname)
+            emit quote
+              pd.[varname]:sumUpHelperArrays()
+            end
+          end
+        end
+        -- TODO find out if we need to optimize
+
         -- if ([_opt_collect_kernel_timing]) then
         --     pd.timer:endEvent(nil,kernelEvent)
         -- end
         if ([_opt_collect_kernel_timing]) then
             pd.timer:endEvent(nil,endEvent)
         end
+
+
         I.__itt_task_end(domain)
 
 
@@ -559,6 +610,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
         -- [pd_sym].scanBetaNumerator[0] = [pd_sym].scanBetaNumerator[0] + [pd_sym].scanBetaNumerator[1]
       end
       wrappedfunc:setname('wrappedfunc')
+      wrappedfunc.listOfAtomicAddVars = kernel.listOfAtomicAddVars
       print(wrappedfunc)
       -- error()
 

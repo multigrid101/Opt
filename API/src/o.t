@@ -732,6 +732,23 @@ function ImageType:terratype()
           return string.format("Image(%s,%s,%d)",tostring(self.scalartype),tostring(self.ispace),channelcount)
     end
 
+
+    -- use extra local var because 'self' refers to terra-object inside
+    -- totalbytes() but we need it to refer to lua object
+    local cardinality = self.ispace:cardinality()
+    terra Image:totalbytes()
+    -- returns number of bytes required in the **single-threaded** version. If
+    -- other functions need e.g. extra variables for each thread, it is their
+    -- responsibility to allocate (and calculate) the extra space
+      return sizeof(vectortype)*cardinality
+    end
+
+
+    terra Image:cardinality()
+    -- returns e.g. the number of pixels in an image
+      return cardinality
+    end
+
     -- vector() is a built-in terra function that returns a vector-like type, similar to util.Vector
     -- TODO QUES why do we need this if we already have util.Vector
     local VT = &vector(scalartype,channelcount)    
@@ -834,21 +851,6 @@ function ImageType:terratype()
     -- lerp stuff END
 
 
-    -- use extra local var because 'self' refers to terra-object inside
-    -- totalbytes() but we need it to refer to lua object
-    local cardinality = self.ispace:cardinality()
-    terra Image:totalbytes()
-    -- returns number of bytes required in the **single-threaded** version. If
-    -- other functions need e.g. extra variables for each thread, it is their
-    -- responsibility to allocate (and calculate) the extra space
-      return sizeof(vectortype)*cardinality
-    end
-
-
-    terra Image:cardinality()
-    -- returns e.g. the number of pixels in an image
-      return cardinality
-    end
 
 
     -- setGPUptr START
@@ -902,8 +904,32 @@ function ImageType:terratype()
     -- initGPU() END
 
     -- TODO backend-specific:
+    -- --> try to refactor to backend_cpu_mt file
     -- need functions to set multithread-version helper arrays to zero and
     -- add up helper arrays
+    terra Image:setHelperArraysToZero() -- only relevant for backend_cpu_mt
+        cd( backend.memsetDevice([&opaque](&(self.data[self:cardinality()])), 0, backend.numthreads*self:totalbytes()) )
+      -- for tid = 0,backend.numthreads do
+      --   var thread_offset = self:cardinality() * (tid+1)
+      --   for k = 0,self:cardinality() do
+      --     for c = 0,3 do -- TODO generalize
+      --       self.data[k + thread_offset].data[c] = 0.0
+      --       C.printf('Image:setHelperArraysToZero(): tid=%d, k=%d, ele=%d, numthreads=%d\n', tid, k,k+thread_offset,  backend.numthreads)
+      --       -- self.data[k] = 0
+      --     end
+      --   end
+      -- end
+    end
+    Image.methods.setHelperArraysToZero:printpretty()
+    -- error()
+    terra Image:sumUpHelperArrays()
+      for k = 0,self:cardinality() do
+        for tid = 0,backend.numthreads do
+    -- C.printf('Image:sumUpHelperArrays(): tid=%d, numthreads=%d\n', tid, backend.numthreads)
+          self.data[k] = self.data[k] + self.data[k + self:cardinality()*(tid+1)]
+        end
+      end
+    end
 
     return Image
 end
@@ -1075,6 +1101,33 @@ function UnknownType:terratype()
             end
         end
     end
+
+    terra T:setHelperArraysToZero() -- only relevant for backend_cpu_mt
+    -- TODO refactor into backend file
+        escape -- call setHelperArraysToZero on all members
+            for i,ip in ipairs(images) do
+                emit quote 
+                    self.[ip.name]:setHelperArraysToZero()
+                end
+            end
+        end
+    end
+    print(T.methods.setHelperArraysToZero)
+    -- error()
+
+    terra T:sumUpHelperArrays() -- only relevant for backend_cpu_mt
+    -- TODO refactor into backend file
+        escape -- call sumUpHelperArrays on all members
+            for i,ip in ipairs(images) do
+                emit quote 
+                    self.[ip.name]:sumUpHelperArrays()
+                end
+            end
+        end
+    end
+    print(T.methods.sumUpHelperArrays)
+    T:printpretty()
+    -- error()
 
     return self._terratype
 end
