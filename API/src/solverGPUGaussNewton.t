@@ -311,7 +311,7 @@ return function(problemSpec)
 
         return quote
                    var rhs = dumpJ(idx,pd.parameters)
-                   -- TODO what is this???
+                   -- TODO what is this??? it seems unused
                    --[[escape                
                        local nnz = 0
                        local residual = 0

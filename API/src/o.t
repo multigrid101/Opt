@@ -312,6 +312,15 @@ end
 
 -- TODO name not equal to functionality
 function ProblemSpec:ParameterType() -- returns self.ProblemParameters, which is a terra struct that holds the terratypes of all prblemparameters, such as 'UrShape', 'Mask', etc.
+-- example:
+-- struct ParameterType {
+--   X: UnknownType
+--   w_fitSqrt: float
+--   w_regSqrt: float
+--   UrShape: Image(float,N,3)
+--   Constraints: Image(float,N,3)
+-- }
+
         print('0')
     self:Stage "functions"
     if not self.ProblemParameters then
