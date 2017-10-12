@@ -13,6 +13,7 @@ util.C = terralib.includecstring [[
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <unistd.h>
 #include <math.h>
 #include <cuda_runtime.h>
 #ifdef _WIN32

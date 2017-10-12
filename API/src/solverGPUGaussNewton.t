@@ -109,6 +109,8 @@ local FLOAT_EPSILON = `[opt_float](0.00000001f)
 
 -- TODO find out why the return-value is this weird function, which itself returns a function.
 
+-- TODO refactor this file in such a fashion that new solvers can be added more easily
+
 -- GAUSS NEWTON (or LEVENBERG-MARQUADT)
 -- takes the problem-specification as input. That makes sense, since the generated solver is problem-specific
 return function(problemSpec) 
@@ -457,6 +459,8 @@ return function(problemSpec)
                 unknownWideReduction(idx,d,[backend.ReduceVar.getDataPtr( `pd.scanAlphaNumerator, backend.threadarg_val )])
             end
         end
+        print(fmap.evalJTF)
+        -- error()
         kernels.PCGInit1.listOfAtomicAddVars = {}
         
         terra kernels.PCGInit1_Finish(pd : PlanData, [kernelArglist], [backend.threadarg])	--only called for graphs (i.e. if graphs are used)
@@ -830,7 +834,6 @@ return function(problemSpec)
                 -- C.printf('testbla\n')
                 var params = pd.parameters
                 cost = fmap.cost(idx, params)
-                -- C.printf('cost: %f\n', cost)
                 -- cost = 0.0
                 -- C.printf('test\n')
             end
@@ -842,6 +845,7 @@ return function(problemSpec)
                 -- util.atomicAdd_nosync((pd.scratch:getDataPtr( [backend.threadarg_val] )), cost)
                 util.atomicAdd_nosync( [backend.ReduceVar.getDataPtr(`pd.scratch, backend.threadarg_val )] , cost)
             end
+            -- C.printf('local cost = %f || total cost after atomicAdd: %f\n', cost, pd.scratch[0][0])
         end
         kernels.computeCost.listOfAtomicAddVars = {}
         print(kernels.computeCost)
@@ -1099,6 +1103,7 @@ return function(problemSpec)
                 -- util.atomicAdd_nosync((pd.scratch.data[ [backend.threadarg_val] ]), cost)
                 util.atomicAdd_nosync( [backend.ReduceVar.getDataPtr( `pd.scratch, backend.threadarg_val)], cost)
             end
+            -- C.printf('graph: local cost = %f || total cost after atomicAdd: %f\n', cost, pd.scratch[0][0])
         end
         kernels.computeCost_Graph.listOfAtomicAddVars = {}
         -- print(kernels.computeModelCost_Graph)
@@ -1207,14 +1212,14 @@ return function(problemSpec)
         -- -- backend.memsetDevice(pd.scratch, 0, sizeof(opt_float) * (backend.numthreads+1))
         --   backend.memsetDevice(pd.scratch.data[k], 0, sizeof(opt_float))
         -- end
-        -- C.printf('starting computeCost\n')
+        C.printf('starting computeCost\n')
         -- pd.scratch:setToConst(0)
         -- C.cudaMemset(&(pd.scratch.data), 0, sizeof(opt_float))
         [backend.ReduceVar.setToConst(`pd.scratch, 0)]
-        -- C.printf('inside computeCost1\n')
+        C.printf('inside computeCost1\n')
 
         gpu.computeCost(pd)
-        -- C.printf('inside computeCost2\n')
+        C.printf('inside computeCost2\n')
         gpu.computeCost_Graph(pd) -- TODO need to uncomment later
         -- C.printf('inside computeCost3\n')
 
@@ -1238,7 +1243,8 @@ return function(problemSpec)
         -- for k = 1,backend.numthreads+1 do
         --   f[0] = f[0] + f[k]
         -- end
-        -- C.printf('stopping computeCost\n')
+        -- C.printf('stopping computeCost, scratch cost is %f\n', pd.scratch[0][0])
+        -- C.printf('stopping computeCost, final cost is %f\n', f[0][0])
         return [backend.ReduceVarHost.getData2( `f, 0)]
     end
     print(computeCost)
@@ -1448,6 +1454,15 @@ return function(problemSpec)
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra init(data_ : &opaque, params_ : &&opaque)
       C.printf('starting init\n')
+    -- backend.initGlobals()
+    escape
+      if backend.name == 'CPUMT' then
+        emit quote
+          backend.initThreads()
+        end
+      end
+    end
+
         var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
         var name : &I.__itt_string_handle  = I.__itt_string_handle_create("init()")
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
@@ -1521,8 +1536,26 @@ return function(problemSpec)
                       end
                 end 
              end
+      C.printf('inside init3\n')
        gpu.precompute(pd)
+      C.printf('inside init4\n')
        pd.prevCost = computeCost(pd)
+      C.printf('inside init5\n')
+       -- pd.prevCost = computeCost(pd)
+       -- pd.prevCost = computeCost(pd)
+       -- pd.prevCost = computeCost(pd)
+       --          gpu.PCGInit1(pd)
+       -- pd.prevCost = computeCost(pd)
+       -- pd.prevCost = computeCost(pd)
+       -- pd.prevCost = computeCost(pd)
+      C.printf('inside init5, prev cost is %f\n', pd.prevCost)
+      escape
+        if backend.name == 'CPUMT' then
+          emit quote
+            backend.joinThreads()
+          end
+        end
+      end
       C.printf('stopping init\n')
         I.__itt_task_end(domain)
     end
@@ -1539,6 +1572,16 @@ return function(problemSpec)
 
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra step(data_ : &opaque, params_ : &&opaque)
+    C.printf('\n\n\nstarting step()\n')
+    escape
+      if backend.name == 'CPUMT' then
+        emit quote
+          backend.initThreads()
+        end
+      end
+    end
+    -- C.sleep(2)
+
         -- [backend.threadcreation_counter] = 0
             var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
             var name : &I.__itt_string_handle  = I.__itt_string_handle_create("step()")
@@ -1804,8 +1847,22 @@ return function(problemSpec)
                         pd.solverparameters.nIter = pd.solverparameters.nIter + 1
         -- C.printf('created %d threads in this step \n', [backend.threadcreation_counter])
                     I.__itt_task_end(domain)
+                    escape
+                      if backend.name == 'CPUMT' then
+                        emit quote
+                          backend.joinThreads()
+                        end
+                      end
+                    end
                     return 1
         else
+                    escape
+                      if backend.name == 'CPUMT' then
+                        emit quote
+                          backend.joinThreads()
+                        end
+                      end
+                    end
             cleanup(pd)
             return 0
         end
