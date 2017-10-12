@@ -403,7 +403,13 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
       print(wrappedquote)
 
       local wrappedfunc = terra([pd_sym])
+        var name = I.__itt_string_handle_create('run_task_loop')
+        var domain = I.__itt_domain_create("Main.Domain")
+
+
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
         [wrappedquote]
+        I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
       end
       print(wrappedfunc)
       -- error()
