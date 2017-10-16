@@ -1191,8 +1191,10 @@ return function(problemSpec)
                 end
             end
             kernels.computeModelCost_Graph.listOfAtomicAddVars = {'delta'}
+            -- kernels.computeModelCost_Graph.listOfAtomicAddVars = {}
             kernels.computeModelCost_Graph.compileForMultiThread = true
             print(fmap.modelcost)
+            -- error()
         end
         -- error()
 
