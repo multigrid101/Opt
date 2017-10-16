@@ -312,7 +312,7 @@ return function(problemSpec)
         end
 
         return quote
-                   var rhs = dumpJ(idx,pd.parameters)
+                   var rhs = dumpJ(idx,pd.parameters, [backend.threadarg])
                    -- TODO what is this??? it seems unused
                    --[[escape                
                        local nnz = 0
@@ -429,11 +429,11 @@ return function(problemSpec)
                 var residuum : unknownElement = 0.0f
                 var pre : unknownElement = 0.0f	
             
-                if not fmap.exclude(idx,pd.parameters) then 
+                if not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then 
                 
                     pd.delta(idx) = opt_float(0.0f)   
                 
-                    residuum, pre = fmap.evalJTF(idx, pd.parameters)
+                    residuum, pre = fmap.evalJTF(idx, pd.parameters, [backend.threadarg])
                     residuum = -residuum
                     pd.r(idx) = residuum
                 
@@ -443,7 +443,7 @@ return function(problemSpec)
                     end
                 end        
             
-                if (not fmap.exclude(idx,pd.parameters)) and (not isGraph) then		
+                if (not fmap.exclude(idx,pd.parameters, [backend.threadarg])) and (not isGraph) then		
                     pre = guardedInvert(pre)
                     var p = pre*residuum	-- apply pre-conditioner M^-1			   
                     pd.p(idx) = p
@@ -462,6 +462,7 @@ return function(problemSpec)
         print(fmap.evalJTF)
         -- error()
         kernels.PCGInit1.listOfAtomicAddVars = {}
+        kernels.PCGInit1.compileForMultiThread = true
         
         terra kernels.PCGInit1_Finish(pd : PlanData, [kernelArglist], [backend.threadarg])	--only called for graphs (i.e. if graphs are used)
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
@@ -487,6 +488,7 @@ return function(problemSpec)
             unknownWideReduction(idx,d,[backend.ReduceVar.getDataPtr( `pd.scanAlphaNumerator, backend.threadarg_val )])
         end
         kernels.PCGInit1_Finish.listOfAtomicAddVars = {}
+        kernels.PCGInit1_Finish.compileForMultiThread = true
 
         terra kernels.PCGStep1(pd : PlanData, [kernelArglist], [backend.threadarg])
         -- writes: Ap_X (0.3 GiB)
@@ -495,10 +497,10 @@ return function(problemSpec)
         --> upper bound bound approx 4.6 GiB per kernel run.
             var d : opt_float = opt_float(0.0f)
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                 var tmp : unknownElement = 0.0f
                  -- A x p_k  => J^T x J x p_k 
-                tmp = fmap.applyJTJ(idx, pd.parameters, pd.p, pd.CtC)
+                tmp = fmap.applyJTJ(idx, pd.parameters, pd.p, pd.CtC, [backend.threadarg])
                 pd.Ap_X(idx) = tmp					 -- store for next kernel call
                 d = pd.p(idx):dot(tmp)			 -- x-th term of denominator of alpha
             end
@@ -511,6 +513,7 @@ return function(problemSpec)
             end
         end
         kernels.PCGStep1.listOfAtomicAddVars = {}
+        kernels.PCGStep1.compileForMultiThread = true
         print(fmap.applyJTJ)
         -- error()
 
@@ -518,13 +521,14 @@ return function(problemSpec)
             terra kernels.PCGStep1_Finish(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var d : opt_float = opt_float(0.0f)
                 var idx : Index
-                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                     d = pd.p(idx):dot(pd.Ap_X(idx))           -- x-th term of denominator of alpha
                 end
                 -- unknownWideReduction(idx,d,(pd.scanAlphaDenominator.data[ [backend.threadarg_val] ]))
                 unknownWideReduction(idx,d, [backend.ReduceVar.getDataPtr( `pd.scanAlphaDenominator, backend.threadarg_val )])
             end
             kernels.PCGStep1_Finish.listOfAtomicAddVars = {}
+            kernels.PCGStep1_Finish.compileForMultiThread = true
         end
 
         terra kernels.PCGStep2(pd : PlanData, [kernelArglist], [backend.threadarg])
@@ -533,7 +537,7 @@ return function(problemSpec)
             var betaNum = opt_float(0.0f) 
             var q = opt_float(0.0f) -- Only used if LM
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                 -- sum over block results to compute denominator of alpha
                 -- TODO generalize for multithreading
                 -- var alphaDenominator : opt_float = @(pd.scanAlphaDenominator.data[0])
@@ -594,10 +598,12 @@ return function(problemSpec)
             end
         end
         kernels.PCGStep2.listOfAtomicAddVars = {}
+        -- kernels.PCGStep2.compileForMultiThread = false
+        kernels.PCGStep2.compileForMultiThread = true
 
         terra kernels.PCGStep2_1stHalf(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
             -- TODO generalize for multithreading
                 -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
                 -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
@@ -622,12 +628,13 @@ return function(problemSpec)
             end
         end
         kernels.PCGStep2_1stHalf.listOfAtomicAddVars = {}
+        kernels.PCGStep2_1stHalf.compileForMultiThread = true
 
         terra kernels.PCGStep2_2ndHalf(pd : PlanData, [kernelArglist], [backend.threadarg])
             var betaNum = opt_float(0.0f) 
             var q = opt_float(0.0f) 
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                 -- Recompute residual
                 var Ax = pd.Adelta(idx)
                 var b = pd.b(idx)
@@ -658,6 +665,7 @@ return function(problemSpec)
             end
         end
         kernels.PCGStep2_2ndHalf.listOfAtomicAddVars = {}
+        kernels.PCGStep2_2ndHalf.compileForMultiThread = true
 
         -- TEST START
         local unroll = function(sum, a, n)
@@ -674,7 +682,7 @@ return function(problemSpec)
         -- reads: z, p
         -- writes: p
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
             
                 -- TODO generalize for multithreading
                 -- var rDotzNew : opt_float = @(pd.scanBetaNumerator.data[0])	-- get new numerator
@@ -703,6 +711,8 @@ return function(problemSpec)
             end
         end
         kernels.PCGStep3.listOfAtomicAddVars = {}
+        -- kernels.PCGStep3.compileForMultiThread = false
+        kernels.PCGStep3.compileForMultiThread = true
         print(kernels.PCGStep3)
         -- kernels.PCGStep3:disas()
         -- terralib.saveobj('PCGStep3.o', {bla = kernels.PCGStep3})
@@ -710,35 +720,40 @@ return function(problemSpec)
         
         terra kernels.PCGLinearUpdate(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                 pd.parameters.X(idx) = pd.parameters.X(idx) + pd.delta(idx)
             end
         end	
         kernels.PCGLinearUpdate.listOfAtomicAddVars = {}
+        -- kernels.PCGLinearUpdate.compileForMultiThread = false
+        kernels.PCGLinearUpdate.compileForMultiThread = true
         
         terra kernels.revertUpdate(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                 pd.parameters.X(idx) = pd.prevX(idx)
             end
         end	
         kernels.revertUpdate.listOfAtomicAddVars = {}
+        kernels.revertUpdate.compileForMultiThread = true
 
         terra kernels.computeAdelta(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
-                pd.Adelta(idx) = fmap.applyJTJ(idx, pd.parameters, pd.delta, pd.CtC)
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
+                pd.Adelta(idx) = fmap.applyJTJ(idx, pd.parameters, pd.delta, pd.CtC, [backend.threadarg])
             end
         end
         kernels.computeAdelta.listOfAtomicAddVars = {}
+        kernels.computeAdelta.compileForMultiThread = true
 
         terra kernels.savePreviousUnknowns(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                 pd.prevX(idx) = pd.parameters.X(idx)
             end
         end 
         kernels.savePreviousUnknowns.listOfAtomicAddVars = {}
+        kernels.savePreviousUnknowns.compileForMultiThread = true
 
             -- print(fmap.cost)
             -- error()
@@ -823,7 +838,7 @@ return function(problemSpec)
         terra kernels.computeCost(pd : PlanData, [kernelArglist], [backend.threadarg])
             var cost : opt_float = opt_float(0.0f)
             var idx : Index
-            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+            if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                 -- C.printf('test\n')
                 -- C.printf('idx: %d\n', idx.d0)
                 -- C.printf('testbla idx: %d\n', idx.d0)
@@ -833,7 +848,7 @@ return function(problemSpec)
                 -- C.printf('offset: %f\n',(y.data)[0])
                 -- C.printf('testbla\n')
                 var params = pd.parameters
-                cost = fmap.cost(idx, params)
+                cost = fmap.cost(idx, params, [backend.threadarg])
                 -- cost = 0.0
                 -- C.printf('test\n')
             end
@@ -845,9 +860,10 @@ return function(problemSpec)
                 -- util.atomicAdd_nosync((pd.scratch:getDataPtr( [backend.threadarg_val] )), cost)
                 util.atomicAdd_nosync( [backend.ReduceVar.getDataPtr(`pd.scratch, backend.threadarg_val )] , cost)
             end
-            -- C.printf('local cost = %f || total cost after atomicAdd: %f\n', cost, pd.scratch[0][0])
+            -- C.printf('index=%d || local cost = %f || total cost after atomicAdd: %f\n', idx.d0,  cost, pd.scratch[0][0])
         end
         kernels.computeCost.listOfAtomicAddVars = {}
+        kernels.computeCost.compileForMultiThread = true
         print(kernels.computeCost)
         -- error()
 
@@ -855,15 +871,17 @@ return function(problemSpec)
             terra kernels.saveJToCRS(pd : PlanData, [kernelArglist], [backend.threadarg])
             end
             kernels.saveJToCRS.listOfAtomicAddVars = {}
+            kernels.saveJToCRS.compileForMultiThread = true
         else
             terra kernels.saveJToCRS(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
                 var [parametersSym] = &pd.parameters
-                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                     [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,idx,pd)]
                 end
             end
             kernels.saveJToCRS.listOfAtomicAddVars = {}
+            kernels.saveJToCRS.compileForMultiThread = true
         end
         
 
@@ -871,35 +889,38 @@ return function(problemSpec)
             terra kernels.precompute(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
                 if idx:initFromCUDAParams([kernelArglist]) then
-                   fmap.precompute(idx,pd.parameters)
+                   fmap.precompute(idx,pd.parameters, [backend.threadarg])
                 end
             end
             kernels.precompute.listOfAtomicAddVars = {}
+            kernels.precompute.compileForMultiThread = true
         end
 
         if problemSpec:UsesLambda() then
             terra kernels.PCGComputeCtC(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
-                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then 
-                    var CtC = fmap.computeCtC(idx, pd.parameters)
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then 
+                    var CtC = fmap.computeCtC(idx, pd.parameters, [backend.threadarg])
                     pd.CtC(idx) = CtC    
                 end 
             end
             kernels.PCGComputeCtC.listOfAtomicAddVars = {}
+            kernels.PCGComputeCtC.compileForMultiThread = true
 
             terra kernels.PCGSaveSSq(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
-                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then 
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then 
                     pd.SSq(idx) = pd.preconditioner(idx)       
                 end 
             end
             kernels.PCGSaveSSq.listOfAtomicAddVars = {}
+            kernels.PCGSaveSSq.compileForMultiThread = true
 
             terra kernels.PCGFinalizeDiagonal(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
                 var d = opt_float(0.0f)
                 var q = opt_float(0.0f)
-                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then 
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then 
                     var unclampedCtC = pd.CtC(idx)
                     var invS_iiSq : unknownElement = opt_float(1.0f)
                     if [initialization_parameters.jacobiScaling == JacobiScalingType.ONCE_PER_SOLVE] then
@@ -935,13 +956,14 @@ return function(problemSpec)
                 unknownWideReduction(idx,d, [backend.ReduceVar.getDataPtr( `pd.scanAlphaNumerator, backend.threadarg_val)] )
             end
             kernels.PCGFinalizeDiagonal.listOfAtomicAddVars = {}
+            kernels.PCGFinalizeDiagonal.compileForMultiThread = true
 
             terra kernels.computeModelCost(pd : PlanData, [kernelArglist], [backend.threadarg])            
                 var cost : opt_float = opt_float(0.0f)
                 var idx : Index
-                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters) then
+                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
                     var params = pd.parameters              
-                    cost = fmap.modelcost(idx, params, pd.delta)
+                    cost = fmap.modelcost(idx, params, pd.delta, [backend.threadarg])
                 end
 
                 cost = util.warpReduce(cost)
@@ -951,6 +973,7 @@ return function(problemSpec)
                 end
             end
             kernels.computeModelCost.listOfAtomicAddVars = {}
+            kernels.computeModelCost.compileForMultiThread = true
 
         end -- :UsesLambda()
 
@@ -1023,10 +1046,11 @@ return function(problemSpec)
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
             if tIdx:initFromCUDAParams([kernelArglist]) then
-                fmap.evalJTF(tIdx.d0, pd.parameters, pd.r, pd.preconditioner)
+                fmap.evalJTF(tIdx.d0, pd.parameters, pd.r, pd.preconditioner, [backend.threadarg])
             end
         end    
         kernels.PCGInit1_Graph.listOfAtomicAddVars = {'r', 'preconditioner'}
+        kernels.PCGInit1_Graph.compileForMultiThread = true
         print(fmap.evalJTF)
         -- error()
 
@@ -1051,7 +1075,7 @@ return function(problemSpec)
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
             if tIdx:initFromCUDAParams([kernelArglist]) then
-               d = d + fmap.applyJTJ(tIdx.d0, pd.parameters, pd.p, pd.Ap_X)
+               d = d + fmap.applyJTJ(tIdx.d0, pd.parameters, pd.p, pd.Ap_X, [backend.threadarg])
             end 
             if not [multistep_alphaDenominator_compute] then
                 d = util.warpReduce(d)
@@ -1062,6 +1086,7 @@ return function(problemSpec)
             end
         end
         kernels.PCGStep1_Graph.listOfAtomicAddVars = {'p', 'Ap_X'}
+        kernels.PCGStep1_Graph.compileForMultiThread = true
         print(fmap.applyJTJ)
         -- error()
 
@@ -1070,10 +1095,11 @@ return function(problemSpec)
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
             if tIdx:initFromCUDAParams([kernelArglist]) then
-                fmap.applyJTJ(tIdx.d0, pd.parameters, pd.delta, pd.Adelta)
+                fmap.applyJTJ(tIdx.d0, pd.parameters, pd.delta, pd.Adelta, [backend.threadarg])
             end
         end
         kernels.computeAdelta_Graph.listOfAtomicAddVars = {'delta', 'Adelta'}
+        kernels.computeAdelta_Graph.compileForMultiThread = true
 
         -- FOR COMPARISON WITH GRAPH VERSION
         -- terra kernels.computeCost(pd : PlanData)
@@ -1095,7 +1121,7 @@ return function(problemSpec)
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
             if tIdx:initFromCUDAParams([kernelArglist]) then
-                cost = fmap.cost(tIdx.d0, pd.parameters)
+                cost = fmap.cost(tIdx.d0, pd.parameters, [backend.threadarg])
             end 
             cost = util.warpReduce(cost)
             if (util.laneid() == 0) then
@@ -1106,6 +1132,7 @@ return function(problemSpec)
             -- C.printf('graph: local cost = %f || total cost after atomicAdd: %f\n', cost, pd.scratch[0][0])
         end
         kernels.computeCost_Graph.listOfAtomicAddVars = {}
+        kernels.computeCost_Graph.compileForMultiThread = true
         -- print(kernels.computeModelCost_Graph)
         print(fmap.cost)
         -- error()
@@ -1114,6 +1141,7 @@ return function(problemSpec)
             terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             end
             kernels.saveJToCRS_Graph.listOfAtomicAddVars = {}
+            kernels.saveJToCRS_Graph.compileForMultiThread = true
         else
             terra kernels.saveJToCRS_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
                 -- var tIdx = 0
@@ -1128,6 +1156,7 @@ return function(problemSpec)
             end
             -- print(kernels.saveJToCRS_Graph)
             kernels.saveJToCRS_Graph.listOfAtomicAddVars = {}
+            kernels.saveJToCRS_Graph.compileForMultiThread = true
         end
 
         -- Index:printpretty()
@@ -1139,10 +1168,11 @@ return function(problemSpec)
                 -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
               var tIdx : Index
               if tIdx:initFromCUDAParams([kernelArglist]) then
-                    fmap.computeCtC(tIdx.d0, pd.parameters, pd.CtC)
+                    fmap.computeCtC(tIdx.d0, pd.parameters, pd.CtC, [backend.threadarg])
                 end
             end    
             kernels.PCGComputeCtC_Graph.listOfAtomicAddVars = {'CtC'}
+            kernels.PCGComputeCtC_Graph.compileForMultiThread = true
             print(fmap.computeCtC)
             -- error()
 
@@ -1152,7 +1182,7 @@ return function(problemSpec)
                 -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
               var tIdx : Index
               if tIdx:initFromCUDAParams([kernelArglist]) then
-                    cost = fmap.modelcost(tIdx.d0, pd.parameters, pd.delta)
+                    cost = fmap.modelcost(tIdx.d0, pd.parameters, pd.delta, [backend.threadarg])
                 end 
                 cost = util.warpReduce(cost)
                 if (util.laneid() == 0) then
@@ -1161,6 +1191,7 @@ return function(problemSpec)
                 end
             end
             kernels.computeModelCost_Graph.listOfAtomicAddVars = {'delta'}
+            kernels.computeModelCost_Graph.compileForMultiThread = true
             print(fmap.modelcost)
         end
         -- error()
@@ -1237,14 +1268,24 @@ return function(problemSpec)
         -- pd.scratch:memcpyDevice2Host(f)
         [backend.ReduceVar.memcpyDevice2Host( `f, `pd.scratch) ]
 
+        -- f[0] = pd.scratch[0] -- NOTE1 the statement above doesn't work...
+        -- f[1] = pd.scratch[1]
+        -- f[2] = pd.scratch[2]
 
         [backend.ReduceVarHost.reduceAllThreads2( `f )]
         -- f[0] = 0.0
         -- for k = 1,backend.numthreads+1 do
         --   f[0] = f[0] + f[k]
         -- end
-        -- C.printf('stopping computeCost, scratch cost is %f\n', pd.scratch[0][0])
-        -- C.printf('stopping computeCost, final cost is %f\n', f[0][0])
+        -- C.printf('stopping computeCost, scratch cost is %f | %f | %f\n', pd.scratch[0][0], pd.scratch[1][0], pd.scratch[2][0])
+        -- C.printf('stopping computeCost, scratch cost addresses are is %d | %d | %d\n', pd.scratch[0], pd.scratch[1], pd.scratch[2])
+        -- C.printf('stopping computeCost, final cost addresses is %d | %d | %d\n', f[0], f[1], f[2])
+        -- C.printf('stopping computeCost, final cost is %f | %f | %f\n', f[0][0], f[1][0], f[2][0])
+
+        -- C.printf('stopping computeCost, scratch cost is %f | %f\n', pd.scratch[0][0], pd.scratch[1][0])
+        -- C.printf('stopping computeCost, scratch cost addresses are is %d | %d\n', pd.scratch[0], pd.scratch[1])
+        -- C.printf('stopping computeCost, final cost addresses is %d | %d\n', f[0], f[1])
+        -- C.printf('stopping computeCost, final cost is %f | %f\n', f[0][0], f[1][0])
         return [backend.ReduceVarHost.getData2( `f, 0)]
     end
     print(computeCost)

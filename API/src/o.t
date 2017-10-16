@@ -827,9 +827,9 @@ function ImageType:terratype()
         --     util.atomicAdd_sync(addr,v, idx.d0)
         -- end
         Image.methods.atomicAddChannel = backend.make_Image_atomicAddChannel(Image, Index, scalartype)
-        terra Image:atomicAdd(idx : Index, v : vectortype) -- only for hand written stuff
+        terra Image:atomicAdd(idx : Index, v : vectortype, [backend.threadarg]) -- only for hand written stuff
             for i = 0,channelcount do
-                self:atomicAddChannel(idx,i,v(i))
+                self:atomicAddChannel(idx,i,v(i), [backend.threadarg])
             end
         end
     end
@@ -2472,7 +2472,7 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
         local stmt
         if s.kind == "add" then
             assert(s.channel, "no channel on scatter?")
-            stmt = `image:atomicAddChannel(index, s.channel, exp)
+            stmt = `image:atomicAddChannel(index, s.channel, exp, [backend.threadarg])
         else
             assert(s.kind == "set" and s.channel == 0, "set only works for single channel images")
             stmt = quote 
@@ -2482,7 +2482,8 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
         scatterstatements:insert(stmt)
     end
 
-    local terra generatedfn([idx], [P], [extraarguments]) -- IMPORTANT: THIS corresponds to e.g. 'evalJTF()' later
+    local terra generatedfn([idx], [P], [extraarguments], [backend.threadarg]) -- IMPORTANT: THIS corresponds to e.g. 'evalJTF()' later
+        -- C.printf('inside %s\n', name)
         var [midx] = idx
         [declarations]
         [statements]
