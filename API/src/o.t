@@ -932,8 +932,8 @@ function ImageType:terratype()
     Image.methods.setHelperArraysToZero:printpretty()
     -- error()
     terra Image:sumUpHelperArrays()
-      for k = 0,self:cardinality() do
         for tid = 0,backend.numthreads do
+      for k = 0,self:cardinality() do
     -- C.printf('Image:sumUpHelperArrays(): tid=%d, numthreads=%d\n', tid, backend.numthreads)
           self.data[k] = self.data[k] + self.data[k + self:cardinality()*(tid+1)]
         end
