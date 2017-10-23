@@ -1,4 +1,5 @@
 local b = {}
+local S = require("std")
 local c = require('config')
 local C = terralib.includecstring [[
 #define _GNU_SOURCE
@@ -8,6 +9,7 @@ local C = terralib.includecstring [[
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include <sys/time.h>
 #include <unistd.h>
 #include <cuda_runtime.h>
 #ifdef _WIN32
@@ -30,6 +32,225 @@ local tid_key = global(C.pthread_key_t, nil,  'tid_key')
 
 b.threadarg = symbol(int, 'thread_id')
 b.threadarg_val = b.threadarg -- need second variable to provide default arguments for other backends
+--------------------------- Timing stuff start
+-- TODO put in separate file
+-- TODO what is this? (seems to be a lua "class" definition)
+-- TODO only used in some timer-related stuff below, so make local there and put in appropriate file
+function Array(T,debug)
+    local struct Array(S.Object) {
+        _data : &T;
+        _size : int32;
+        _capacity : int32;
+    }
+    function Array.metamethods.__typename() return ("Array(%s)"):format(tostring(T)) end
+    local assert = debug and S.assert or macro(function() return quote end end)
+    terra Array:init() : &Array
+        self._data,self._size,self._capacity = nil,0,0
+        return self
+    end
+    terra Array:reserve(cap : int32)
+        if cap > 0 and cap > self._capacity then
+            var oc = self._capacity
+            if self._capacity == 0 then
+                self._capacity = 16
+            end
+            while self._capacity < cap do
+                self._capacity = self._capacity * 2
+            end
+            self._data = [&T](S.realloc(self._data,sizeof(T)*self._capacity))
+        end
+    end
+    terra Array:initwithcapacity(cap : int32) : &Array
+        self:init()
+        self:reserve(cap)
+        return self
+    end
+    terra Array:__destruct()
+        assert(self._capacity >= self._size)
+        for i = 0ULL,self._size do
+            S.rundestructor(self._data[i])
+        end
+        if self._data ~= nil then
+            C.free(self._data)
+            self._data = nil
+        end
+    end
+    terra Array:size() return self._size end
+    
+    terra Array:get(i : int32)
+        assert(i < self._size) 
+        return &self._data[i]
+    end
+    Array.metamethods.__apply = macro(function(self,idx)
+        return `@self:get(idx)
+    end)
+    
+    terra Array:insertNatlocation(idx : int32, N : int32, v : T) : {}
+        assert(idx <= self._size)
+        self._size = self._size + N
+        self:reserve(self._size)
+
+        if self._size > N then
+            var i = self._size
+            while i > idx do
+                self._data[i - 1] = self._data[i - 1 - N]
+                i = i - 1
+            end
+        end
+
+        for i = 0ULL,N do
+            self._data[idx + i] = v
+        end
+    end
+    terra Array:insertatlocation(idx : int32, v : T) : {}
+        return self:insertNatlocation(idx,1,v)
+    end
+    terra Array:insert(v : T) : {}
+        return self:insertNatlocation(self._size,1,v)
+    end
+    terra Array:remove(idx : int32) : T
+        assert(idx < self._size)
+        var v = self._data[idx]
+        self._size = self._size - 1
+        for i = idx,self._size do
+            self._data[i] = self._data[i + 1]
+        end
+        return v
+    end
+    if not T:isstruct() then
+        terra Array:indexof(v : T) : int32
+            for i = 0LL,self._size do
+                if (v == self._data[i]) then
+                    return i
+                end
+            end
+            return -1
+        end
+        terra Array:contains(v : T) : bool
+            return self:indexof(v) >= 0
+        end
+    end
+	
+    return Array
+end
+
+local Array = S.memoize(Array)
+
+
+-- TODO what is this? its only used in the next few lines? can we make this local to the Timer "class"?
+local struct Event {
+	starttime : C.timeval
+	endtime : C.timeval
+	duration : double -- unit: ms
+	eventName : rawstring
+}
+b.Event = Event
+terra Event:calcElapsedTime()
+  var elapsed : double
+  elapsed = 1000*(self.endtime.tv_sec - self.starttime.tv_sec)
+  elapsed = elapsed + [double](self.endtime.tv_usec - self.starttime.tv_usec)/([double](1e3))
+  self.duration = elapsed
+end
+
+
+local struct Timer {
+	eventList : &Array(Event)
+}
+b.Timer = Timer
+
+
+
+
+terra Timer:init() 
+	self.eventList = [Array(Event)].alloc():init()
+end
+
+terra Timer:cleanup()
+	self.eventList:delete()
+end 
+
+
+terra Timer:startEvent(name : rawstring, eventptr : &Event)
+    (@eventptr).eventName = name
+    C.gettimeofday(&((@eventptr).starttime), nil)
+end
+
+
+terra Timer:endEvent(eventptr : &Event)
+    C.gettimeofday(&((@eventptr).endtime), nil)
+    self.eventList:insert(@eventptr)
+end
+
+-- TODO only used in next function, so make local there
+terra isprefix(pre : rawstring, str : rawstring) : bool
+    if @pre == 0 then return true end
+    if @str ~= @pre then return false end
+    return isprefix(pre+1,str+1)
+end
+terra Timer:evaluate()
+	if ([c._opt_verbosity > 0]) then
+          var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
+          var aggregateTimingNames = [Array(rawstring)].salloc():init()
+
+          for i = 0,self.eventList:size() do
+            var event = self.eventList(i);
+            event:calcElapsedTime()
+            var index =  aggregateTimingNames:indexof(event.eventName)
+            if index < 0 then
+              aggregateTimingNames:insert(event.eventName)
+              aggregateTimingInfo:insert({event.duration, 1})
+            else
+              aggregateTimingInfo(index)._0 = aggregateTimingInfo(index)._0 + event.duration
+              aggregateTimingInfo(index)._1 = aggregateTimingInfo(index)._1 + 1
+            end
+          end
+
+          C.printf(		"--------------------------------------------------------\n")
+          C.printf(		"        Kernel        |   Count  |   Total   | Average \n")
+          C.printf(		"----------------------+----------+-----------+----------\n")
+          for i = 0, aggregateTimingNames:size() do
+              C.printf(	"----------------------+----------+-----------+----------\n")
+              C.printf(" %-20s |   %4d   | %8.3fms| %7.4fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
+          end
+
+          C.printf(		"--------------------------------------------------------\n")
+          C.printf("TIMING ")
+          for i = 0, aggregateTimingNames:size() do
+              var n = aggregateTimingNames(i)
+              if isprefix("PCGInit1",n) or isprefix("PCGStep1",n) or isprefix("overall",n) then
+                  C.printf("%f ",aggregateTimingInfo(i)._0)
+              end
+          end
+
+          C.printf("\n")
+          -- TODO: Refactor timing code
+          var linIters = 0
+          var nonLinIters = 0
+          for i = 0, aggregateTimingNames:size() do
+              var n = aggregateTimingNames(i)
+              if isprefix("PCGInit1",n) then
+                  linIters = aggregateTimingInfo(i)._1
+              end
+              if isprefix("PCGStep1",n) then
+                  nonLinIters = aggregateTimingInfo(i)._1
+              end
+          end
+          var linAggregate : float = 0.0f
+          var nonLinAggregate : float = 0.0f
+          for i = 0, aggregateTimingNames:size() do
+              var n = aggregateTimingInfo(i)._1
+              if n == linIters then
+                  linAggregate = linAggregate + aggregateTimingInfo(i)._0
+              end
+              if n == nonLinIters then
+                  nonLinAggregate = nonLinAggregate + aggregateTimingInfo(i)._0
+              end
+          end
+          C.printf("Per-iter times ms (nonlinear,linear): %7.4f\t%7.4f\n", linAggregate, nonLinAggregate)
+          end
+    
+end
+--------------------------- Timing stuff end
 
 ---------------- ReduceVar start
 b.ReduceVar = &&opt_float
@@ -755,7 +976,12 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         return moreWorkWillCome
       end
     end
-    for k,v in pairs(taskfuncsAsLua) do print(k,v) end
+    for k,v in pairs(taskfuncsAsLua) do
+      print('ASDFASDF'..kernelName)
+      print(kernelName)
+      print('ASDFASDF')
+      print(k,v)
+    end
     -- error()
     -- THREADPOOL END
 
@@ -801,9 +1027,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
           var domain = I.__itt_domain_create("Main.Domain")
 
 
-          var endEvent : C.cudaEvent_t 
+          var endEvent : Event
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:startEvent(kernelName,nil,&endEvent)
+              pd.timer:startEvent(kernelName, &endEvent)
           end
 
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
@@ -818,7 +1044,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
           -- compiledKernel(@pd)
 
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:endEvent(nil,endEvent)
+              pd.timer:endEvent(&endEvent)
           end
 
           I.__itt_task_end(domain)
@@ -839,9 +1065,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
           end
 
 
-          var endEvent : C.cudaEvent_t 
-          var kernelEvent : C.cudaEvent_t 
-          var helperArrayEvent : C.cudaEvent_t 
+          var endEvent : Event 
+          var kernelEvent : Event 
+          var helperArrayEvent : Event 
 
           var name = I.__itt_string_handle_create(kernelName)
           var domain = I.__itt_domain_create("Main.Domain")
@@ -851,17 +1077,17 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
           -- timer start
           -- TODO find out if we need to optimize
-          if ([_opt_collect_kernel_timing]) then
-              pd.timer:startEvent(kernelName,nil,&endEvent)
-          end
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+          if ([_opt_collect_kernel_timing]) then
+              pd.timer:startEvent(kernelName,&endEvent)
+          end
 
           -- REDUCEVECTOR INIT
           -- pd:setHelperArraysToZero()
-          if ([_opt_collect_kernel_timing]) then
-              pd.timer:startEvent('helperArrayStuff',nil,&helperArrayEvent)
-          end
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name2)
+          if ([_opt_collect_kernel_timing]) then
+              pd.timer:startEvent('helperArrayStuff',&helperArrayEvent)
+          end
           escape
             for _,varname in pairs(compiledKernel.listOfAtomicAddVars) do
               print(varname)
@@ -870,10 +1096,10 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
               end
             end
           end
-          I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name2)
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:endEvent(nil,helperArrayEvent)
+              pd.timer:endEvent(&helperArrayEvent)
           end
+          I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name2)
 
           debm( C.printf('GPULauncher(): locking kernel_running_mutex\n') )
           pt( C.pthread_mutex_lock(&kernel_running_mutex)                                 )
@@ -918,10 +1144,10 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
           -- REDUCEVECTOR SUM UP
           -- pd:sumUpHelperArrays()
-          if ([_opt_collect_kernel_timing]) then
-              pd.timer:startEvent('helperArrayStuff',nil,&helperArrayEvent)
-          end
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name2)
+          if ([_opt_collect_kernel_timing]) then
+              pd.timer:startEvent('helperArrayStuff',&helperArrayEvent)
+          end
           escape
             for _,varname in pairs(compiledKernel.listOfAtomicAddVars) do
               print(varname)
@@ -930,15 +1156,15 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
               end
             end
           end
-          I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name2)
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:endEvent(nil,helperArrayEvent)
+              pd.timer:endEvent(&helperArrayEvent)
           end
+          I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name2)
           -- TODO find out if we need to optimize
 
           -- timer stop
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:endEvent(nil,endEvent)
+              pd.timer:endEvent(&endEvent)
           end
           I.__itt_task_end(domain)
 
@@ -1191,22 +1417,15 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
       print(wrappedquote)
 
       local wrappedfunc = terra([pd_sym], [kminsym], [kmaxsym], [tidsym])
-        var threadEventA : C.cudaEvent_t 
 
         var name = I.__itt_string_handle_create('run_task_loop')
         var domain = I.__itt_domain_create("Main.Domain")
 
-        if ([_opt_collect_kernel_timing]) then
-            [pd_sym].timer:startEvent('wrappedfunc',nil,&threadEventA)
-        end
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
         [wrappedquote]
 
         I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
-        if ([_opt_collect_kernel_timing]) then
-            [pd_sym].timer:endEvent(nil, threadEventA)
-        end
         -- TODO generalize this to an arbitrary number of threads
         -- [pd_sym].scratch[0] = [pd_sym].scratch[0] + [pd_sym].scratch[1]
         -- [pd_sym].modelCost[0] = [pd_sym].modelCost[0] + [pd_sym].modelCost[1]

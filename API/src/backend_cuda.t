@@ -1,4 +1,5 @@
 local b = {}
+local S = require("std")
 local c = require('config')
 local C = terralib.includecstring [[
 #include <stdio.h>
@@ -33,6 +34,245 @@ local cd = macro(function(apicall)
         r
     end end)
 b.cd = cd
+
+--------------------------- Timing stuff start
+-- TODO put in separate file
+-- TODO what is this? (seems to be a lua "class" definition)
+-- TODO only used in some timer-related stuff below, so make local there and put in appropriate file
+function Array(T,debug)
+    local struct Array(S.Object) {
+        _data : &T;
+        _size : int32;
+        _capacity : int32;
+    }
+    function Array.metamethods.__typename() return ("Array(%s)"):format(tostring(T)) end
+    local assert = debug and S.assert or macro(function() return quote end end)
+    terra Array:init() : &Array
+        self._data,self._size,self._capacity = nil,0,0
+        return self
+    end
+    terra Array:reserve(cap : int32)
+        if cap > 0 and cap > self._capacity then
+            var oc = self._capacity
+            if self._capacity == 0 then
+                self._capacity = 16
+            end
+            while self._capacity < cap do
+                self._capacity = self._capacity * 2
+            end
+            self._data = [&T](S.realloc(self._data,sizeof(T)*self._capacity))
+        end
+    end
+    terra Array:initwithcapacity(cap : int32) : &Array
+        self:init()
+        self:reserve(cap)
+        return self
+    end
+    terra Array:__destruct()
+        assert(self._capacity >= self._size)
+        for i = 0ULL,self._size do
+            S.rundestructor(self._data[i])
+        end
+        if self._data ~= nil then
+            C.free(self._data)
+            self._data = nil
+        end
+    end
+    terra Array:size() return self._size end
+    
+    terra Array:get(i : int32)
+        assert(i < self._size) 
+        return &self._data[i]
+    end
+    Array.metamethods.__apply = macro(function(self,idx)
+        return `@self:get(idx)
+    end)
+    
+    terra Array:insertNatlocation(idx : int32, N : int32, v : T) : {}
+        assert(idx <= self._size)
+        self._size = self._size + N
+        self:reserve(self._size)
+
+        if self._size > N then
+            var i = self._size
+            while i > idx do
+                self._data[i - 1] = self._data[i - 1 - N]
+                i = i - 1
+            end
+        end
+
+        for i = 0ULL,N do
+            self._data[idx + i] = v
+        end
+    end
+    terra Array:insertatlocation(idx : int32, v : T) : {}
+        return self:insertNatlocation(idx,1,v)
+    end
+    terra Array:insert(v : T) : {}
+        return self:insertNatlocation(self._size,1,v)
+    end
+    terra Array:remove(idx : int32) : T
+        assert(idx < self._size)
+        var v = self._data[idx]
+        self._size = self._size - 1
+        for i = idx,self._size do
+            self._data[i] = self._data[i + 1]
+        end
+        return v
+    end
+    if not T:isstruct() then
+        terra Array:indexof(v : T) : int32
+            for i = 0LL,self._size do
+                if (v == self._data[i]) then
+                    return i
+                end
+            end
+            return -1
+        end
+        terra Array:contains(v : T) : bool
+            return self:indexof(v) >= 0
+        end
+    end
+	
+    return Array
+end
+
+local Array = S.memoize(Array)
+
+
+-- TODO what is this? its only used in the next few lines? can we make this local to the Timer "class"?
+local struct Event {
+	startEvent : C.cudaEvent_t
+	endEvent : C.cudaEvent_t
+	duration : float
+	eventName : rawstring
+}
+b.Event = Event
+
+local TimerEvent = C.cudaEvent_t
+
+local struct Timer {
+	eventList : &Array(Event)
+}
+b.Timer = Timer
+
+terra Timer:init() 
+	self.eventList = [Array(Event)].alloc():init()
+end
+
+terra Timer:cleanup()
+    for i = 0,self.eventList:size() do
+        var eventInfo = self.eventList(i);
+        C.cudaEventDestroy(eventInfo.startEvent);
+        C.cudaEventDestroy(eventInfo.endEvent);
+    end
+	self.eventList:delete()
+end 
+
+
+-- terra Timer:startEvent(name : rawstring,  stream : C.cudaStream_t, endEvent : &C.cudaEvent_t)
+terra Timer:startEvent(name : rawstring,  eventptr : &Event)
+    (@eventptr).eventName = name
+
+    C.cudaEventCreate(&(@eventptr).startEvent)
+    C.cudaEventCreate(&(@eventptr).endEvent)
+
+    C.cudaEventRecord((@eventptr).startEvent, nil)
+    -- @endEvent = timingInfo.endEvent
+
+
+    -- var starttime : double
+    -- starttime = start.tv_sec
+    -- starttime = starttime + [double](start.tv_nsec)
+
+
+
+    -- TODO clean this up a little
+    -- C.printf('starting kernel %s at time %lu\n', name, starttime)
+end
+terra Timer:endEvent(eventptr : &Event)
+    C.cudaEventRecord((@eventptr).endEvent, nil)
+    self.eventList:insert(@eventptr)
+
+
+    -- C.printf('    stopping kernel at time %lu\n', stoptime)
+end
+
+-- TODO only used in next function, so make local there
+terra isprefix(pre : rawstring, str : rawstring) : bool
+    if @pre == 0 then return true end
+    if @str ~= @pre then return false end
+    return isprefix(pre+1,str+1)
+end
+terra Timer:evaluate()
+            -- C.printf("asdfasdf\n")
+	if ([c._opt_verbosity > 0]) then
+          var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
+          var aggregateTimingNames = [Array(rawstring)].salloc():init()
+
+            C.printf("asdf %d\n", self.eventList:size())
+          for i = 0,self.eventList:size() do
+            var eventInfo = self.eventList(i);
+            C.cudaEventSynchronize(eventInfo.endEvent)
+            C.cudaEventElapsedTime(&eventInfo.duration, eventInfo.startEvent, eventInfo.endEvent);
+            var index =  aggregateTimingNames:indexof(eventInfo.eventName)
+            if index < 0 then
+              aggregateTimingNames:insert(eventInfo.eventName)
+              aggregateTimingInfo:insert({eventInfo.duration, 1})
+            else
+              aggregateTimingInfo(index)._0 = aggregateTimingInfo(index)._0 + eventInfo.duration
+              aggregateTimingInfo(index)._1 = aggregateTimingInfo(index)._1 + 1
+            end
+          end
+
+          C.printf(		"--------------------------------------------------------\n")
+          C.printf(		"        Kernel        |   Count  |   Total   | Average \n")
+          C.printf(		"----------------------+----------+-----------+----------\n")
+          for i = 0, aggregateTimingNames:size() do
+              C.printf(	"----------------------+----------+-----------+----------\n")
+              C.printf(" %-20s |   %4d   | %8.3fms| %7.4fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
+          end
+
+          C.printf(		"--------------------------------------------------------\n")
+          C.printf("TIMING ")
+          for i = 0, aggregateTimingNames:size() do
+              var n = aggregateTimingNames(i)
+              if isprefix("PCGInit1",n) or isprefix("PCGStep1",n) or isprefix("overall",n) then
+                  C.printf("%f ",aggregateTimingInfo(i)._0)
+              end
+          end
+
+          C.printf("\n")
+          -- TODO: Refactor timing code
+          var linIters = 0
+          var nonLinIters = 0
+          for i = 0, aggregateTimingNames:size() do
+              var n = aggregateTimingNames(i)
+              if isprefix("PCGInit1",n) then
+                  linIters = aggregateTimingInfo(i)._1
+              end
+              if isprefix("PCGStep1",n) then
+                  nonLinIters = aggregateTimingInfo(i)._1
+              end
+          end
+          var linAggregate : float = 0.0f
+          var nonLinAggregate : float = 0.0f
+          for i = 0, aggregateTimingNames:size() do
+              var n = aggregateTimingInfo(i)._1
+              if n == linIters then
+                  linAggregate = linAggregate + aggregateTimingInfo(i)._0
+              end
+              if n == nonLinIters then
+                  nonLinAggregate = nonLinAggregate + aggregateTimingInfo(i)._0
+              end
+          end
+          C.printf("Per-iter times ms (nonlinear,linear): %7.4f\t%7.4f\n", linAggregate, nonLinAggregate)
+          end
+    
+end
+print(Timer.methods.evaluate)
+-- error()
+--------------------------- Timing stuff end
 
 ---------------- ReduceVar start
 b.ReduceVar = &opt_float
@@ -410,15 +650,15 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
                                             xblock, yblock, zblock, 
                                             0, nil }
         var stream : C.cudaStream_t = nil
-        var endEvent : C.cudaEvent_t 
+        var endEvent : Event
         if ([_opt_collect_kernel_timing]) then
-            pd.timer:startEvent(kernelName,nil,&endEvent)
+            pd.timer:startEvent(kernelName,&endEvent)
         end
 
         checkedLaunch(kernelName, compiledKernel(&launch, @pd, params))
         
         if ([_opt_collect_kernel_timing]) then
-            pd.timer:endEvent(nil,endEvent)
+            pd.timer:endEvent(&endEvent)
         end
 
         -- C.printf('bla1\n')

@@ -14,7 +14,7 @@ require("precision")
 local ffi = require("ffi")
 
 local C = util.C
-local Timer = util.Timer
+local Timer = backend.Timer
 
 -- TODO where is this used? grep can't find anything
 local getValidUnknown = util.getValidUnknown
@@ -216,7 +216,8 @@ return function(problemSpec)
         q : backend.ReduceVar  -- Q value for zeta calculation (see CERES)
 		
         timer : Timer
-        endSolver : util.TimerEvent
+        -- endSolver : util.TimerEvent
+        endSolver : backend.Event
 
         prevCost : opt_float
 	    
@@ -1522,7 +1523,8 @@ return function(problemSpec)
 
        var pd = [&PlanData](data_)
        pd.timer:init()
-       pd.timer:startEvent("overall",nil,&pd.endSolver)
+       -- pd.timer:startEvent("overall",nil,&pd.endSolver)
+       pd.timer:startEvent("overall", &pd.endSolver)
 
          -- THIS LINE ASSIGNS e.g. THE number of edges of a graph to graph.N (which is later used for bounds checking)
          -- does not seems to depend on backend
@@ -1608,7 +1610,8 @@ return function(problemSpec)
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra cleanup(pd : &PlanData)
         logSolver("final cost=%.16f\n", pd.prevCost)
-        pd.timer:endEvent(nil,pd.endSolver)
+        -- pd.timer:endEvent(nil,pd.endSolver)
+        pd.timer:endEvent(&pd.endSolver)
         pd.timer:evaluate()
         pd.timer:cleanup()
     end
@@ -1616,6 +1619,13 @@ return function(problemSpec)
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra step(data_ : &opaque, params_ : &&opaque)
     C.printf('\n\n\nstarting step()\n')
+        var pd = [&PlanData](data_)
+          -- var stepEvent : C.cudaEvent_t 
+          var stepEvent : backend.Event
+          if ([_opt_collect_kernel_timing]) then
+              -- pd.timer:startEvent('step()',nil,&stepEvent)
+              pd.timer:startEvent('step()', &stepEvent)
+          end
     escape
       if backend.name == 'CPUMT' then
         emit quote
@@ -1897,6 +1907,10 @@ return function(problemSpec)
                         end
                       end
                     end
+                    if ([_opt_collect_kernel_timing]) then
+                        -- pd.timer:endEvent(nil,stepEvent)
+                        pd.timer:endEvent(&stepEvent)
+                    end
                     return 1
         else
                     escape
@@ -1907,6 +1921,10 @@ return function(problemSpec)
                       end
                     end
             cleanup(pd)
+                    if ([_opt_collect_kernel_timing]) then
+                        -- pd.timer:endEvent(nil,stepEvent)
+                        pd.timer:endEvent(&stepEvent)
+                    end
             return 0
         end
     end
