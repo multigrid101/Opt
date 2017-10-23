@@ -1519,6 +1519,10 @@ return function(problemSpec)
     local terra init(data_ : &opaque, params_ : &&opaque)
       C.printf('starting init\n')
     -- backend.initGlobals()
+        var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
+        var name : &I.__itt_string_handle  = I.__itt_string_handle_create("init()")
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+        
     escape
       if backend.name == 'CPUMT' then
         emit quote
@@ -1527,10 +1531,6 @@ return function(problemSpec)
       end
     end
 
-        var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
-        var name : &I.__itt_string_handle  = I.__itt_string_handle_create("init()")
-        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
-        
        escape
          if backend.name == 'CPUMT' then
            emit quote
@@ -1640,12 +1640,18 @@ return function(problemSpec)
     local terra step(data_ : &opaque, params_ : &&opaque)
     C.printf('\n\n\nstarting step()\n')
         var pd = [&PlanData](data_)
+
+            var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
+            var name : &I.__itt_string_handle  = I.__itt_string_handle_create("step()")
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
           -- var stepEvent : C.cudaEvent_t 
           var stepEvent : backend.Event
           if ([_opt_collect_kernel_timing]) then
               -- pd.timer:startEvent('step()',nil,&stepEvent)
               pd.timer:startEvent('step()', &stepEvent)
           end
+
+
     escape
       if backend.name == 'CPUMT' then
         emit quote
@@ -1656,11 +1662,7 @@ return function(problemSpec)
     -- C.sleep(2)
 
         -- [backend.threadcreation_counter] = 0
-            var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
-            var name : &I.__itt_string_handle  = I.__itt_string_handle_create("step()")
-        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
-        var pd = [&PlanData](data_)
         var residual_reset_period : int         = pd.solverparameters.residual_reset_period
         var min_relative_decrease : opt_float   = pd.solverparameters.min_relative_decrease
         var min_trust_region_radius : opt_float = pd.solverparameters.min_trust_region_radius
@@ -1919,7 +1921,6 @@ return function(problemSpec)
 
                         pd.solverparameters.nIter = pd.solverparameters.nIter + 1
         -- C.printf('created %d threads in this step \n', [backend.threadcreation_counter])
-                    I.__itt_task_end(domain)
                     escape
                       if backend.name == 'CPUMT' then
                         emit quote
@@ -1931,6 +1932,7 @@ return function(problemSpec)
                         -- pd.timer:endEvent(nil,stepEvent)
                         pd.timer:endEvent(&stepEvent)
                     end
+                    I.__itt_task_end(domain)
                     return 1
         else
                     escape
@@ -1940,11 +1942,12 @@ return function(problemSpec)
                         end
                       end
                     end
-            cleanup(pd)
+                    cleanup(pd)
                     if ([_opt_collect_kernel_timing]) then
                         -- pd.timer:endEvent(nil,stepEvent)
                         pd.timer:endEvent(&stepEvent)
                     end
+                    I.__itt_task_end(domain)
             return 0
         end
     end
