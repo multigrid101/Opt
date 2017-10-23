@@ -409,6 +409,9 @@ return function(problemSpec)
                 end
             end
         end
+        print(guardedInvert)
+        -- error()
+
 
         local terra clamp(x : unknownElement, minVal : unknownElement, maxVal : unknownElement) : unknownElement
             var result = x
@@ -420,6 +423,8 @@ return function(problemSpec)
         end
 
         terra kernels.PCGInit1(pd : PlanData, [kernelArglist], [backend.threadarg])
+        -- modifies: delta, r, p (nograph), preconditioner
+        -- sums into: scanAlphaNumerator (nograph)
 
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
         
@@ -460,18 +465,25 @@ return function(problemSpec)
                 unknownWideReduction(idx,d,[backend.ReduceVar.getDataPtr( `pd.scanAlphaNumerator, backend.threadarg_val )])
             end
         end
+        print(kernels.PCGInit1)
         print(fmap.evalJTF)
         -- error()
         kernels.PCGInit1.listOfAtomicAddVars = {}
         kernels.PCGInit1.compileForMultiThread = true
         
         terra kernels.PCGInit1_Finish(pd : PlanData, [kernelArglist], [backend.threadarg])	--only called for graphs (i.e. if graphs are used)
+        -- modifies: p
+        -- scan: r, preconditioner
+        -- sums into: scanAlphaNumerator
             var d : opt_float = opt_float(0.0f) -- init for out of bounds lanes
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) then
                 var residuum = pd.r(idx)			
                 var pre = pd.preconditioner(idx)
             
+                -- TODO this invert significantly slows down the kernel in some examples, try to find better
+                -- solution (relevant e.g. in robust_..., here the slowdown is a factor 10 and also the kernel
+                -- makes up a significant portion of overall cpu-time)
                 pre = guardedInvert(pre)
             
                 if not problemSpec.usepreconditioner then
@@ -488,12 +500,14 @@ return function(problemSpec)
             -- unknownWideReduction(idx,d,(pd.scanAlphaNumerator:getDataPtr( [backend.threadarg_val] )))
             unknownWideReduction(idx,d,[backend.ReduceVar.getDataPtr( `pd.scanAlphaNumerator, backend.threadarg_val )])
         end
+        print(kernels.PCGInit1_Finish)
+        -- error()
         kernels.PCGInit1_Finish.listOfAtomicAddVars = {}
         kernels.PCGInit1_Finish.compileForMultiThread = true
 
         terra kernels.PCGStep1(pd : PlanData, [kernelArglist], [backend.threadarg])
         -- writes: Ap_X (0.3 GiB)
-        -- reads: X (in applyJTJ approx 0.3 GB (maybe times 5)), p (0.3 GiB), all known Arrays (approx. 0.53 GiB (maybe times 5))
+        -- reads: CtC, X (in applyJTJ approx 0.3 GB (maybe times 5)), p (0.3 GiB), all known Arrays (approx. 0.53 GiB (maybe times 5))
         --> lower bound approx 1.5 GiB per kernel run.
         --> upper bound bound approx 4.6 GiB per kernel run.
             var d : opt_float = opt_float(0.0f)
@@ -515,6 +529,7 @@ return function(problemSpec)
         end
         kernels.PCGStep1.listOfAtomicAddVars = {}
         kernels.PCGStep1.compileForMultiThread = true
+        print(kernels.PCGStep1)
         print(fmap.applyJTJ)
         -- error()
 
@@ -565,21 +580,22 @@ return function(problemSpec)
                 var alpha = opt_float(0.0f)
                 alpha = alphaNumerator/alphaDenominator 
 
-                var delta = pd.delta(idx)+alpha*pd.p(idx)       -- do a descent step
+                -- TODO try to use fused multiply-adds for vec updates here
+                var delta = pd.delta(idx)+alpha*pd.p(idx)  -- do a descent step
                 pd.delta(idx) = delta
 
-                var r = pd.r(idx)-alpha*pd.Ap_X(idx)				-- update residuum
-                pd.r(idx) = r										-- store for next kernel call
+                var r = pd.r(idx)-alpha*pd.Ap_X(idx)  -- update residuum
+                pd.r(idx) = r  -- store for next kernel call
 
                 var pre = pd.preconditioner(idx)
                 if not problemSpec.usepreconditioner then
                     pre = opt_float(1.0f)
                 end
         
-                var z = pre*r										-- apply pre-conditioner M^-1
-                pd.z(idx) = z;										-- save for next kernel call
+                var z = pre*r  -- apply pre-conditioner M^-1
+                pd.z(idx) = z  -- save for next kernel call
 
-                betaNum = z:dot(r)									-- compute x-th term of the numerator of beta
+                betaNum = z:dot(r)  -- compute x-th term of the numerator of beta
 
                 if [problemSpec:UsesLambda()] then
                     -- computeQ    
@@ -605,7 +621,6 @@ return function(problemSpec)
         terra kernels.PCGStep2_1stHalf(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
             if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
-            -- TODO generalize for multithreading
                 -- var alphaDenominator : opt_float = pd.scanAlphaDenominator[0]
                 -- var alphaNumerator : opt_float = pd.scanAlphaNumerator[0]
                 var alphaDenominator : opt_float = 0.0
@@ -866,6 +881,7 @@ return function(problemSpec)
         kernels.computeCost.listOfAtomicAddVars = {}
         kernels.computeCost.compileForMultiThread = true
         print(kernels.computeCost)
+        print(fmap.cost)
         -- error()
 
         if not fmap.dumpJ then
@@ -893,6 +909,8 @@ return function(problemSpec)
                    fmap.precompute(idx,pd.parameters, [backend.threadarg])
                 end
             end
+            print(fmap.precompute)
+            -- error()
             kernels.precompute.listOfAtomicAddVars = {}
             kernels.precompute.compileForMultiThread = true
         end
@@ -956,6 +974,8 @@ return function(problemSpec)
                 -- unknownWideReduction(idx,d,(pd.scanAlphaNumerator:getDataPtr( [backend.threadarg_val] )))
                 unknownWideReduction(idx,d, [backend.ReduceVar.getDataPtr( `pd.scanAlphaNumerator, backend.threadarg_val)] )
             end
+            print(kernels.PCGFinalizeDiagonal)
+            -- error()
             kernels.PCGFinalizeDiagonal.listOfAtomicAddVars = {}
             kernels.PCGFinalizeDiagonal.compileForMultiThread = true
 

@@ -1094,6 +1094,10 @@ function UnknownType:terratype()
             end
             return r
         end
+        print(T.metamethods.__apply)
+        -- error()
+
+
         terra T.metamethods.__update(self : &T, idx : Index, v : VT)
             escape
                 local off = 0
@@ -1109,6 +1113,8 @@ function UnknownType:terratype()
                 end
             end
         end
+        print(T.metamethods.__update)
+        -- error()
     end
 
     terra T:setHelperArraysToZero() -- only relevant for backend_cpu_mt
