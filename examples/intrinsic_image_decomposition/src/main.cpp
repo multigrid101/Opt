@@ -6,18 +6,26 @@
 
 int main(int argc, const char * argv[])
 {
-    std::string filename = "../data/ye_high2.png";
+    std::string filename = "../data/ye_high2.png"; //original
     /* if (argc > 1) { */
     /*     filename = argv[1]; */
     /* } */
     ArgParser argparser;
     argparser.parse(argc, argv);
 
+    int stride = argparser.get<int>("stride");
+    printf("stride is %d\n", stride);
+
     ColorImageR8G8B8A8	   image = LodePNG::load(filename);
-	ColorImageR32G32B32A32 imageR32(image.getWidth(), image.getHeight());
-	for (unsigned int y = 0; y < image.getHeight(); y++) {
-		for (unsigned int x = 0; x < image.getWidth(); x++) {
-			imageR32(x,y) = image(x,y);
+    int targetWidth = image.getWidth()/stride;
+    int targetHeight = image.getHeight()/stride;
+
+
+	ColorImageR32G32B32A32 imageR32(targetWidth, targetHeight);
+
+	for (unsigned int y = 0; y < targetHeight; y++) {
+		for (unsigned int x = 0; x < targetWidth; x++) {
+			imageR32(x,y) = image(stride*x,stride*y);
 		}
 	}
 	

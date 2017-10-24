@@ -14,8 +14,18 @@ class ArgParser {
         ("help", "produce help message")
         ("backend", po::value<std::string>()->default_value("backend_cpu"), "set backend to 'backend_cuda', 'backend_cpu' or 'backend_cpu_mt'")
         ("numthreads", po::value<int>()->default_value(1), "set the number of threads (only has effect for backend_cpu_mt)")
+
         ("nIterations", po::value<int>()->default_value(1), "number of non-linear iterations.")
         ("lIterations", po::value<int>()->default_value(1), "number of linear iterations.")
+
+        ("width", po::value<int>()->default_value(640), "width of the image (pixels), ignored for graph-examples")
+        ("stride_x", po::value<int>()->default_value(1), "example, if this is 3, then only every 3rd pixel in x-direction of the input image is loaded into Opt, see also stride arg")
+
+        ("height", po::value<int>()->default_value(360), "height of the image (pixels), ignored for graph-examples")
+        ("stride_y", po::value<int>()->default_value(1), "example, if this is 3, then only every 3rd pixel in y-direction of the input image is loaded into Opt, see also stride arg")
+
+        ("numvertices", po::value<int>()->default_value(-1), "number of vertices in the graph, ignored for image examples")
+        ("stride", po::value<int>()->default_value(1), "stride in both x and y direction")
       ;
       
 
