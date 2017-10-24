@@ -92,7 +92,8 @@ class CombinedSolver : public CombinedSolverBase
             m_averageEdgeLength = sumEdgeLength / E;
             std::cout << "Average Edge Length: " << m_averageEdgeLength << std::endl;
 
-            std::vector<unsigned int> dims = { N };
+            std::vector<unsigned int> dims = { N, E };
+            /* printf("number of\n") */
             m_vertexPosTargetFloat3     = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
             m_vertexNormalTargetFloat3  = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
             m_robustWeights             = createEmptyOptImage(dims, OptImage::Type::FLOAT, 1, location, true);
