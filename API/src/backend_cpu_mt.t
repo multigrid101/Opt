@@ -10,6 +10,7 @@ local C = terralib.includecstring [[
 #include <stdlib.h>
 #include <math.h>
 #include <sys/time.h>
+#include <time.h>
 #include <unistd.h>
 #include <cuda_runtime.h>
 #ifdef _WIN32
@@ -119,12 +120,16 @@ function Array(T,debug)
     end
     if not T:isstruct() then
         terra Array:indexof(v : T) : int32
-            for i = 0LL,self._size do
-                if (v == self._data[i]) then
-                    return i
-                end
+          escape
+            emit quote
+              for i = 0LL,self._size do
+                  if C.strcmp(v,self._data[i])==0 then
+                      return i
+                  end
+              end
+              return -1
             end
-            return -1
+          end
         end
         terra Array:contains(v : T) : bool
             return self:indexof(v) >= 0
@@ -139,22 +144,32 @@ local Array = S.memoize(Array)
 
 -- TODO what is this? its only used in the next few lines? can we make this local to the Timer "class"?
 local struct Event {
-	starttime : C.timeval
-	endtime : C.timeval
+	-- starttime : C.timeval
+	-- endtime : C.timeval
+	starttime : C.timespec
+	endtime : C.timespec
 	duration : double -- unit: ms
 	eventName : rawstring
 }
 b.Event = Event
 terra Event:calcElapsedTime()
   var elapsed : double
+
+  -- elapsed = 1000*(self.endtime.tv_sec - self.starttime.tv_sec)
+  -- elapsed = elapsed + [double](self.endtime.tv_usec - self.starttime.tv_usec)/([double](1e3))
+
   elapsed = 1000*(self.endtime.tv_sec - self.starttime.tv_sec)
-  elapsed = elapsed + [double](self.endtime.tv_usec - self.starttime.tv_usec)/([double](1e3))
+  elapsed = elapsed + [double](self.endtime.tv_nsec - self.starttime.tv_nsec)/([double](1e6))
+
   self.duration = elapsed
 end
 
 
+-- one array for the main thread and one for each worker thread.
+-- main thread uses index 0
+-- worker thread with e.g. id=2 uses index 3
 local struct Timer {
-	eventList : &Array(Event)
+	eventList : (&Array(Event))[numthreads+1]
 }
 b.Timer = Timer
 
@@ -162,23 +177,29 @@ b.Timer = Timer
 
 
 terra Timer:init() 
-	self.eventList = [Array(Event)].alloc():init()
+    for tid = 0,numthreads+1 do
+	self.eventList[tid] = [Array(Event)].alloc():init()
+    end
 end
 
 terra Timer:cleanup()
-	self.eventList:delete()
+    for tid = 0,numthreads+1 do
+	self.eventList[tid]:delete()
+    end
 end 
 
 
 terra Timer:startEvent(name : rawstring, eventptr : &Event)
     (@eventptr).eventName = name
-    C.gettimeofday(&((@eventptr).starttime), nil)
+    -- C.gettimeofday(&((@eventptr).starttime), nil)
+    C.clock_gettime(C.CLOCK_MONOTONIC, &((@eventptr).starttime))
 end
 
 
-terra Timer:endEvent(eventptr : &Event)
-    C.gettimeofday(&((@eventptr).endtime), nil)
-    self.eventList:insert(@eventptr)
+terra Timer:endEvent(eventptr : &Event, [b.threadarg])
+    -- C.gettimeofday(&((@eventptr).endtime), nil)
+    C.clock_gettime(C.CLOCK_MONOTONIC, &((@eventptr).endtime))
+    self.eventList[ [b.threadarg] ]:insert(@eventptr)
 end
 
 -- TODO only used in next function, so make local there
@@ -188,14 +209,24 @@ terra isprefix(pre : rawstring, str : rawstring) : bool
     return isprefix(pre+1,str+1)
 end
 terra Timer:evaluate()
-	if ([c._opt_verbosity > 0]) then
+        -- put all worker-thread stuff into main-thread array
+        for tid = 0,numthreads do
+          for k = 0,self.eventList[tid+1]:size() do
+            self.eventList[0]:insert(self.eventList[tid+1](k))
+          end
+        end
+
+	-- if ([c._opt_verbosity > 0]) then
+	if true then
           var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
           var aggregateTimingNames = [Array(rawstring)].salloc():init()
 
-          for i = 0,self.eventList:size() do
-            var event = self.eventList(i);
+          for i = 0,self.eventList[0]:size() do
+            var event = self.eventList[0](i);
+            C.printf("%s\n", event.eventName)
             event:calcElapsedTime()
             var index =  aggregateTimingNames:indexof(event.eventName)
+            C.printf("index of event %s is %d\n", event.eventName, index)
             if index < 0 then
               aggregateTimingNames:insert(event.eventName)
               aggregateTimingInfo:insert({event.duration, 1})
@@ -205,15 +236,15 @@ terra Timer:evaluate()
             end
           end
 
-          C.printf(		"--------------------------------------------------------\n")
-          C.printf(		"        Kernel        |   Count  |   Total   | Average \n")
-          C.printf(		"----------------------+----------+-----------+----------\n")
+          C.printf(		"------------------------------------------------------------------\n")
+          C.printf(		"             Kernel             |   Count  |   Total   | Average \n")
+          C.printf(		"--------------------------------+----------+-----------+----------\n")
           for i = 0, aggregateTimingNames:size() do
-              C.printf(	"----------------------+----------+-----------+----------\n")
-              C.printf(" %-20s |   %4d   | %8.3fms| %7.4fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
+              C.printf(	"--------------------------------+----------+-----------+----------\n")
+              C.printf(" %-30s |   %4d   | %8.3fms| %7.4fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
           end
 
-          C.printf(		"--------------------------------------------------------\n")
+          C.printf(		"------------------------------------------------------------------\n")
           C.printf("TIMING ")
           for i = 0, aggregateTimingNames:size() do
               var n = aggregateTimingNames(i)
@@ -1044,7 +1075,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
           -- compiledKernel(@pd)
 
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:endEvent(&endEvent)
+              pd.timer:endEvent(&endEvent, tid)
           end
 
           I.__itt_task_end(domain)
@@ -1067,6 +1098,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
           var endEvent : Event 
           var kernelEvent : Event 
+          var threadStartEvent : Event 
           var helperArrayEvent : Event 
 
           var name = I.__itt_string_handle_create(kernelName)
@@ -1097,7 +1129,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
             end
           end
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:endEvent(&helperArrayEvent)
+              pd.timer:endEvent(&helperArrayEvent, 0)
           end
           I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name2)
 
@@ -1114,6 +1146,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
           -- wait for all threads to start
           var waitForThreadsAliveName = I.__itt_string_handle_create('wait_for_threads_to_start')
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, waitForThreadsAliveName)
+          if ([_opt_collect_kernel_timing]) then
+              pd.timer:startEvent('waitThreadsStart',&threadStartEvent)
+          end
           while true do
             C.pthread_mutex_lock(&numthreadsAliveMutex)
             var numalive = numthreadsAlive
@@ -1122,6 +1157,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
             if numalive == numthreads then
               break
             end
+          end
+          if ([_opt_collect_kernel_timing]) then
+              pd.timer:endEvent(&threadStartEvent, 0)
           end
           I.__itt_task_end(domain, I.__itt_null, I.__itt_null, waitForThreadsAliveName)
          
@@ -1157,14 +1195,14 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
             end
           end
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:endEvent(&helperArrayEvent)
+              pd.timer:endEvent(&helperArrayEvent, 0)
           end
           I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name2)
           -- TODO find out if we need to optimize
 
           -- timer stop
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:endEvent(&endEvent)
+              pd.timer:endEvent(&endEvent, 0)
           end
           I.__itt_task_end(domain)
 
@@ -1382,6 +1420,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
       -- collect sizes of all dimensions associated with this ispace
       -- e.g. dimsizes = {100, 200} for a 100x200 picture
       local numdims = #(ispace.dims)
+      local kernelName = kernel.name
       local dims = ispace.dims
       local dimsizes = {}
       for k,dim in pairs(ispace.dims) do
@@ -1416,15 +1455,31 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
       end
       print(wrappedquote)
 
+      -- for k,v in pairs(rawstring) do print(k,v) end
+      -- error()
+
       local wrappedfunc = terra([pd_sym], [kminsym], [kmaxsym], [tidsym])
+
+        var loopEvent : Event
+        -- var loopEventName : &int8 = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdf'
+        var loopEventName = [&int8](C.malloc(50 * sizeof(int8)))
+        C.sprintf(loopEventName, '%s_loop(%d)', kernelName, [tidsym])
+        -- var thename = [rawstring](loopEventName)
+        -- loopEventName = 'fdsa'
 
         var name = I.__itt_string_handle_create('run_task_loop')
         var domain = I.__itt_domain_create("Main.Domain")
 
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+        if ([_opt_collect_kernel_timing]) then
+            [pd_sym].timer:startEvent( (loopEventName) ,&loopEvent)
+        end
 
         [wrappedquote]
 
+        if ([_opt_collect_kernel_timing]) then
+            [pd_sym].timer:endEvent(&loopEvent, [tidsym])
+        end
         I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
         -- TODO generalize this to an arbitrary number of threads
         -- [pd_sym].scratch[0] = [pd_sym].scratch[0] + [pd_sym].scratch[1]
@@ -1490,7 +1545,9 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
 
 
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
         [wrappedquote]
+
         I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
       end
       print(wrappedfunc)
@@ -1541,6 +1598,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
                 else
                   error('compileForMultiThread attribute of kernel not set')
                 end
+                func.name = name .. '_' ..  tostring(problemfunction.typ)
                 kernelFunctions[getkname(name,problemfunction.typ)] = cpucompilefunc(func, ispace)
            end
         else
@@ -1559,6 +1617,8 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
                   error('compileForMultiThread attribute of kernel not set')
                 end
 
+                -- func.name = name
+                func.name = name .. '_' .. tostring(problemfunction.typ)
                 kernelFunctions[getkname(name,problemfunction.typ)] = cpucompilefunc(func, ispace)
             end
         end

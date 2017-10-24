@@ -190,7 +190,8 @@ terra Timer:startEvent(name : rawstring,  eventptr : &Event)
     -- TODO clean this up a little
     -- C.printf('starting kernel %s at time %lu\n', name, starttime)
 end
-terra Timer:endEvent(eventptr : &Event)
+terra Timer:endEvent(eventptr : &Event, dummy : int)
+-- dummy arg is required for mt backend
     C.cudaEventRecord((@eventptr).endEvent, nil)
     self.eventList:insert(@eventptr)
 
@@ -658,7 +659,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
         checkedLaunch(kernelName, compiledKernel(&launch, @pd, params))
         
         if ([_opt_collect_kernel_timing]) then
-            pd.timer:endEvent(&endEvent)
+            pd.timer:endEvent(&endEvent, 0)
         end
 
         -- C.printf('bla1\n')

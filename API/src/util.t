@@ -301,12 +301,18 @@ function Array(T,debug)
     end
     if not T:isstruct() then
         terra Array:indexof(v : T) : int32
-            for i = 0LL,self._size do
-                if (v == self._data[i]) then
-                    return i
-                end
+          escape
+            emit quote
+              for i = 0LL,self._size do
+                  -- if (v == self._data[i]) then
+                  C.printf(v)
+                  if C.strcmp(v, self._data[i]) == 0 then
+                      return i
+                  end
+              end
+              return -1
             end
-            return -1
+          end
         end
         terra Array:contains(v : T) : bool
             return self:indexof(v) >= 0

@@ -1631,9 +1631,11 @@ return function(problemSpec)
     local terra cleanup(pd : &PlanData)
         logSolver("final cost=%.16f\n", pd.prevCost)
         -- pd.timer:endEvent(nil,pd.endSolver)
-        pd.timer:endEvent(&pd.endSolver)
+        pd.timer:endEvent(&pd.endSolver, 0)
         pd.timer:evaluate()
+        logSolver("final cost=%.16f\n", pd.prevCost)
         pd.timer:cleanup()
+        logSolver("final cost=%.16f\n", pd.prevCost)
     end
 
     -- TODO put in extra file 'solverskeleton.t' or something similar
@@ -1646,9 +1648,13 @@ return function(problemSpec)
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
           -- var stepEvent : C.cudaEvent_t 
           var stepEvent : backend.Event
-          if ([_opt_collect_kernel_timing]) then
-              -- pd.timer:startEvent('step()',nil,&stepEvent)
-              pd.timer:startEvent('step()', &stepEvent)
+          var stepName = [&int8](C.malloc(20 * sizeof(int8)))
+          C.sprintf(stepName, 'step_%d', pd.solverparameters.nIter)
+          C.printf('performing step %d, stepname is %s\n', pd.solverparameters.nIter, stepName)
+
+          -- if ([_opt_collect_kernel_timing]) then
+          if true then
+              pd.timer:startEvent(stepName, &stepEvent)
           end
 
 
@@ -1865,7 +1871,9 @@ return function(problemSpec)
                     end
 
                 gpu.PCGLinearUpdate(pd)    
+                C.printf("step(): starting precompute\n")
                 gpu.precompute(pd)
+                C.printf("step(): stopping precompute\n")
                 var newCost = computeCost(pd)
 
                 escape 
@@ -1928,9 +1936,10 @@ return function(problemSpec)
                         end
                       end
                     end
-                    if ([_opt_collect_kernel_timing]) then
+                    -- if ([_opt_collect_kernel_timing]) then
+                    if true then
                         -- pd.timer:endEvent(nil,stepEvent)
-                        pd.timer:endEvent(&stepEvent)
+                        pd.timer:endEvent(&stepEvent, 0)
                     end
                     I.__itt_task_end(domain)
                     return 1
@@ -1942,11 +1951,13 @@ return function(problemSpec)
                         end
                       end
                     end
-                    cleanup(pd)
-                    if ([_opt_collect_kernel_timing]) then
+
+                    -- if ([_opt_collect_kernel_timing]) then
+                    if true then
                         -- pd.timer:endEvent(nil,stepEvent)
-                        pd.timer:endEvent(&stepEvent)
+                        pd.timer:endEvent(&stepEvent, 0)
                     end
+                    cleanup(pd)
                     I.__itt_task_end(domain)
             return 0
         end

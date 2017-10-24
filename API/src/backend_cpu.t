@@ -164,7 +164,8 @@ terra Timer:startEvent(name : rawstring, eventptr : &Event)
 end
 
 
-terra Timer:endEvent(eventptr : &Event)
+terra Timer:endEvent(eventptr : &Event, dummy : int)
+-- dummy arg is required in mt backend
     C.gettimeofday(&((@eventptr).endtime), nil)
     self.eventList:insert(@eventptr)
 end
@@ -176,6 +177,7 @@ terra isprefix(pre : rawstring, str : rawstring) : bool
     return isprefix(pre+1,str+1)
 end
 terra Timer:evaluate()
+C.printf("backend_cpu(): bla1\n")
 	if ([c._opt_verbosity > 0]) then
           var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
           var aggregateTimingNames = [Array(rawstring)].salloc():init()
@@ -576,7 +578,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel)
       compiledKernel(@pd)
 
         if ([_opt_collect_kernel_timing]) then
-            pd.timer:endEvent(&endEvent)
+            pd.timer:endEvent(&endEvent, 0)
         end
         I.__itt_task_end(domain)
     end
