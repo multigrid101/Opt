@@ -628,14 +628,14 @@ return function(problemSpec)
                 -- for k = 1,backend.numthreads+1 do
                   -- alphaDenominator = alphaDenominator + @(pd.scanAlphaDenominator.data[k])
                 -- end
-                [backend.ReduceVar.reduceAllThreads( `pd.scanAlphaDenominator )]
+                -- [backend.ReduceVar.reduceAllThreads( `pd.scanAlphaDenominator )]
                   alphaDenominator =  [backend.ReduceVar.getData(`pd.scanAlphaDenominator, 0)]
 
                 var alphaNumerator : opt_float = 0.0
                 -- for k = 1,backend.numthreads+1 do
                 --   alphaNumerator = alphaNumerator + pd.scanAlphaNumerator:getData(k)
                 -- end
-                [backend.ReduceVar.reduceAllThreads( `pd.scanAlphaNumerator )]
+                -- [backend.ReduceVar.reduceAllThreads( `pd.scanAlphaNumerator )]
                   alphaNumerator =  [backend.ReduceVar.getData(`pd.scanAlphaNumerator, 0)]
 
 
@@ -1788,6 +1788,8 @@ return function(problemSpec)
                     [backend.ReduceVar.setToConst( `pd.scanBetaNumerator, 0)]
                                     
                     if [problemSpec:UsesLambda()] and ((lIter + 1) % residual_reset_period) == 0 then
+                        [backend.ReduceVar.reduceAllThreads( `pd.scanAlphaDenominator )]
+                        [backend.ReduceVar.reduceAllThreads( `pd.scanAlphaNumerator )]
                         gpu.PCGStep2_1stHalf(pd)
                         gpu.computeAdelta(pd)
                         if isGraph then
