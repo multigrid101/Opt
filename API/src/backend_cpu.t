@@ -295,58 +295,18 @@ b.ReduceVarHost.reduceAllThreads2 = b.ReduceVar.reduceAllThreads
 ---------------- ReduceVar end
 
 -- atomicAdd START
-if c.opt_float == float then
-    local terra atomicAddSync(sum : &float, value : float, offset : int)
+-- if c.opt_float == float then
+    -- local terra atomicAddSync(sum : &float, value : float, offset : int)
+    local terra atomicAddSync(sum : &opt_float, value : opt_float, offset : int)
       @sum = @sum + value
     end
-    local terra atomicAddNosync(sum : &float, value : float)
+    -- local terra atomicAddNosync(sum : &float, value : float)
+    local terra atomicAddNosync(sum : &opt_float, value : opt_float)
       @sum = @sum + value
     end
     b.atomicAdd_sync = atomicAddSync
     b.atomicAdd_nosync = atomicAddNosync
-else
-    struct ULLDouble {
-        union {
-            a : uint64;
-            b : double;
-        }
-    }
-
-
-    local terra __double_as_ull(v : double)
-        var u : ULLDouble
-        u.b = v;
-
-        return u.a;
-    end
-
-    local terra __ull_as_double(v : uint64)
-        var u : ULLDouble
-        u.a = v;
-
-        return u.b;
-    end
-
-    if pascalOrBetterGPU then
-        local terra atomicAddSync(sum : &float, value : float, offset : int)
-          @sum = @sum + value
-        end
-        local terra atomicAddNosync(sum : &float, value : float)
-          @sum = @sum + value
-        end
-        b.atomicAdd_sync = atomicAddSync
-        b.atomicAdd_nosync = atomicAddNosync
-    else
-        local terra atomicAddSync(sum : &float, value : float, offset : int)
-          @sum = @sum + value
-        end
-        local terra atomicAddNosync(sum : &float, value : float)
-          @sum = @sum + value
-        end
-        b.atomicAdd_sync = atomicAddSync
-        b.atomicAdd_nosync = atomicAddNosync
-    end
-end
+-- end
 -- atomicAdd END
 
 local terra warpReduce(val : opt_float) 
