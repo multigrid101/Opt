@@ -1,5 +1,5 @@
 EXECUTABLE = arap_mesh_deformation
-OBJS = build/LandMark.o build/LandMarkSet.o build/CUDAWarpingSolver.o build/mLibSource.o build/main.o build/WarpingSolver.o
+OBJS = build/CeresSolver.o build/shared/CeresSolverBase.o build/LandMark.o build/LandMarkSet.o build/CUDAWarpingSolver.o build/mLibSource.o build/main.o build/WarpingSolver.o
 
 UNAME := $(shell uname)
 ifeq ($(UNAME), Darwin)
