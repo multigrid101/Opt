@@ -7,14 +7,15 @@ SRC ?= src
 CUDAHOME += /usr/local/cuda
 TERRAHOME ?= ../../../terra
 TERRA ?= ../../../terra/release/terra
+SHARED ?= ../shared
 
 ifeq ($(UNAME), Linux)
   S4 = 64
 endif
 
-FLAGS += -O3 -g -std=c++11 -Isrc -Isrc/cutil/inc -I../../API/release/include -I$(TERRAHOME)/include -I$(CUDAHOME)/include -I../external/mLib/include -I../external -I../external/OpenMesh/include 
+FLAGS += -O3 -g -std=c++11 -Isrc -Isrc/cutil/inc -I../../API/release/include -I$(TERRAHOME)/include -I$(CUDAHOME)/include -I../external/mLib/include -I../external -I../external/OpenMesh/include -I/home/sebastian/Desktop/ceres-solver-1.13.0/include/ -I/usr/include/eigen3 -I/home/sebastian/Desktop/ceres-solver-1.13.0/config/
 NVCCFLAGS += -arch sm_30 $(FLAGS)
-LFLAGS += -std=c++11 -L../../API/release/lib -L$(CUDAHOME)/lib$(S4) -lcudart -L$(TERRAHOME)/lib -lterra -ldl -lboost_program_options -L /opt/intel/vtune_amplifier_xe_2017/lib64 -littnotify
+LFLAGS += -std=c++11 -L/home/sebastian/Desktop/ceres-bin/lib -lceres -L../../API/release/lib -L$(CUDAHOME)/lib$(S4) -lcudart -L$(TERRAHOME)/lib -lterra -ldl -lboost_program_options -L /opt/intel/vtune_amplifier_xe_2017/lib64 -littnotify -lglog -lgflags -fopenmp -lgomp -lm -llapack -lcamd -lamd -lccolamd -lcolamd -lcholmod -lblas -lcxsparse
 UNAME := $(shell uname)
 
 ifeq ($(UNAME), Darwin)
@@ -32,15 +33,20 @@ endif
 all: $(EXECUTABLE)
 
 OPTLIB = ../../API/release/lib/libOptDev.a
+CERESLIB = /home/sebastian/Desktop/ceres-bin/lib/libceres.a
 
 build/%.o:	$(SRC)/%.cpp
 	@mkdir -p build
+	$(CXX) $(FLAGS) -fpermissive -MP -MD $< -c -o $@
+build/shared/%.o:	$(SHARED)/%.cpp
+	@mkdir -p build
+	@mkdir -p build/shared
 	$(CXX) $(FLAGS) -fpermissive -MP -MD $< -c -o $@
 build/%.o:	$(SRC)/%.cu
 	@mkdir -p build
 	$(NVCC) $(NVCCFLAGS) $< -c -o $@
 
-$(EXECUTABLE):	$(OBJS) $(OPTLIB)
+$(EXECUTABLE):	$(OBJS) $(OPTLIB) $(CERESLIB)
 	$(CXX) $^ $(LFLAGS) -o $@ -rdynamic
 
 clean:
