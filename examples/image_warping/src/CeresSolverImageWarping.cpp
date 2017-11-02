@@ -62,6 +62,8 @@ Translation A:
 if(mask(i, j) == 0 && offset-in-bounds)
     cost = (x(i, j) - x(i + ox, j + oy)) - mul(R, urshape(i, j) - urshape(i + ox, j + oy)) * w_regSqrt
 */
+#define OPT_FLOAT2 float2
+
 
 vec2f toVec(const OPT_FLOAT2 &v)
 {
@@ -156,6 +158,15 @@ double CeresSolverWarping::solve(const NamedParameters& solverParameters, const 
     std::vector<float2> h_urshape;
     std::vector<float2> h_constraints;
     std::vector<float> h_mask;
+    const int pixelCount = m_dims[0] * m_dims[1];
+
+    h_x_float.resize(pixelCount);
+    h_a_float.resize(pixelCount);
+    h_x_double.resize(pixelCount);
+    h_a_double.resize(pixelCount);
+    h_urshape.resize(pixelCount);
+    h_constraints.resize(pixelCount);
+    h_mask.resize(pixelCount);
 
     findAndCopyArrayToCPU("Offset", h_x_float, problemParameters);
     findAndCopyArrayToCPU("Angle", h_a_float, problemParameters);
@@ -164,11 +175,11 @@ double CeresSolverWarping::solve(const NamedParameters& solverParameters, const 
     findAndCopyArrayToCPU("Mask", h_mask, problemParameters);
     Problem problem;
 
+
     auto getPixel = [=](int x, int y) {
         return y * m_dims[0] + x;
     };
 
-    const int pixelCount = m_dims[0] * m_dims[1];
     for (int i = 0; i < pixelCount; i++)
     {
         h_x_double[i].x = h_x_float[i].x;
