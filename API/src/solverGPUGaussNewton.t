@@ -1746,6 +1746,14 @@ return function(problemSpec)
                 cusparseOuter(pd) -- does nothing if use_cusparse == false
 
                 for lIter = 0, pd.solverparameters.lIterations do				
+                    -- C.printf("\ndoing a linear iteration\n")
+
+                    var liniterEvent : backend.Event
+                    var lItername : &I.__itt_string_handle  = I.__itt_string_handle_create("lIter")
+                    I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, lItername)
+                    if [_opt_collect_kernel_timing] then
+                        pd.timer:startEvent('linear iteration', &liniterEvent)
+                    end
 
                     -- C.cudaMemset(pd.scanAlphaDenominator, 0, sizeof(opt_float))
                     -- backend.memsetDevice(pd.scanAlphaDenominator, 0, sizeof(opt_float) * (backend.numthreads+1))
@@ -1860,6 +1868,12 @@ return function(problemSpec)
                         end
                         Q0 = Q1
                     end
+
+
+                    if [_opt_collect_kernel_timing] then
+                        pd.timer:endEvent(&liniterEvent, 0)
+                    end
+                    I.__itt_task_end(domain)
                 end
                         
                 var model_cost_change : opt_float
