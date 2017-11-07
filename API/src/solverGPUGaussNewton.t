@@ -247,6 +247,12 @@ return function(problemSpec)
     }
 
 
+    if initialization_parameters.use_cusparse then
+        PlanData.entries:insert {"handle", CUsp.cusparseHandle_t }
+        PlanData.entries:insert {"desc", CUsp.cusparseMatDescr_t }
+    end
+
+
     terra PlanData:printAllocationInfo()
       C.printf('Layout of PlanData:\n')
       C.printf("parameters uses %d bytes\n", self.parameters:totalbytes())
@@ -254,10 +260,6 @@ return function(problemSpec)
       C.printf("total usage of PlanData: %d bytes\n", self.parameters:totalbytes() + 12*self.delta:totalbytes())
     end
 
-    if initialization_parameters.use_cusparse then
-        PlanData.entries:insert {"handle", CUsp.cusparseHandle_t }
-        PlanData.entries:insert {"desc", CUsp.cusparseMatDescr_t }
-    end
     -- for k,v in pairs(CUsp) do print(k,v) end
     -- for k,v in pairs(debug) do print(k,v) end
     -- CUsp.cusparseHandle_t:printpretty()
