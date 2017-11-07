@@ -20,13 +20,16 @@ c.nummutexes = 10000 -- adjust by hand (only has effec for backend_cpu_mt) TODO 
 
 c.backend = _opt_backend -- configured in cpp code
 
-c.use_contiguous_allocation = false
+-- c.use_contiguous_allocation = false
+c.use_contiguous_allocation = true
+
 -- c.use_bindless_texture = true
 c.use_bindless_texture = false
 
 c.GRID_SIZES = { {256,1,1}, {16,16,1}, {8,8,4} } -- only relevant for CUDA
 
 
+-- c.pascalOrBetterGPU = true
 c.pascalOrBetterGPU = false
 
 return c
