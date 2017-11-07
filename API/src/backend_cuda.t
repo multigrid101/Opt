@@ -155,6 +155,14 @@ local struct Timer {
 	eventList : &Array(Event)
 }
 b.Timer = Timer
+-- for k,v in pairs(C) do print(k,v) end
+-- print(C.cudaEvent_t)
+-- print('ASDF')
+-- print(C.CUevent_st)
+
+-- print(Timer)
+-- -- C.cudaEvent_t:printpretty()
+-- error()
 
 terra Timer:init() 
 	self.eventList = [Array(Event)].alloc():init()
