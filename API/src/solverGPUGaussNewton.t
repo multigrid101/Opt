@@ -1457,42 +1457,46 @@ return function(problemSpec)
                 --C.printf("alloc JTJ\n")
                 var numrows = nUnknowns + 1
                 cd(C.cudaMalloc([&&opaque](&pd.JTJ_csrRowPtrA),sizeof(int)*numrows))
-                var endJTJalloc : util.TimerEvent
-                pd.timer:startEvent("J^TJ alloc",nil,&endJTJalloc)
+                -- var endJTJalloc : util.TimerEvent
+                var endJTJalloc : backend.Event
+                pd.timer:startEvent("J^TJ alloc",&endJTJalloc)
                 cd(CUsp.cusparseXcsrgemmNnz(pd.handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
                                       nUnknowns,nUnknowns,nResidualsExp,
                                       pd.desc,nnzExp,pd.J_csrRowPtrA,pd.J_csrColIndA,
                                       pd.desc,nnzExp,pd.J_csrRowPtrA,pd.J_csrColIndA,
                                       pd.desc,pd.JTJ_csrRowPtrA, &pd.JTJ_nnz))
-                pd.timer:endEvent(nil,endJTJalloc)
+                pd.timer:endEvent(&endJTJalloc, 0)
                 
                 cd(C.cudaMalloc([&&opaque](&pd.JTJ_csrColIndA), sizeof(int)*pd.JTJ_nnz))
                 cd(C.cudaMalloc([&&opaque](&pd.JTJ_csrValA), sizeof(float)*pd.JTJ_nnz))
                 cd(C.cudaThreadSynchronize())
             end
             
-            var endJTJmm : util.TimerEvent
-            pd.timer:startEvent("JTJ multiply",nil,&endJTJmm)
+            -- var endJTJmm : util.TimerEvent
+            var endJTJmm : backend.Event
+            pd.timer:startEvent("JTJ multiply",&endJTJmm)
 
             cd(CUsp.cusparseScsrgemm(pd.handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
            nUnknowns,nUnknowns,nResidualsExp,
            pd.desc,nnzExp,pd.J_csrValA,pd.J_csrRowPtrA,pd.J_csrColIndA,
            pd.desc,nnzExp,pd.J_csrValA,pd.J_csrRowPtrA,pd.J_csrColIndA,
            pd.desc, pd.JTJ_csrValA, pd.JTJ_csrRowPtrA,pd.JTJ_csrColIndA ))
-           pd.timer:endEvent(nil,endJTJmm)
+           pd.timer:endEvent(&endJTJmm, 0)
            
-            var endJtranspose : util.TimerEvent
-            pd.timer:startEvent("J_transpose",nil,&endJtranspose)
+            -- var endJtranspose : util.TimerEvent
+            var endJtranspose : backend.Event
+            pd.timer:startEvent("J_transpose",&endJtranspose)
             cd(CUsp.cusparseScsr2csc(pd.handle,nResidualsExp, nUnknowns,nnzExp,
                                  pd.J_csrValA,pd.J_csrRowPtrA,pd.J_csrColIndA,
                                  pd.JT_csrValA,pd.JT_csrColIndA,pd.JT_csrRowPtrA,
                                  CUsp.CUSPARSE_ACTION_NUMERIC,CUsp.CUSPARSE_INDEX_BASE_ZERO))
-            pd.timer:endEvent(nil,endJtranspose)
+            pd.timer:endEvent(&endJtranspose, 0)
         end
         terra cusparseInner(pd : &PlanData)
             var [parametersSym] = &pd.parameters
             
             if false then
+            -- if true then
                 C.printf("begin debug dump\n")
                 var J_csrColIndA = GetToHost(pd.J_csrColIndA,nnzExp)
                 var J_csrRowPtrA = GetToHost(pd.J_csrRowPtrA,nResidualsExp + 1)
@@ -1504,10 +1508,10 @@ return function(problemSpec)
                     --C.printf("residual %d -> {%d,%d}\n",i,b,e)
                     for j = b,e do
                         if J_csrColIndA[j] < 0 or J_csrColIndA[j] >= nnzExp then
-                            C.printf("ERROR: j %d (total = %d)\n",j,J_csrColIndA[j])
+                            C.printf("ERROR: J_colInd[%d] = %d\n",j,J_csrColIndA[j])
                         end
                         if j ~= b and J_csrColIndA[j-1] >= J_csrColIndA[j] then
-                            C.printf("ERROR: sort j[%d] = %d, j[%d] = %d\n",j-1,J_csrColIndA[j-1],j,J_csrColIndA[j])
+                            C.printf("ERROR: sort J_colInd[%d] = %d, J_colInd[%d] = %d\n",j-1,J_csrColIndA[j-1],j,J_csrColIndA[j])
                         end
                         --C.printf("colindex: %d\n",J_csrColIndA[j])
                     end
@@ -1519,8 +1523,8 @@ return function(problemSpec)
             cd(C.cudaMemset(pd.Ap_X._contiguousallocation, -1, sizeof(float)*nUnknowns))
             
             if initialization_parameters.use_fused_jtj then
-                var endJTJp : util.TimerEvent
-                pd.timer:startEvent("J^TJp",nil,&endJTJp)
+                var endJTJp : backend.Event
+                pd.timer:startEvent("J^TJp",&endJTJp)
                 cd(CUsp.cusparseScsrmv(
                             pd.handle, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
                             nUnknowns, nUnknowns,pd.JTJ_nnz,
@@ -1530,10 +1534,10 @@ return function(problemSpec)
                             [&float](pd.p._contiguousallocation),
                             &consts[0], [&float](pd.Ap_X._contiguousallocation)
                         ))
-                pd.timer:endEvent(nil,endJTJp)
+                pd.timer:endEvent(&endJTJp, 0)
             else
-                var endJp : util.TimerEvent
-                pd.timer:startEvent("Jp",nil,&endJp)
+                var endJp : backend.Event
+                pd.timer:startEvent("Jp",&endJp)
                 cd(CUsp.cusparseScsrmv(
                             pd.handle, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
                             nResidualsExp, nUnknowns,nnzExp,
@@ -1543,9 +1547,9 @@ return function(problemSpec)
                             [&float](pd.p._contiguousallocation),
                             &consts[0], pd.Jp
                         ))
-                pd.timer:endEvent(nil,endJp)
-                var endJT : util.TimerEvent
-                pd.timer:startEvent("J^T",nil,&endJT)
+                pd.timer:endEvent(&endJp, 0)
+                var endJT : backend.Event
+                pd.timer:startEvent("J^T",&endJT)
                 cd(CUsp.cusparseScsrmv(
                             pd.handle, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
                             nUnknowns, nResidualsExp, nnzExp,
@@ -1555,7 +1559,7 @@ return function(problemSpec)
                             pd.Jp,
                             &consts[0],[&float](pd.Ap_X._contiguousallocation) 
                         ))
-                pd.timer:endEvent(nil,endJT)
+                pd.timer:endEvent(&endJT, 0)
             end
         end
     else
