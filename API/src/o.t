@@ -326,12 +326,12 @@ function ProblemSpec:ParameterType() -- returns self.ProblemParameters, which is
     if not self.ProblemParameters then
         self.ProblemParameters = terralib.types.newstruct("ProblemParameters")
 
-        self.ProblemParameters.entries:insert { "X" , self:UnknownType():terratype() }
+        self.ProblemParameters.entries:insert { field="X" , type=self:UnknownType():terratype() }
 
         for i,p in ipairs(self.parameters) do
             local n,t = p.name,p:terratype()
             if not p.isunknown then
-              self.ProblemParameters.entries:insert { n, t }
+              self.ProblemParameters.entries:insert { field=n, type=t }
             end
         end
         -- error()
@@ -536,7 +536,7 @@ function IndexSpace:indextype()
         params:insert(symbol(int,n))
         params2:insert(symbol(int,n))
         fieldnames:insert(n)
-        Index.entries:insert { n, int }
+        Index.entries:insert { field=n, type=int }
     end
 
     -- explanation: let's say X is of type Index with X.d0 = 5 and X.d1 = 3. Then
@@ -1014,7 +1014,7 @@ function UnknownType:terratype()
     local T = self._terratype
     local images = self.images
     for i,ip in ipairs(images) do
-        T.entries:insert { ip.name, ip.imagetype:terratype() }
+        T.entries:insert { field=ip.name, type=ip.imagetype:terratype() }
     end
 
 
@@ -1200,7 +1200,7 @@ function ProblemSpec:Unknown(name,typ,ispace,idx) return self:Image(name,typ,isp
 function ProblemSpec:Graph(name, ispace, ...)
     self:Stage "inputs"
     local GraphType = terralib.types.newstruct(name)
-    GraphType.entries:insert ( {"N",int32} )
+    GraphType.entries:insert ( {field="N",type=int32} )
 
     local mm = GraphType.metamethods
     mm.idx = toispace(ispace) -- the index space (numedges of the graph)
@@ -1213,7 +1213,7 @@ function ProblemSpec:Graph(name, ispace, ...)
         local ispace = toispace(dims)
         graphispace = ispace
         local Index = ispace:indextype()
-        GraphType.entries:insert {name, &Index}
+        GraphType.entries:insert {field=name, type=&Index}
         mm.elements:insert( { name = name, type = Index, idx = assert(tonumber(didx))} )
         numverticesPerHyperedge = numverticesPerHyperedge + 1
     end
