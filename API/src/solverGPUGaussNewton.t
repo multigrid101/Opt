@@ -941,14 +941,20 @@ return function(problemSpec)
         else
             terra kernels.saveJToCRS(pd : PlanData, [kernelArglist], [backend.threadarg])
                 var idx : Index
-                var [parametersSym] = &pd.parameters
-                if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
-                    [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,idx,pd)]
+                var [parametersSym] = &pd.parameters -- TODO this isn't used???
+                -- if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
+                var isMasked = fmap.exclude(idx,pd.parameters, [backend.threadarg])
+                if idx:initFromCUDAParams([kernelArglist])  then
+                    -- [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,idx,pd)] -- original
+                    [generateDumpJ(fmap.derivedfrom,fmap.dumpJ,idx,pd, isMasked )]
                 end
             end
             kernels.saveJToCRS.listOfAtomicAddVars = {}
             kernels.saveJToCRS.compileForMultiThread = true
         end
+        print(kernels.saveJToCRS)
+        print(fmap.dumpJ)
+        -- error()
         
 
         if fmap.precompute then

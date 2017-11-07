@@ -144,14 +144,26 @@ local Array = S.memoize(Array)
 
 -- TODO what is this? its only used in the next few lines? can we make this local to the Timer "class"?
 local struct Event {
-	-- starttime : C.timeval
-	-- endtime : C.timeval
 	starttime : C.timespec
 	endtime : C.timespec
 	duration : double -- unit: ms
 	eventName : rawstring
 }
 b.Event = Event
+terra Event:getStartTime()
+  var elapsed : double
+  elapsed = 1000*(self.starttime.tv_sec)
+  elapsed = elapsed + [double](self.starttime.tv_nsec)/([double](1e6))
+
+  return elapsed
+end
+terra Event:getEndTime()
+  var elapsed : double
+  elapsed = 1000*(self.endtime.tv_sec)
+  elapsed = elapsed + [double](self.endtime.tv_nsec)/([double](1e6))
+
+  return elapsed
+end
 terra Event:calcElapsedTime()
   var elapsed : double
 
@@ -1109,9 +1121,13 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
           -- timer start
           -- TODO find out if we need to optimize
+          var eventKernelName = [&int8](C.malloc(100 * sizeof(int8)))
+          C.sprintf(eventKernelName, "%s_total", kernelName)
+
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
           if ([_opt_collect_kernel_timing]) then
-              pd.timer:startEvent(kernelName,&endEvent)
+              -- pd.timer:startEvent(kernelName, &endEvent)
+              pd.timer:startEvent(eventKernelName, &endEvent)
           end
 
           -- REDUCEVECTOR INIT
