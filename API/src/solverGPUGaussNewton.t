@@ -27,6 +27,8 @@ local JacobiScalingType = { NONE = {}, ONCE_PER_SOLVE = {}, EVERY_ITERATION = {}
 
 local initialization_parameters = {
     use_cusparse = false,
+    -- use_cusparse = true,
+
     use_fused_jtj = false,
     guardedInvertType = GuardedInvertType.CERES,
     jacobiScaling = JacobiScalingType.ONCE_PER_SOLVE
@@ -83,8 +85,12 @@ if initialization_parameters.use_cusparse then
         local cusparselibpath = "/lib/libcusparse.so"
     end
     terralib.linklibrary(cusparsepath..cusparselibpath)
+    -- error()
     terralib.includepath = terralib.includepath..";"..
                            cusparsepath.."/include/"
+    -- CUsp = terralib.includecstring [[
+    --     #include <cusparse_v2.h>
+    -- ]]
     CUsp = terralib.includecstring [[
         #include <cusparse_v2.h>
     ]]
@@ -115,6 +121,7 @@ local FLOAT_EPSILON = `[opt_float](0.00000001f)
 -- GAUSS NEWTON (or LEVENBERG-MARQUADT)
 -- takes the problem-specification as input. That makes sense, since the generated solver is problem-specific
 return function(problemSpec) 
+-- problemSpec.usepreconditioner = false
     local UnknownType = problemSpec:UnknownType() -- UnknownType is a lua-object that represents a lua-type
     local TUnknownType = UnknownType:terratype() -- TUnknownType is a lua-object (terra-struct) that represents a terra-type
     -- start of the unknowns that correspond to this image
@@ -226,11 +233,11 @@ return function(problemSpec)
         J_csrColIndA : &int
         J_csrRowPtrA : &int
           
-        JT_csrValA : &float
+        JT_csrValA : &float -- TODO why no opt_float here?
         JT_csrRowPtrA : &int
         JT_csrColIndA : &int
 
-        JTJ_csrValA : &float
+        JTJ_csrValA : &float -- TODO why no opt_float here?
         JTJ_csrRowPtrA : &int
         JTJ_csrColIndA : &int
 
@@ -251,6 +258,12 @@ return function(problemSpec)
         PlanData.entries:insert {"handle", CUsp.cusparseHandle_t }
         PlanData.entries:insert {"desc", CUsp.cusparseMatDescr_t }
     end
+    -- for k,v in pairs(CUsp) do print(k,v) end
+    -- for k,v in pairs(debug) do print(k,v) end
+    -- CUsp.cusparseHandle_t:printpretty()
+    -- for k,v in pairs(PlanData.entries) do print(k,v.type) end
+    -- for k,v in pairs(PlanData.entries) do print(k,v.field, v.type) end
+        -- error()
 
     S.Object(PlanData) -- makes an object out of PlanData, see 'std.t' in terra std-lib. This basically only provides alloc() and destruct() functions for 'PlanData'
 
@@ -289,7 +302,10 @@ return function(problemSpec)
         return c
     end
 
-    local function generateDumpJ(ES,dumpJ,idx,pd) -- TODO only used in building of 'delegate' --> make local there
+
+    
+    local function generateDumpJ(ES,dumpJ,idx,pd, isMasked) -- TODO only used in building of 'delegate' --> make local there
+        -- TODO what is this? it seems unused...
         local nnz_per_entry = 0
         for i,r in ipairs(ES.residuals) do
             nnz_per_entry = nnz_per_entry + #r.unknowns
@@ -315,14 +331,15 @@ return function(problemSpec)
 
         return quote
                    var rhs = dumpJ(idx,pd.parameters, [backend.threadarg])
-                   -- TODO what is this??? it seems unused
-                   --[[escape                
+                   -- TODO what is this??? it seems unused --> rhs from the line above is used below
+                   escape                
                        local nnz = 0
                        local residual = 0
                        for i,r in ipairs(ES.residuals) do
                            emit quote
                                pd.J_csrRowPtrA[local_residual+residual] = local_rowidx + nnz
                            end
+
                            local begincolumns = nnz
                            for i,u in ipairs(r.unknowns) do
                                local image_offset = imagename_to_unknown_offset[u.image.name]
@@ -330,19 +347,31 @@ return function(problemSpec)
                                local uidx = GetOffset(idx,u.index)
                                local unknown_index = `image_offset + nchannels*uidx + u.channel
      
-                               emit quote
+                               emit quote -- original
                                    pd.J_csrValA[local_rowidx + nnz] = opt_float(rhs.["_"..tostring(nnz)])
                                    pd.J_csrColIndA[local_rowidx + nnz] = wrap(unknown_index,opt_float(rhs.["_"..tostring(nnz)]))
                                end
+
+                               -- emit quote
+                               --   if isMasked then
+                               --     pd.J_csrValA[local_rowidx + nnz] = opt_float(rhs.["_"..tostring(nnz)])
+                               --   else
+                               --     -- pd.J_csrValA[local_rowidx + nnz] = 0.0
+                               --     pd.J_csrValA[local_rowidx + nnz] = opt_float(rhs.["_"..tostring(nnz)])
+                               --   end
+                               --   pd.J_csrColIndA[local_rowidx + nnz] = wrap(unknown_index,opt_float(rhs.["_"..tostring(nnz)]))
+                               -- end
+
                                nnz = nnz + 1
                            end
+
                            -- sort the columns
                            emit quote
                                sortCol(&pd, local_rowidx + begincolumns, local_rowidx + nnz)
                            end
                            residual = residual + 1
                        end
-                   end--]]
+                   end
                end
     end
 	
@@ -518,6 +547,10 @@ return function(problemSpec)
                  -- A x p_k  => J^T x J x p_k 
                 tmp = fmap.applyJTJ(idx, pd.parameters, pd.p, pd.CtC, [backend.threadarg])
                 pd.Ap_X(idx) = tmp					 -- store for next kernel call
+
+                -- pd.Ap_X(idx) = 1.0 -- TODO muss weg
+                -- pd.p(idx) = 1.0 -- TODO muss weg
+
                 d = pd.p(idx):dot(tmp)			 -- x-th term of denominator of alpha
             end
 
@@ -532,6 +565,8 @@ return function(problemSpec)
         kernels.PCGStep1.compileForMultiThread = true
         print(kernels.PCGStep1)
         print(fmap.applyJTJ)
+        -- printt(fmap)
+        -- for k,v in pairs(fmap) do print(k) end
         -- error()
 
         if multistep_alphaDenominator_compute then
@@ -539,6 +574,12 @@ return function(problemSpec)
                 var d : opt_float = opt_float(0.0f)
                 var idx : Index
                 if idx:initFromCUDAParams([kernelArglist]) and not fmap.exclude(idx,pd.parameters, [backend.threadarg]) then
+
+                    -- pd.Ap_X(idx) = 1.0 -- TODO muss weg
+                    -- pd.p(idx) = 1.0 -- TODO muss weg
+                    --> Ap_X with cusparse is different than without
+                    --> p is correct at this point, so the error must be in the matrix-vector multiplication
+
                     d = pd.p(idx):dot(pd.Ap_X(idx))           -- x-th term of denominator of alpha
                 end
                 -- unknownWideReduction(idx,d,(pd.scanAlphaDenominator.data[ [backend.threadarg_val] ]))
@@ -618,6 +659,8 @@ return function(problemSpec)
         kernels.PCGStep2.listOfAtomicAddVars = {}
         -- kernels.PCGStep2.compileForMultiThread = false
         kernels.PCGStep2.compileForMultiThread = true
+        print(kernels.PCGStep2)
+        -- error()
 
         terra kernels.PCGStep2_1stHalf(pd : PlanData, [kernelArglist], [backend.threadarg])
             var idx : Index
@@ -1706,6 +1749,7 @@ return function(problemSpec)
                 [backend.ReduceVar.setToConst( `pd.scanBetaNumerator, 0)]
 
                 gpu.PCGInit1(pd)
+                -- C.printf("alphaNumerator after Init1 is %f\n", pd.scanAlphaNumerator[1][0])
                 if isGraph then
                         gpu.PCGInit1_Graph(pd)	
                         gpu.PCGInit1_Finish(pd)	
@@ -1738,6 +1782,7 @@ return function(problemSpec)
                             gpu.PCGComputeCtC_Graph(pd)
                             -- This also computes Q
                             gpu.PCGFinalizeDiagonal(pd)
+                -- C.printf("alphaNumerator after FinalizeDiagonal is %f\n", pd.scanAlphaNumerator[1][0])
                             Q0 = fetchQ(pd)
                              end
                         end
@@ -1746,7 +1791,7 @@ return function(problemSpec)
                 cusparseOuter(pd) -- does nothing if use_cusparse == false
 
                 for lIter = 0, pd.solverparameters.lIterations do				
-                    -- C.printf("\ndoing a linear iteration\n")
+                    C.printf("\ndoing a linear iteration\n")
 
                     var liniterEvent : backend.Event
                     var lItername : &I.__itt_string_handle  = I.__itt_string_handle_create("lIter")
@@ -1762,6 +1807,7 @@ return function(problemSpec)
                     -- end
                     -- pd.scanAlphaDenominator:setToConst(0.0)
                     [backend.ReduceVar.setToConst( `pd.scanAlphaDenominator, 0)]
+                        -- C.printf("alphaNum before usage is is %f\n", pd.scanAlphaNumerator[0][0])
 
 
 
@@ -1796,8 +1842,10 @@ return function(problemSpec)
                     [backend.ReduceVar.setToConst( `pd.scanBetaNumerator, 0)]
                                     
                     if [problemSpec:UsesLambda()] and ((lIter + 1) % residual_reset_period) == 0 then
+                    -- if [problemSpec:UsesLambda()] and ((lIter + 1) % 200) == 0 then
                         [backend.ReduceVar.reduceAllThreads( `pd.scanAlphaDenominator )]
                         [backend.ReduceVar.reduceAllThreads( `pd.scanAlphaNumerator )]
+                        -- C.printf("alphaDen(asdf) is %f\n", pd.scanAlphaDenominator[0][0])
                         gpu.PCGStep2_1stHalf(pd)
                         gpu.computeAdelta(pd)
                         if isGraph then
@@ -1813,6 +1861,7 @@ return function(problemSpec)
                         -- end
                         -- pd.scanAlphaDenominator:reduceAllThreads()
                         [backend.ReduceVar.reduceAllThreads( `pd.scanAlphaDenominator )]
+                        -- C.printf("alphaDen is %f\n", pd.scanAlphaDenominator[0][0])
 
 
                         -- @(pd.scanAlphaNumerator.data[0]) = 0.0
@@ -1835,6 +1884,7 @@ return function(problemSpec)
                 -- end
                 -- pd.scanBetaNumerator:reduceAllThreads()
                 [backend.ReduceVar.reduceAllThreads( `pd.scanBetaNumerator )]
+                        -- C.printf("betaNum is %f\n", pd.scanBetaNumerator[0][0])
 
 
                 -- [unroll(rDotzNew, `pd.scanBetaNumerator, backend.numthreads+1)]
@@ -1938,6 +1988,22 @@ return function(problemSpec)
                              end
                         end 
                     end
+
+                    -- C.printf("SOLVERPARAMETERS: asdf=%f\n")
+                    -- C.printf("SOLVERPARAMETERS: min_relative_decrease = %f\n", pd.solverparameters.min_relative_decrease )
+                    -- C.printf("SOLVERPARAMETERS: min_trust_region_radius = %f\n", pd.solverparameters.min_trust_region_radius )
+                    -- C.printf("SOLVERPARAMETERS: max_trust_region_radius = %f\n", pd.solverparameters.max_trust_region_radius )
+                    -- C.printf("SOLVERPARAMETERS: q_tolerance = %f\n", pd.solverparameters.q_tolerance )
+                    -- C.printf("SOLVERPARAMETERS: function_tolerance = %f\n", pd.solverparameters.function_tolerance )
+                    -- C.printf("SOLVERPARAMETERS: trust_region_radius = %f\n", pd.parameters.trust_region_radius )
+                    -- C.printf("SOLVERPARAMETERS: radius_decrease_factor = %f\n", pd.solverparameters.radius_decrease_factor )
+                    -- C.printf("SOLVERPARAMETERS: min_lm_diagonal = %f\n", pd.solverparameters.min_lm_diagonal )
+                    -- C.printf("SOLVERPARAMETERS: max_lm_diagonal = %f\n", pd.solverparameters.max_lm_diagonal )
+
+                    -- C.printf("SOLVERPARAMETERS: residual_reset_period = %d\n", pd.solverparameters.residual_reset_period )
+                    -- C.printf("SOLVERPARAMETERS: nIter = %d\n", pd.solverparameters.nIter )
+                    -- C.printf("SOLVERPARAMETERS: nIterations = %d\n", pd.solverparameters.nIterations )
+                    -- C.printf("SOLVERPARAMETERS: lIterations = %d\n", pd.solverparameters.lIterations )
 
                     --[[ 
                     To match CERES we would check for termination:
