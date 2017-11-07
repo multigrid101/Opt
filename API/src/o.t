@@ -1017,17 +1017,6 @@ function UnknownType:terratype()
         T.entries:insert { ip.name, ip.imagetype:terratype() }
     end
 
-    terra T:totalbytes()
-        var size = 0
-        escape -- calculate total number of bytes required to hold all images in a single array
-            for i,ip in ipairs(images) do
-                emit quote 
-                    size = size + self.[ip.name]:totalbytes()
-                end
-            end
-        end
-        return size
-    end
 
     --- initGPU START
     if use_contiguous_allocation then
@@ -1073,6 +1062,17 @@ function UnknownType:terratype()
         end
     end
     --- initGPU END
+    terra T:totalbytes()
+        var size = 0
+        escape -- calculate total number of bytes required to hold all images in a single array
+            for i,ip in ipairs(images) do
+                emit quote 
+                    size = size + self.[ip.name]:totalbytes()
+                end
+            end
+        end
+        return size
+    end
 
     for _,ispace in ipairs(self:IndexSpaces()) do   
         local Index = ispace:indextype()
