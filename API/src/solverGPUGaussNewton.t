@@ -74,17 +74,19 @@ local multistep_alphaDenominator_compute = initialization_parameters.use_cuspars
 -- end)
 local cd = backend.cd
 
+print('ASDF1')
 if initialization_parameters.use_cusparse then
-    local cusparsepath = "/usr/local/cuda"
+    local cusparsepath = "/usr/local/cuda-8.0/targets/x86_64-linux"
     local cusparselibpath = "/lib64/libcusparse.dylib"
     if ffi.os == "Windows" then
         cusparsepath = "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v7.5"
         cusparselibpath = "\\bin\\cusparse64_75.dll"
     end
     if ffi.os == "Linux" then
-        local cusparselibpath = "/lib/libcusparse.so"
+        cusparselibpath = "/lib/libcusparse.so.8.0"
     end
     terralib.linklibrary(cusparsepath..cusparselibpath)
+    print(cusparsepath..cusparselibpath)
     -- error()
     terralib.includepath = terralib.includepath..";"..
                            cusparsepath.."/include/"
@@ -92,9 +94,10 @@ if initialization_parameters.use_cusparse then
     --     #include <cusparse_v2.h>
     -- ]]
     CUsp = terralib.includecstring [[
-        #include <cusparse_v2.h>
+        #include <cusparse.h>
     ]]
 end
+print('ASDF2')
 
 
 -- local gpuMath = util.gpuMath
