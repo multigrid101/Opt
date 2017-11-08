@@ -26,10 +26,12 @@ local JacobiScalingType = { NONE = {}, ONCE_PER_SOLVE = {}, EVERY_ITERATION = {}
 
 
 local initialization_parameters = {
-    use_cusparse = false,
-    -- use_cusparse = true,
+    -- use_cusparse = false,
+    use_cusparse = true,
 
     use_fused_jtj = false,
+    -- use_fused_jtj = true,
+
     guardedInvertType = GuardedInvertType.CERES,
     jacobiScaling = JacobiScalingType.ONCE_PER_SOLVE
 }
@@ -249,10 +251,9 @@ return function(problemSpec)
         Jp : &float
     }
 
-
+    -- insert 'handle' and 'desc' field into PlanData-type.
     if initialization_parameters.use_cusparse then
-        PlanData.entries:insert {"handle", CUsp.cusparseHandle_t }
-        PlanData.entries:insert {"desc", CUsp.cusparseMatDescr_t }
+        backend.insertMatrixlibEntries(PlanData)
     end
 
 
@@ -1440,7 +1441,7 @@ return function(problemSpec)
         end
     end
 
-    local terra GetToHost(ptr : &opaque, N : int) : &int -- TODO dead code???
+    local terra GetToHost(ptr : &opaque, N : int) : &int
         var r = [&int](C.malloc(sizeof(int)*N))
         -- C.cudaMemcpy(r,ptr,N*sizeof(int),C.cudaMemcpyDeviceToHost)
         backend.memcpyDevice2Host(r,ptr,N*sizeof(int))
@@ -1450,57 +1451,102 @@ return function(problemSpec)
     local cusparseInner,cusparseOuter
 
     if initialization_parameters.use_cusparse then
+    -- define cusparseOuter() and cusparseInner(). If use_cusparse==false,
+    -- these functions do nothing.
+    -- TODO refactor to always define these function and use metaprogramming
+    -- in step() to get rid of it if not needed.
         terra cusparseOuter(pd : &PlanData)
+        -- allocate JTJ (if necessary), calculate JTJ and calculate JT.
+
             var [parametersSym] = &pd.parameters
             --logSolver("saving J...\n")
+
+            -- compute J matrix. (the real one, not a modified version as the
+            -- one used by the LM method.
             gpu.saveJToCRS(pd)
             if isGraph then
                 gpu.saveJToCRS_Graph(pd)
             end
             --logSolver("... done\n")
+
+            -- check if memory for JTJ has already been allocated. If yes, then
+            -- we can proceed with the multiplication JT*J. If not, then we
+            -- allocate memory for JTJ as is explained in the docs for
+            -- cusparse<t>csrgemm.
+            -- TODO refactor this allocation stuff and put in init()
             if pd.JTJ_csrRowPtrA == nil then
                 --allocate row
                 --C.printf("alloc JTJ\n")
                 var numrows = nUnknowns + 1
-                cd(C.cudaMalloc([&&opaque](&pd.JTJ_csrRowPtrA),sizeof(int)*numrows))
-                -- var endJTJalloc : util.TimerEvent
+
+                var numBytesForJTJRowPtr = numrows*sizeof(int)
+                cd( backend.allocateDevice(&pd.JTJ_csrRowPtrA, numBytesForJTJRowPtr, int) )
+
                 var endJTJalloc : backend.Event
                 pd.timer:startEvent("J^TJ alloc",&endJTJalloc)
-                cd(CUsp.cusparseXcsrgemmNnz(pd.handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
-                                      nUnknowns,nUnknowns,nResidualsExp,
-                                      pd.desc,nnzExp,pd.J_csrRowPtrA,pd.J_csrColIndA,
-                                      pd.desc,nnzExp,pd.J_csrRowPtrA,pd.J_csrColIndA,
-                                      pd.desc,pd.JTJ_csrRowPtrA, &pd.JTJ_nnz))
+
+                backend.computeNnzPatternATA(pd.handle, pd.desc,
+                                             nUnknowns, [nResidualsExp],
+                                             [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
+                                             pd.JTJ_csrRowPtrA, &pd.JTJ_nnz)
+
                 pd.timer:endEvent(&endJTJalloc, 0)
                 
-                cd(C.cudaMalloc([&&opaque](&pd.JTJ_csrColIndA), sizeof(int)*pd.JTJ_nnz))
-                cd(C.cudaMalloc([&&opaque](&pd.JTJ_csrValA), sizeof(float)*pd.JTJ_nnz))
-                cd(C.cudaThreadSynchronize())
+                var numBytesForJTJColInd = pd.JTJ_nnz*sizeof(int)
+                var numBytesForJTJVal = pd.JTJ_nnz*sizeof(float) -- TODO why not opt_float here?
+                cd( backend.allocateDevice(&pd.JTJ_csrColIndA, numBytesForJTJColInd, int) )
+                cd( backend.allocateDevice(&pd.JTJ_csrValA, numBytesForJTJVal, float) )
+
+
+                -- TODO refactor this a bit better.
+                if [backend.name] == 'CUDA' then
+                  cd(C.cudaThreadSynchronize())
+                end
             end
             
-            -- var endJTJmm : util.TimerEvent
+            -- Do the multiplication JT*J
             var endJTJmm : backend.Event
             pd.timer:startEvent("JTJ multiply",&endJTJmm)
 
-            cd(CUsp.cusparseScsrgemm(pd.handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
-           nUnknowns,nUnknowns,nResidualsExp,
-           pd.desc,nnzExp,pd.J_csrValA,pd.J_csrRowPtrA,pd.J_csrColIndA,
-           pd.desc,nnzExp,pd.J_csrValA,pd.J_csrRowPtrA,pd.J_csrColIndA,
-           pd.desc, pd.JTJ_csrValA, pd.JTJ_csrRowPtrA,pd.JTJ_csrColIndA ))
-           pd.timer:endEvent(&endJTJmm, 0)
+            backend.computeATA(pd.handle, pd.desc,
+                               nUnknowns, [nResidualsExp], [nnzExp],
+                               pd.J_csrValA, pd.J_csrRowPtrA, pd.J_csrColIndA,
+                               pd.JTJ_csrValA, pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA)
+
+            pd.timer:endEvent(&endJTJmm, 0)
            
-            -- var endJtranspose : util.TimerEvent
+            -- calculate JT.
             var endJtranspose : backend.Event
             pd.timer:startEvent("J_transpose",&endJtranspose)
-            cd(CUsp.cusparseScsr2csc(pd.handle,nResidualsExp, nUnknowns,nnzExp,
-                                 pd.J_csrValA,pd.J_csrRowPtrA,pd.J_csrColIndA,
-                                 pd.JT_csrValA,pd.JT_csrColIndA,pd.JT_csrRowPtrA,
-                                 CUsp.CUSPARSE_ACTION_NUMERIC,CUsp.CUSPARSE_INDEX_BASE_ZERO))
+
+            backend.computeAT(pd.handle, pd.desc,
+                              nUnknowns, [nResidualsExp], [nnzExp],
+                              pd.J_csrValA, pd.J_csrRowPtrA, pd.J_csrColIndA,
+                              pd.JT_csrValA, pd.JT_csrRowPtrA, pd.JT_csrColIndA)
+
             pd.timer:endEvent(&endJtranspose, 0)
         end
+
+
         terra cusparseInner(pd : &PlanData)
+        -- check if matrix entries are valid (only if activated, see below) and
+        -- and set Ap_X = JTJ * p or
+        --         Ap_X = JT*(J*p),
+        -- depending on the value of 'use_fused_jtj'
             var [parametersSym] = &pd.parameters
             
+            -- activate to get the following error checks on each row in J:
+            -- (expensive checks, so only activate for debugging)
+            --     * Make sure that consecutive indices in rowPtr are valid
+            --         - rowPtr[i] < rowPtr[i+1] should be fulfilled
+            --         - rowPtr[i] >= 0 and rowPtr[i+1]>=0 should be fulfilled
+            --         - rowPtr[i] < nnZ and rowPtr[i+1]<= nnZ should be fulfilled
+            --     * Make sure that all column indices in the i-th row are valid
+            --         - colInd >= 0 and colInd < nnZ should be fulfilled 
+            --           (TODO the second condition seems wrong, should be 'colInd<nUnknowns?')
+            --     * Make sure that column indices in the i-th row are sorted,
+            --       i.e. if this row contains 3 nnz entries, then the respective
+            --       colInds should be e.g. (3 6 8) instead of (8 3 6)
             if false then
             -- if true then
                 C.printf("begin debug dump\n")
@@ -1526,45 +1572,43 @@ return function(problemSpec)
             end
             
             var consts = array(0.f,1.f,2.f)
-            cd(C.cudaMemset(pd.Ap_X._contiguousallocation, -1, sizeof(float)*nUnknowns))
+
+            -- reset Ap_X TODO why are we doing this???
+            -- cd(C.cudaMemset(pd.Ap_X._contiguousallocation, -1, sizeof(float)*nUnknowns))
+            cd( backend.memsetDevice(pd.Ap_X._contiguousallocation, -1,
+                                     sizeof(float)*nUnknowns) )
             
             if initialization_parameters.use_fused_jtj then
                 var endJTJp : backend.Event
                 pd.timer:startEvent("J^TJp",&endJTJp)
-                cd(CUsp.cusparseScsrmv(
-                            pd.handle, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
-                            nUnknowns, nUnknowns,pd.JTJ_nnz,
-                            &consts[1], pd.desc,
-                            pd.JTJ_csrValA, 
-                            pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA,
-                            [&float](pd.p._contiguousallocation),
-                            &consts[0], [&float](pd.Ap_X._contiguousallocation)
-                        ))
+
+                backend.applyAtoVector(pd.handle, pd.desc,
+                                nUnknowns, nUnknowns, pd.JTJ_nnz,
+                                pd.JTJ_csrValA, pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA,
+                                [&float](pd.p._contiguousallocation),
+                                [&float](pd.Ap_X._contiguousallocation))
+
                 pd.timer:endEvent(&endJTJp, 0)
             else
                 var endJp : backend.Event
                 pd.timer:startEvent("Jp",&endJp)
-                cd(CUsp.cusparseScsrmv(
-                            pd.handle, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
-                            nResidualsExp, nUnknowns,nnzExp,
-                            &consts[1], pd.desc,
-                            pd.J_csrValA, 
-                            pd.J_csrRowPtrA, pd.J_csrColIndA,
-                            [&float](pd.p._contiguousallocation),
-                            &consts[0], pd.Jp
-                        ))
+
+                backend.applyAtoVector(pd.handle, pd.desc,
+                                nUnknowns, [nResidualsExp], [nnzExp],
+                                pd.J_csrValA, pd.J_csrRowPtrA, pd.J_csrColIndA,
+                                [&float](pd.p._contiguousallocation), pd.Jp)
+
                 pd.timer:endEvent(&endJp, 0)
+
+
                 var endJT : backend.Event
                 pd.timer:startEvent("J^T",&endJT)
-                cd(CUsp.cusparseScsrmv(
-                            pd.handle, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
-                            nUnknowns, nResidualsExp, nnzExp,
-                            &consts[1], pd.desc,
-                            pd.JT_csrValA, 
-                            pd.JT_csrRowPtrA, pd.JT_csrColIndA,
-                            pd.Jp,
-                            &consts[0],[&float](pd.Ap_X._contiguousallocation) 
-                        ))
+
+                backend.applyAtoVector(pd.handle, pd.desc,
+                                [nResidualsExp], nUnknowns, [nnzExp],
+                                pd.JT_csrValA, pd.JT_csrRowPtrA, pd.JT_csrColIndA,
+                                pd.Jp, [&float](pd.Ap_X._contiguousallocation))
+
                 pd.timer:endEvent(&endJT, 0)
             end
         end
@@ -1574,6 +1618,7 @@ return function(problemSpec)
     end
 
     -- from here on: define init, step, etc, which make up the main body of the solver
+    -- and the Opt API.
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra init(data_ : &opaque, params_ : &&opaque)
       C.printf('starting init\n')
@@ -1605,61 +1650,61 @@ return function(problemSpec)
        -- pd.timer:startEvent("overall",nil,&pd.endSolver)
        pd.timer:startEvent("overall", &pd.endSolver)
 
-         -- THIS LINE ASSIGNS e.g. THE number of edges of a graph to graph.N (which is later used for bounds checking)
-         -- does not seems to depend on backend
-      C.printf('inside init1\n')
-         [util.initParameters(`pd.parameters,problemSpec,params_,true)]
-      C.printf('inside init2\n')
+       -- THIS LINE ASSIGNS e.g. THE number of edges of a graph to graph.N
+       -- (which is later used for bounds checking)
+       -- does not seems to depend on backend
+       C.printf('inside init1\n')
+       [util.initParameters(`pd.parameters,problemSpec,params_,true)]
+       C.printf('inside init2\n')
 
          var [parametersSym] = &pd.parameters
+
          escape
-             -- TODO QUES what does all this cusparse stuff actually do?
-             if initialization_parameters.use_cusparse then -- This block only makes sense for cuda backend
-                 emit quote
-                          if pd.J_csrValA == nil then
-                              cd(CUsp.cusparseCreateMatDescr( &pd.desc ))
-                              cd(CUsp.cusparseSetMatType( pd.desc,CUsp.CUSPARSE_MATRIX_TYPE_GENERAL ))
-                              cd(CUsp.cusparseSetMatIndexBase( pd.desc,CUsp.CUSPARSE_INDEX_BASE_ZERO ))
-                              cd(CUsp.cusparseCreate( &pd.handle ))
-                               
-                              logSolver("nnz = %s\n",[tostring(nnzExp)])
-                              logSolver("nResiduals = %s\n",[tostring(nResidualsExp)])
-                              logSolver("nnz = %d, nResiduals = %d\n",int(nnzExp),int(nResidualsExp))
-                               
-                              -- J alloc
-                              C.cudaMalloc([&&opaque](&(pd.J_csrValA)), sizeof(opt_float)*nnzExp)
-                              C.cudaMalloc([&&opaque](&(pd.J_csrColIndA)), sizeof(int)*nnzExp)
-                              C.cudaMemset(pd.J_csrColIndA,-1,sizeof(int)*nnzExp)
-                              C.cudaMalloc([&&opaque](&(pd.J_csrRowPtrA)), sizeof(int)*(nResidualsExp+1))
-                               
-                              -- J^T alloc
-                              C.cudaMalloc([&&opaque](&pd.JT_csrValA), nnzExp*sizeof(float))
-                              C.cudaMalloc([&&opaque](&pd.JT_csrColIndA), nnzExp*sizeof(int))
-                              C.cudaMalloc([&&opaque](&pd.JT_csrRowPtrA), (nUnknowns + 1) *sizeof(int))
-                               
-                              -- Jp alloc
-                              cd(C.cudaMalloc([&&opaque](&pd.Jp), nResidualsExp*sizeof(float)))
-                               
-                              -- write J_csrRowPtrA end
-                              var nnz = nnzExp
-                              C.printf("setting rowptr[%d] = %d\n",nResidualsExp,nnz)
-                              cd(C.cudaMemcpy(&pd.J_csrRowPtrA[nResidualsExp],&nnz,sizeof(int),C.cudaMemcpyHostToDevice))
-                          end 
-                      end 
-                 end
-             end
+           if initialization_parameters.use_cusparse then
+             emit quote
+                if pd.J_csrValA == nil then
+                  backend.initMatrixStuff(&pd.handle, &pd.desc)
+                   
+                  logSolver("nnz = %s\n",[tostring(nnzExp)])
+                  logSolver("nResiduals = %s\n",[tostring(nResidualsExp)])
+                  logSolver("nnz = %d, nResiduals = %d\n",
+                            int(nnzExp),int(nResidualsExp))
+                   
+                  -- J alloc
+                  cd( backend.allocateDevice(&pd.J_csrValA, sizeof(opt_float)*nnzExp) )
+                  cd( backend.allocateDevice(&pd.J_csrColIndA, sizeof(int)*nnzExp) )
+                  cd( backend.memsetDevice(pd.J_csrColIndA, -1,
+                                           sizeof(int)*nnzExp) )
+                  cd( backend.allocateDevice(&pd.J_csrRowPtrA, sizeof(int)*(nResidualsExp+1)) )
+                   
+                  -- J^T alloc
+                  cd( backend.allocateDevice(&pd.JT_csrValA, sizeof(opt_float)*nnzExp) )
+                  cd( backend.allocateDevice(&pd.JT_csrColIndA, sizeof(int)*nnzExp) )
+                  cd( backend.allocateDevice(&pd.JT_csrRowPtrA, sizeof(int)*(nResidualsExp+1)) )
+                   
+                  -- Jp alloc
+                  cd( backend.allocateDevice(&pd.Jp, sizeof(float)*(nResidualsExp)) )
+                   
+                  -- write J_csrRowPtrA end
+                  var nnz = nnzExp
+                  C.printf("setting rowptr[%d] = %d\n",nResidualsExp,nnz)
+                  cd(backend.memcpyHost2Device(&pd.J_csrRowPtrA[nResidualsExp],&nnz,sizeof(int)))
+                end 
+             end 
+           end
+         end
 
          pd.solverparameters.nIter = 0
          escape 
-             if problemSpec:UsesLambda() then
-                 emit quote 
-                          pd.parameters.trust_region_radius       = pd.solverparameters.trust_region_radius
-                          pd.parameters.radius_decrease_factor    = pd.solverparameters.radius_decrease_factor
-                          pd.parameters.min_lm_diagonal           = pd.solverparameters.min_lm_diagonal
-                          pd.parameters.max_lm_diagonal           = pd.solverparameters.max_lm_diagonal
-                      end
-                end 
+           if problemSpec:UsesLambda() then
+             emit quote 
+                pd.parameters.trust_region_radius       = pd.solverparameters.trust_region_radius
+                pd.parameters.radius_decrease_factor    = pd.solverparameters.radius_decrease_factor
+                pd.parameters.min_lm_diagonal           = pd.solverparameters.min_lm_diagonal
+                pd.parameters.max_lm_diagonal           = pd.solverparameters.max_lm_diagonal
              end
+           end 
+         end
       C.printf('inside init3\n')
        gpu.precompute(pd)
       C.printf('inside init4\n')
@@ -1806,7 +1851,7 @@ return function(problemSpec)
                 cusparseOuter(pd) -- does nothing if use_cusparse == false
 
                 for lIter = 0, pd.solverparameters.lIterations do				
-                    C.printf("\ndoing a linear iteration\n")
+                    C.printf("\ndoing a linear iteration %d\n", lIter)
 
                     var liniterEvent : backend.Event
                     var lItername : &I.__itt_string_handle  = I.__itt_string_handle_create("lIter")
@@ -1928,7 +1973,7 @@ return function(problemSpec)
                         var zeta = [opt_float](lIter+1)*(Q1 - Q0) / Q1 
                         --logSolver("%d: Q0(%g) Q1(%g), zeta(%g)\n", lIter, Q0, Q1, zeta)
                         if zeta < q_tolerance then
-                        logSolver("zeta=%.18g, breaking at iteration: %d\n", zeta, (lIter+1))
+                        logSolver("zeta=%.18g < q_tol(%f), breaking at iteration: %d\n", zeta, q_tolerance, (lIter+1))
                             break
                         end
                         Q0 = Q1
