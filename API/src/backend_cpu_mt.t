@@ -33,6 +33,76 @@ local tid_key = global(C.pthread_key_t, nil,  'tid_key')
 
 b.threadarg = symbol(int, 'thread_id')
 b.threadarg_val = b.threadarg -- need second variable to provide default arguments for other backends
+
+-- TODO doesn't work with double precision
+-- linalg stuff START -- TODO change name
+local function insertMatrixlibEntries(PlanData_t)
+-- just inserting garbage but these entries are needed for cuda backend
+  PlanData_t.entries:insert {"handle", &opaque }
+  PlanData_t.entries:insert {"desc", &opaque }
+end
+b.insertMatrixlibEntries = insertMatrixlibEntries
+
+
+local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                rowPtrA : &int, colIndA : &int,
+                                rowPtrATA : &int, nnzATAptr : &int) -- these are the out args
+  C.printf('\n\nERROR: backend.computeNnzPatternATA(): not implemented yet!\n\n')
+  C.exit(1)
+end
+b.computeNnzPatternATA = computeNnzPatternATA
+
+
+local terra computeATA(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valATA : &float, rowPtrATA : &int, colIndATA : &int) -- valATA(out), rowATA(int), colATA(out)
+  C.printf('\n\nERROR: backend.computeATA(): not implemented yet!\n\n')
+  C.exit(1)
+end
+b.computeATA = computeATA
+
+
+local terra computeAT(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valAT : &float, rowPtrAT : &int, colIndAT : &int) -- valATA(out), rowATA(int), colATA(out)
+  C.printf('\n\nERROR: backend.computeAT(): not implemented yet!\n\n')
+  C.exit(1)
+end
+b.computeAT = computeAT
+
+
+local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valInVec : &float, valOutVec : &float) -- valInVec(in), valOutVec(out)
+  C.printf('\n\nERROR: backend.applyAtoVector(): not implemented yet!\n\n')
+  C.exit(1)
+end
+b.applyAtoVector = applyAtoVector
+
+
+local terra initMatrixStuff(handlePtr : &opaque, descrPtr : &opaque)
+-- this function needs to do some stuff in cuda backend, but not here.
+end
+b.initMatrixStuff = initMatrixStuff
+-- linalg stuff END
+
+
 --------------------------- Timing stuff start
 -- TODO put in separate file
 -- TODO what is this? (seems to be a lua "class" definition)
@@ -230,33 +300,41 @@ terra Timer:evaluate()
 
 	-- if ([c._opt_verbosity > 0]) then
 	if true then
-          var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
+          -- _0 holds duration
+          -- _1 holds count
+          -- _2 holds start
+          -- _2 holds end
+          var aggregateTimingInfo = [Array(tuple(float,int,float,float))].salloc():init()
           var aggregateTimingNames = [Array(rawstring)].salloc():init()
 
           for i = 0,self.eventList[0]:size() do
             var event = self.eventList[0](i);
-            C.printf("%s\n", event.eventName)
+            -- C.printf("%s\n", event.eventName)
             event:calcElapsedTime()
+
+            -- if the event is not in the list, we insert it. if it is already in the list, we
+            -- update the aggregate times and counts, but keep the start and end-time of the first
+            -- recorded event
             var index =  aggregateTimingNames:indexof(event.eventName)
-            C.printf("index of event %s is %d\n", event.eventName, index)
             if index < 0 then
               aggregateTimingNames:insert(event.eventName)
-              aggregateTimingInfo:insert({event.duration, 1})
+              aggregateTimingInfo:insert({event.duration, 1, event:getStartTime(), event:getEndTime()})
             else
               aggregateTimingInfo(index)._0 = aggregateTimingInfo(index)._0 + event.duration
               aggregateTimingInfo(index)._1 = aggregateTimingInfo(index)._1 + 1
             end
           end
 
-          C.printf(		"------------------------------------------------------------------\n")
-          C.printf(		"             Kernel             |   Count  |   Total   | Average \n")
-          C.printf(		"--------------------------------+----------+-----------+----------\n")
+          C.printf(		"---------------------------------------------------------------------------\n")
+          C.printf(		"             Kernel             |   Count  |     Total     |      Average \n")
+          C.printf(		"--------------------------------+----------+---------------+---------------\n")
           for i = 0, aggregateTimingNames:size() do
-              C.printf(	"--------------------------------+----------+-----------+----------\n")
-              C.printf(" %-30s |   %4d   | %8.3fms| %7.4fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
+              C.printf(	"--------------------------------+----------+---------------+---------------\n")
+              -- C.printf(" %-30s |   %4d   | %12.5fms| %12.5fms| %12.5fms| %12.5fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._2, aggregateTimingInfo(i)._3)
+              C.printf(" %-30s |   %4d   | %12.5fms| %12.5fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
           end
 
-          C.printf(		"------------------------------------------------------------------\n")
+          C.printf(		"---------------------------------------------------------------------------\n")
           C.printf("TIMING ")
           for i = 0, aggregateTimingNames:size() do
               var n = aggregateTimingNames(i)
@@ -448,6 +526,10 @@ b.memcpyDevice = macro(function(targetptr, sourceptr, numbytes)
 end)
 
 b.memcpyDevice2Host = macro(function(targetptr, sourceptr, numbytes)
+  return `C.memcpy(targetptr, sourceptr, numbytes)
+end)
+
+b.memcpyHost2Device = macro(function(targetptr, sourceptr, numbytes)
   return `C.memcpy(targetptr, sourceptr, numbytes)
 end)
 -- allocate, memset and memcpy END

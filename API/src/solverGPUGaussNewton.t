@@ -29,15 +29,13 @@ local initialization_parameters = {
     -- use_materialized_jacobian = false,
     use_materialized_jacobian = true,
 
+    -- only relevant if use_materialized_jacobian is true
     use_fused_jtj = false,
     -- use_fused_jtj = true,
 
     guardedInvertType = GuardedInvertType.CERES,
     jacobiScaling = JacobiScalingType.ONCE_PER_SOLVE
 }
-if initialization_parameters.use_materialized_jacobian == true and backend.name ~= 'CUDA' then
-  error('use_materialized_jacobian cannot be true for non-cuda backend')
-end
 
 local solver_parameter_defaults = {
     residual_reset_period = 10,
@@ -292,16 +290,18 @@ return function(problemSpec)
         end
     end
 
-    local terra wrap(c : int, v : float) -- TODO dead code??? cannot find any usages except in some commented-out code below
+    local terra wrap(c : int, v : float)
+    -- TODO see definition of printf macro in o.t. That needs to be refactored
+    -- and then the lines below need to be uncommented
         if c < 0 then
             if v ~= 0.f then
-                printf("wrap a non-zero? %d %f\n",c,v)
+                -- printf("wrap a non-zero? %d %f\n",c,v) --original
             end
             c = c + nUnknowns
         end
         if c >= nUnknowns then
             if v ~= 0.f then
-                printf("wrap a non-zero? %d %f\n",c,v)
+                -- printf("wrap a non-zero? %d %f\n",c,v) -- original
             end
             c = c - nUnknowns
         end
@@ -311,7 +311,6 @@ return function(problemSpec)
 
     
     local function generateDumpJ(ES,dumpJ,idx,pd, isMasked) -- TODO only used in building of 'delegate' --> make local there
-        -- TODO what is this? it seems unused...
         local nnz_per_entry = 0
         for i,r in ipairs(ES.residuals) do
             nnz_per_entry = nnz_per_entry + #r.unknowns
@@ -337,7 +336,6 @@ return function(problemSpec)
 
         return quote
                    var rhs = dumpJ(idx,pd.parameters, [backend.threadarg])
-                   -- TODO what is this??? it seems unused --> rhs from the line above is used below
                    escape                
                        local nnz = 0
                        local residual = 0
@@ -357,16 +355,6 @@ return function(problemSpec)
                                    pd.J_csrValA[local_rowidx + nnz] = opt_float(rhs.["_"..tostring(nnz)])
                                    pd.J_csrColIndA[local_rowidx + nnz] = wrap(unknown_index,opt_float(rhs.["_"..tostring(nnz)]))
                                end
-
-                               -- emit quote
-                               --   if isMasked then
-                               --     pd.J_csrValA[local_rowidx + nnz] = opt_float(rhs.["_"..tostring(nnz)])
-                               --   else
-                               --     -- pd.J_csrValA[local_rowidx + nnz] = 0.0
-                               --     pd.J_csrValA[local_rowidx + nnz] = opt_float(rhs.["_"..tostring(nnz)])
-                               --   end
-                               --   pd.J_csrColIndA[local_rowidx + nnz] = wrap(unknown_index,opt_float(rhs.["_"..tostring(nnz)]))
-                               -- end
 
                                nnz = nnz + 1
                            end
@@ -1455,6 +1443,8 @@ return function(problemSpec)
     -- these functions do nothing.
     -- TODO refactor to always define these function and use metaprogramming
     -- in step() to get rid of it if not needed.
+    -- TODO only allocate and compute JTJ stuff if fused_jtj is true
+    -- TODO only allocate and compute JT stuff if fused_jtj is false
         terra cusparseOuter(pd : &PlanData)
         -- allocate JTJ (if necessary), calculate JTJ and calculate JT.
 
@@ -1498,7 +1488,8 @@ return function(problemSpec)
                 cd( backend.allocateDevice(&pd.JTJ_csrValA, numBytesForJTJVal, float) )
 
 
-                -- TODO refactor this a bit better.
+                -- TODO refactor this a bit better, there shouldn't be any cuda
+                -- stuff in this file.
                 if [backend.name] == 'CUDA' then
                   cd(C.cudaThreadSynchronize())
                 end
@@ -1671,19 +1662,19 @@ return function(problemSpec)
                             int(nnzExp),int(nResidualsExp))
                    
                   -- J alloc
-                  cd( backend.allocateDevice(&pd.J_csrValA, sizeof(opt_float)*nnzExp) )
-                  cd( backend.allocateDevice(&pd.J_csrColIndA, sizeof(int)*nnzExp) )
+                  cd( backend.allocateDevice(&pd.J_csrValA, sizeof(opt_float)*nnzExp, opt_float))
+                  cd( backend.allocateDevice(&pd.J_csrColIndA, sizeof(int)*nnzExp, int))
                   cd( backend.memsetDevice(pd.J_csrColIndA, -1,
                                            sizeof(int)*nnzExp) )
-                  cd( backend.allocateDevice(&pd.J_csrRowPtrA, sizeof(int)*(nResidualsExp+1)) )
+                  cd( backend.allocateDevice(&pd.J_csrRowPtrA, sizeof(int)*(nResidualsExp+1), int) )
                    
                   -- J^T alloc
-                  cd( backend.allocateDevice(&pd.JT_csrValA, sizeof(opt_float)*nnzExp) )
-                  cd( backend.allocateDevice(&pd.JT_csrColIndA, sizeof(int)*nnzExp) )
-                  cd( backend.allocateDevice(&pd.JT_csrRowPtrA, sizeof(int)*(nResidualsExp+1)) )
+                  cd( backend.allocateDevice(&pd.JT_csrValA, sizeof(opt_float)*nnzExp, opt_float) )
+                  cd( backend.allocateDevice(&pd.JT_csrColIndA, sizeof(int)*nnzExp, int) )
+                  cd( backend.allocateDevice(&pd.JT_csrRowPtrA, sizeof(int)*(nResidualsExp+1), int) )
                    
                   -- Jp alloc
-                  cd( backend.allocateDevice(&pd.Jp, sizeof(float)*(nResidualsExp)) )
+                  cd( backend.allocateDevice(&pd.Jp, sizeof(float)*(nResidualsExp), float) )
                    
                   -- write J_csrRowPtrA end
                   var nnz = nnzExp
