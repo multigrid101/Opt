@@ -26,8 +26,8 @@ local JacobiScalingType = { NONE = {}, ONCE_PER_SOLVE = {}, EVERY_ITERATION = {}
 
 
 local initialization_parameters = {
-    -- use_cusparse = false,
-    use_cusparse = true,
+    -- use_materialized_jacobian = false,
+    use_materialized_jacobian = true,
 
     use_fused_jtj = false,
     -- use_fused_jtj = true,
@@ -35,8 +35,8 @@ local initialization_parameters = {
     guardedInvertType = GuardedInvertType.CERES,
     jacobiScaling = JacobiScalingType.ONCE_PER_SOLVE
 }
-if initialization_parameters.use_cusparse == true and backend.name ~= 'CUDA' then
-  error('use_cusparse cannot be true for non-cuda backend')
+if initialization_parameters.use_materialized_jacobian == true and backend.name ~= 'CUDA' then
+  error('use_materialized_jacobian cannot be true for non-cuda backend')
 end
 
 local solver_parameter_defaults = {
@@ -56,7 +56,7 @@ local solver_parameter_defaults = {
 }
 
 
-local multistep_alphaDenominator_compute = initialization_parameters.use_cusparse
+local multistep_alphaDenominator_compute = initialization_parameters.use_materialized_jacobian
 
 -- local cd = macro(function(apicall) 
 --     local apicallstr = tostring(apicall)
@@ -77,7 +77,7 @@ local multistep_alphaDenominator_compute = initialization_parameters.use_cuspars
 local cd = backend.cd
 
 print('ASDF1')
-if initialization_parameters.use_cusparse then
+if initialization_parameters.use_materialized_jacobian then
     local cusparsepath = "/usr/local/cuda-8.0/targets/x86_64-linux"
     local cusparselibpath = "/lib64/libcusparse.dylib"
     if ffi.os == "Windows" then
@@ -252,7 +252,7 @@ return function(problemSpec)
     }
 
     -- insert 'handle' and 'desc' field into PlanData-type.
-    if initialization_parameters.use_cusparse then
+    if initialization_parameters.use_materialized_jacobian then
         backend.insertMatrixlibEntries(PlanData)
     end
 
@@ -1450,8 +1450,8 @@ return function(problemSpec)
 
     local cusparseInner,cusparseOuter
 
-    if initialization_parameters.use_cusparse then
-    -- define cusparseOuter() and cusparseInner(). If use_cusparse==false,
+    if initialization_parameters.use_materialized_jacobian then
+    -- define cusparseOuter() and cusparseInner(). If use_materialized_jacobian==false,
     -- these functions do nothing.
     -- TODO refactor to always define these function and use metaprogramming
     -- in step() to get rid of it if not needed.
@@ -1660,7 +1660,7 @@ return function(problemSpec)
          var [parametersSym] = &pd.parameters
 
          escape
-           if initialization_parameters.use_cusparse then
+           if initialization_parameters.use_materialized_jacobian then
              emit quote
                 if pd.J_csrValA == nil then
                   backend.initMatrixStuff(&pd.handle, &pd.desc)
@@ -1848,7 +1848,7 @@ return function(problemSpec)
                         end
                     end
 
-                cusparseOuter(pd) -- does nothing if use_cusparse == false
+                cusparseOuter(pd) -- does nothing if use_materialized_jacobian == false
 
                 for lIter = 0, pd.solverparameters.lIterations do				
                     C.printf("\ndoing a linear iteration %d\n", lIter)
@@ -1879,17 +1879,17 @@ return function(problemSpec)
                     -- pd.q:setToConst(0.0)
                     [backend.ReduceVar.setToConst( `pd.q, 0)]
 
-                    if not initialization_parameters.use_cusparse then
+                    if not initialization_parameters.use_materialized_jacobian then
                         gpu.PCGStep1(pd)
                         if isGraph then
                                 gpu.PCGStep1_Graph(pd)
                         end
                     end
 
-                    -- only does something if initialization_parameters.use_cusparse is true
+                    -- only does something if initialization_parameters.use_materialized_jacobian is true
                     cusparseInner(pd)
 
-                    if multistep_alphaDenominator_compute then -- true if and only if use_cusparse is true
+                    if multistep_alphaDenominator_compute then -- true if and only if use_materialized_jacobian is true
                         gpu.PCGStep1_Finish(pd)
                     end
                                     
