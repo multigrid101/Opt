@@ -59,6 +59,7 @@ end
 local verboseSolver = _opt_verbosity > 0
 local verboseAD 	= _opt_verbosity > 1
 
+-- TODO this needs to be put in backend somewhere
 local vprintfname = ffi.os == "Windows" and "vprintf" or "cudart:vprintf"
 local vprintf = terralib.externfunction(vprintfname, {&int8,&int8} -> int)
 
@@ -84,6 +85,7 @@ local function createbuffer(args)
     end
 end
 
+-- TODO: don't rely on global var printf here, put in util or whatever
 printf = macro(function(fmt,...)
     local buf = createbuffer({...})
     return `vprintf(fmt,buf) 

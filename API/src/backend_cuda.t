@@ -588,7 +588,8 @@ b.allocateDevice = macro(function(ptrptr, numbytes, datatype)
 --    * leaving error checking in solverGPU... gets us more precise location of the error
 --    * putting error checking here would hide it from the user/reader and ensure
 --      that it is always done
--- TODO remove datatype argument
+
+-- datatype arg is not used here but required for other backends
   return `C.cudaMalloc([&&opaque](ptrptr), numbytes)
 end)
 
