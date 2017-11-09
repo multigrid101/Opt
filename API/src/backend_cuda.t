@@ -39,98 +39,6 @@ local cd = macro(function(apicall)
     end end)
 b.cd = cd
 
--- TODO doesn't work with double precision
--- cusparse stuff START -- TODO change name
-local function insertMatrixlibEntries(PlanData_t)
--- this function will simply insert &opaque of value nil for other backends
-  PlanData_t.entries:insert {"handle", CUsp.cusparseHandle_t }
-  PlanData_t.entries:insert {"desc", CUsp.cusparseMatDescr_t }
-end
-b.insertMatrixlibEntries = insertMatrixlibEntries
-
-
-local terra computeNnzPatternATA(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib TODO refactor
-                                descr : CUsp.cusparseMatDescr_t, -- needed by cusparse lib TODO refactor
-                                nUnknowns : int, -- if A is nxm, then this is m
-                                nResiduals : int, -- if A is nxm, then this is n
-                                nnzA : int,
-                                rowPtrA : &int, colIndA : &int,
-                                rowPtrATA : &int, nnzATAptr : &int) -- these are the out args
-                      
-  cd(CUsp.cusparseXcsrgemmNnz(handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
-                        nUnknowns, nUnknowns, nResiduals,
-                        descr, nnzA, rowPtrA, colIndA,
-                        descr, nnzA, rowPtrA, colIndA,
-                        descr, rowPtrATA, nnzATAptr))
-end
-b.computeNnzPatternATA = computeNnzPatternATA
-
-
-local terra computeATA(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib TODO refactor
-                                descr : CUsp.cusparseMatDescr_t, -- needed by cusparse lib TODO refactor
-                                nUnknowns : int, -- if A is nxm, then this is m
-                                nResiduals : int, -- if A is nxm, then this is n
-                                nnzA : int,
-                                valA : &float, rowPtrA : &int, colIndA : &int,
-                                valATA : &float, rowPtrATA : &int, colIndATA : &int) -- valATA(out), rowATA(int), colATA(out)
-
-  cd(CUsp.cusparseScsrgemm(handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
-           nUnknowns,nUnknowns,nResiduals,
-           descr, nnzA, valA, rowPtrA, colIndA,
-           descr, nnzA, valA, rowPtrA, colIndA,
-           descr, valATA, rowPtrATA, colIndATA ))
-end
-b.computeATA = computeATA
-
-
-local terra computeAT(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib TODO refactor
-                                descr : CUsp.cusparseMatDescr_t, -- needed by cusparse lib TODO refactor
-                                nUnknowns : int, -- if A is nxm, then this is m
-                                nResiduals : int, -- if A is nxm, then this is n
-                                nnzA : int,
-                                valA : &float, rowPtrA : &int, colIndA : &int,
-                                valAT : &float, rowPtrAT : &int, colIndAT : &int) -- valATA(out), rowATA(int), colATA(out)
-
-            cd(CUsp.cusparseScsr2csc(handle, nResiduals, nUnknowns, nnzA,
-                                     valA, rowPtrA, colIndA,
-                                     valAT, colIndAT, rowPtrAT,
-                                     CUsp.CUSPARSE_ACTION_NUMERIC,CUsp.CUSPARSE_INDEX_BASE_ZERO))
-end
-b.computeAT = computeAT
-
-
-local terra applyAtoVector(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib TODO refactor
-                                descr : CUsp.cusparseMatDescr_t, -- needed by cusparse lib TODO refactor
-                                nUnknowns : int, -- if A is nxm, then this is m
-                                nResiduals : int, -- if A is nxm, then this is n
-                                nnzA : int,
-                                valA : &float, rowPtrA : &int, colIndA : &int,
-                                valInVec : &float, valOutVec : &float) -- valInVec(in), valOutVec(out)
-
-  var consts = array(0.f,1.f,2.f)
-  cd(CUsp.cusparseScsrmv(
-              handle, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
-              nResiduals, nUnknowns, nnzA,
-              &consts[1], descr,
-              valA, rowPtrA, colIndA,
-              [&float](valInVec),
-              &consts[0], [&float](valOutVec)
-          ))
-end
-b.applyAtoVector = applyAtoVector
-
-
-local terra initMatrixStuff(handlePtr : &CUsp.cusparseHandle_t, descrPtr : &CUsp.cusparseMatDescr_t)
--- do some init stuff for the cusparse library, this func will most likely just get nil pointers in other
--- backends and do nothing.
-  cd(CUsp.cusparseCreateMatDescr( descrPtr ))
-  cd(CUsp.cusparseSetMatType( @descrPtr,CUsp.CUSPARSE_MATRIX_TYPE_GENERAL ))
-  cd(CUsp.cusparseSetMatIndexBase( @descrPtr,CUsp.CUSPARSE_INDEX_BASE_ZERO ))
-  cd(CUsp.cusparseCreate( handlePtr ))
-end
-b.initMatrixStuff = initMatrixStuff
--- cusparse stuff END
-
 --------------------------- Timing stuff start
 -- TODO put in separate file
 -- TODO what is this? (seems to be a lua "class" definition)
@@ -609,6 +517,103 @@ b.memcpyHost2Device = macro(function(targetptr, sourceptr, numbytes)
   return `C.cudaMemcpy(targetptr, sourceptr, numbytes, C.cudaMemcpyHostToDevice)
 end)
 -- allocate, memset and memcpy END
+
+-- TODO doesn't work with double precision
+-- cusparse stuff START -- TODO change name
+local function insertMatrixlibEntries(PlanData_t)
+-- this function will simply insert &opaque of value nil for other backends
+  PlanData_t.entries:insert {"handle", CUsp.cusparseHandle_t }
+  PlanData_t.entries:insert {"desc", CUsp.cusparseMatDescr_t }
+end
+b.insertMatrixlibEntries = insertMatrixlibEntries
+
+
+local terra computeNnzPatternATA(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib TODO refactor
+                                descr : CUsp.cusparseMatDescr_t, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                rowPtrA : &int, colIndA : &int,
+                                rowPtrATA : &int, ptrTo_colIndATA : &&int, nnzATAptr : &int) 
+-- computes only rowPtrATA and allocates colIndATA, but doesn't actually compute it.
+-- colIndATA is computed by computeATA()
+                      
+  cd(CUsp.cusparseXcsrgemmNnz(handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
+                        nUnknowns, nUnknowns, nResiduals,
+                        descr, nnzA, rowPtrA, colIndA,
+                        descr, nnzA, rowPtrA, colIndA,
+                        descr, rowPtrATA, nnzATAptr))
+
+  cd( b.allocateDevice(ptrTo_colIndATA, @nnzATAptr*sizeof(int), int) )
+end
+b.computeNnzPatternATA = computeNnzPatternATA
+
+
+local terra computeATA(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib TODO refactor
+                                descr : CUsp.cusparseMatDescr_t, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valATA : &float, rowPtrATA : &int, colIndATA : &int) -- valATA(out), rowATA(int), colATA(out)
+
+  cd(CUsp.cusparseScsrgemm(handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
+           nUnknowns,nUnknowns,nResiduals,
+           descr, nnzA, valA, rowPtrA, colIndA,
+           descr, nnzA, valA, rowPtrA, colIndA,
+           descr, valATA, rowPtrATA, colIndATA ))
+end
+b.computeATA = computeATA
+
+
+local terra computeAT(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib TODO refactor
+                                descr : CUsp.cusparseMatDescr_t, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valAT : &float, rowPtrAT : &int, colIndAT : &int) -- valATA(out), rowATA(int), colATA(out)
+
+            cd(CUsp.cusparseScsr2csc(handle, nResiduals, nUnknowns, nnzA,
+                                     valA, rowPtrA, colIndA,
+                                     valAT, colIndAT, rowPtrAT,
+                                     CUsp.CUSPARSE_ACTION_NUMERIC,CUsp.CUSPARSE_INDEX_BASE_ZERO))
+end
+b.computeAT = computeAT
+
+
+local terra applyAtoVector(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib TODO refactor
+                                descr : CUsp.cusparseMatDescr_t, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valInVec : &float, valOutVec : &float) -- valInVec(in), valOutVec(out)
+
+  var consts = array(0.f,1.f,2.f)
+  cd(CUsp.cusparseScsrmv(
+              handle, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,
+              nResiduals, nUnknowns, nnzA,
+              &consts[1], descr,
+              valA, rowPtrA, colIndA,
+              [&float](valInVec),
+              &consts[0], [&float](valOutVec)
+          ))
+end
+b.applyAtoVector = applyAtoVector
+
+
+local terra initMatrixStuff(handlePtr : &CUsp.cusparseHandle_t, descrPtr : &CUsp.cusparseMatDescr_t)
+-- do some init stuff for the cusparse library, this func will most likely just get nil pointers in other
+-- backends and do nothing.
+  cd(CUsp.cusparseCreateMatDescr( descrPtr ))
+  cd(CUsp.cusparseSetMatType( @descrPtr,CUsp.CUSPARSE_MATRIX_TYPE_GENERAL ))
+  cd(CUsp.cusparseSetMatIndexBase( @descrPtr,CUsp.CUSPARSE_INDEX_BASE_ZERO ))
+  cd(CUsp.cusparseCreate( handlePtr ))
+end
+b.initMatrixStuff = initMatrixStuff
+-- cusparse stuff END
+
 
 function b.makeIndexInitializer(Index, dims, dimnames, fieldnames)
 

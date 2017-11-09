@@ -30,8 +30,8 @@ local initialization_parameters = {
     use_materialized_jacobian = true,
 
     -- only relevant if use_materialized_jacobian is true
-    use_fused_jtj = false,
-    -- use_fused_jtj = true,
+    -- use_fused_jtj = false,
+    use_fused_jtj = true,
 
     guardedInvertType = GuardedInvertType.CERES,
     jacobiScaling = JacobiScalingType.ONCE_PER_SOLVE
@@ -52,6 +52,7 @@ local solver_parameter_defaults = {
     nIterations = 10,
     lIterations = 10
 }
+
 
 
 local multistep_alphaDenominator_compute = initialization_parameters.use_materialized_jacobian
@@ -232,6 +233,16 @@ return function(problemSpec)
 
         prevCost : opt_float
 	    
+        -- TODO (SOtten) at some point, we may want to relax the assumption that all
+        -- matrices are stored in csr format and e.g. play around a bit
+        -- with different formats, so the matrix-concept should be encapsulated
+        -- and somehow merged with the matrix-free concept of linear operators.
+        --
+        -- It may even make sense to have different formats, depending on whether
+        -- we use fused_jtj or not.
+        --
+        -- Also, we should only allocate matrices that we actually use but that's
+        -- a minor optimization that we can save for later.
         J_csrValA : &opt_float
         J_csrColIndA : &int
         J_csrRowPtrA : &int
@@ -251,6 +262,7 @@ return function(problemSpec)
 
     -- insert 'handle' and 'desc' field into PlanData-type.
     if initialization_parameters.use_materialized_jacobian then
+    -- if true then
         backend.insertMatrixlibEntries(PlanData)
     end
 
@@ -1446,26 +1458,35 @@ return function(problemSpec)
     -- TODO only allocate and compute JTJ stuff if fused_jtj is true
     -- TODO only allocate and compute JT stuff if fused_jtj is false
         terra cusparseOuter(pd : &PlanData)
-        -- allocate JTJ (if necessary), calculate JTJ and calculate JT.
+        -- short: allocate JTJ (if necessary), calculate JTJ and calculate JT.
+        -- detailed: Section 1) calculates the "nnz pattern" of JTJ *once* per
+        -- Opt-solver. Section 2) then calculates JTJ at the start of *every*
+        -- Opt-step. The exact meaning of "nnz pattern" may depend on the
+        -- backend. For example: in backend_cuda, computeNnzPatternATA() only
+        -- computes the RowPtr vector. The colInd vector is Later computed in
+        -- computeATA(). (I have no idea why but that's the way it was decided
+        -- by the cusparse authors). In backend_cpu, we use computeNnzPatternATA()
+        -- to compute rowPtr *and* colInd. computeATA() uses these vectors and
+        -- re-computes the nnz-values of JTJ at the start of each Opt-step.
 
             var [parametersSym] = &pd.parameters
             --logSolver("saving J...\n")
 
             -- compute J matrix. (the real one, not a modified version as the
-            -- one used by the LM method.
+            -- one used by the LM method).
             gpu.saveJToCRS(pd)
             if isGraph then
                 gpu.saveJToCRS_Graph(pd)
             end
             --logSolver("... done\n")
 
+            -- Section 1):
             -- check if memory for JTJ has already been allocated. If yes, then
             -- we can proceed with the multiplication JT*J. If not, then we
             -- allocate memory for JTJ as is explained in the docs for
             -- cusparse<t>csrgemm.
             -- TODO refactor this allocation stuff and put in init()
             if pd.JTJ_csrRowPtrA == nil then
-                --allocate row
                 --C.printf("alloc JTJ\n")
                 var numrows = nUnknowns + 1
 
@@ -1475,16 +1496,16 @@ return function(problemSpec)
                 var endJTJalloc : backend.Event
                 pd.timer:startEvent("J^TJ alloc",&endJTJalloc)
 
+                -- NOTE: This function must at least *compute* rowPtrJTJ and
+                -- *allocate* colIndJTJ
                 backend.computeNnzPatternATA(pd.handle, pd.desc,
                                              nUnknowns, [nResidualsExp],
                                              [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
-                                             pd.JTJ_csrRowPtrA, &pd.JTJ_nnz)
+                                             pd.JTJ_csrRowPtrA, &pd.JTJ_csrColIndA, &pd.JTJ_nnz)
 
                 pd.timer:endEvent(&endJTJalloc, 0)
                 
-                var numBytesForJTJColInd = pd.JTJ_nnz*sizeof(int)
                 var numBytesForJTJVal = pd.JTJ_nnz*sizeof(float) -- TODO why not opt_float here?
-                cd( backend.allocateDevice(&pd.JTJ_csrColIndA, numBytesForJTJColInd, int) )
                 cd( backend.allocateDevice(&pd.JTJ_csrValA, numBytesForJTJVal, float) )
 
 
@@ -1494,7 +1515,9 @@ return function(problemSpec)
                   cd(C.cudaThreadSynchronize())
                 end
             end
+            -- end Section 1)
             
+            -- Section 2)
             -- Do the multiplication JT*J
             var endJTJmm : backend.Event
             pd.timer:startEvent("JTJ multiply",&endJTJmm)
@@ -1516,6 +1539,7 @@ return function(problemSpec)
                               pd.JT_csrValA, pd.JT_csrRowPtrA, pd.JT_csrColIndA)
 
             pd.timer:endEvent(&endJtranspose, 0)
+            -- end Section 2)
         end
 
 

@@ -20,73 +20,6 @@ b.numthreads = 1 -- DO NOT CHANGE THIS
 b.threadarg = {}
 b.threadarg_val = 1
 
--- TODO doesn't work with double precision
--- linalg stuff START -- TODO change name
-local function insertMatrixlibEntries(PlanData_t)
--- just inserting garbage but these entries are needed for cuda backend
-  PlanData_t.entries:insert {"handle", &opaque }
-  PlanData_t.entries:insert {"desc", &opaque }
-end
-b.insertMatrixlibEntries = insertMatrixlibEntries
-
-
-local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TODO refactor
-                                descr : &opaque, -- needed by cusparse lib TODO refactor
-                                nUnknowns : int, -- if A is nxm, then this is m
-                                nResiduals : int, -- if A is nxm, then this is n
-                                nnzA : int,
-                                rowPtrA : &int, colIndA : &int,
-                                rowPtrATA : &int, nnzATAptr : &int) -- these are the out args
-  C.printf('\n\nERROR: backend.computeNnzPatternATA(): not implemented yet!\n\n')
-  C.exit(1)
-end
-b.computeNnzPatternATA = computeNnzPatternATA
-
-
-local terra computeATA(handle : &opaque, -- needed by cusparse lib TODO refactor
-                                descr : &opaque, -- needed by cusparse lib TODO refactor
-                                nUnknowns : int, -- if A is nxm, then this is m
-                                nResiduals : int, -- if A is nxm, then this is n
-                                nnzA : int,
-                                valA : &float, rowPtrA : &int, colIndA : &int,
-                                valATA : &float, rowPtrATA : &int, colIndATA : &int) -- valATA(out), rowATA(int), colATA(out)
-  C.printf('\n\nERROR: backend.computeATA(): not implemented yet!\n\n')
-  C.exit(1)
-end
-b.computeATA = computeATA
-
-
-local terra computeAT(handle : &opaque, -- needed by cusparse lib TODO refactor
-                                descr : &opaque, -- needed by cusparse lib TODO refactor
-                                nUnknowns : int, -- if A is nxm, then this is m
-                                nResiduals : int, -- if A is nxm, then this is n
-                                nnzA : int,
-                                valA : &float, rowPtrA : &int, colIndA : &int,
-                                valAT : &float, rowPtrAT : &int, colIndAT : &int) -- valATA(out), rowATA(int), colATA(out)
-  C.printf('\n\nERROR: backend.computeAT(): not implemented yet!\n\n')
-  C.exit(1)
-end
-b.computeAT = computeAT
-
-
-local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refactor
-                                descr : &opaque, -- needed by cusparse lib TODO refactor
-                                nUnknowns : int, -- if A is nxm, then this is m
-                                nResiduals : int, -- if A is nxm, then this is n
-                                nnzA : int,
-                                valA : &float, rowPtrA : &int, colIndA : &int,
-                                valInVec : &float, valOutVec : &float) -- valInVec(in), valOutVec(out)
-  C.printf('\n\nERROR: backend.applyAtoVector(): not implemented yet!\n\n')
-  C.exit(1)
-end
-b.applyAtoVector = applyAtoVector
-
-
-local terra initMatrixStuff(handlePtr : &opaque, descrPtr : &opaque)
--- this function needs to do some stuff in cuda backend, but not here.
-end
-b.initMatrixStuff = initMatrixStuff
--- linalg stuff END
 
 --------------------------- Timing stuff start
 -- TODO put in separate file
@@ -415,6 +348,76 @@ b.memcpyHost2Device = macro(function(targetptr, sourceptr, numbytes)
   return `C.memcpy(targetptr, sourceptr, numbytes)
 end)
 -- allocate, memset and memcpy END
+
+-- TODO doesn't work with double precision
+-- linalg stuff START -- TODO change name
+local function insertMatrixlibEntries(PlanData_t)
+-- just inserting garbage but these entries are needed for cuda backend
+  PlanData_t.entries:insert {"handle", &opaque }
+  PlanData_t.entries:insert {"desc", &opaque }
+end
+b.insertMatrixlibEntries = insertMatrixlibEntries
+
+
+local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                rowPtrA : &int, colIndA : &int,
+                                rowPtrATA : &int, ptrTo_colIndATA : &&int, nnzATAptr : &int)
+-- This function computes rowPtrATA AND colPtrATA. Both are used by computeATA()
+-- to compute the values in AT*A.
+  C.printf('\n\nERROR: backend.computeNnzPatternATA(): not implemented yet!\n\n')
+  C.exit(1)
+end
+b.computeNnzPatternATA = computeNnzPatternATA
+
+
+local terra computeATA(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valATA : &float, rowPtrATA : &int, colIndATA : &int) -- valATA(out), rowATA(int), colATA(out)
+  C.printf('\n\nERROR: backend.computeATA(): not implemented yet!\n\n')
+  C.exit(1)
+end
+b.computeATA = computeATA
+
+
+local terra computeAT(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valAT : &float, rowPtrAT : &int, colIndAT : &int) -- valATA(out), rowATA(int), colATA(out)
+  C.printf('\n\nERROR: backend.computeAT(): not implemented yet!\n\n')
+  C.exit(1)
+end
+b.computeAT = computeAT
+
+
+local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valInVec : &float, valOutVec : &float) -- valInVec(in), valOutVec(out)
+  C.printf('\n\nERROR: backend.applyAtoVector(): not implemented yet!\n\n')
+  C.exit(1)
+end
+b.applyAtoVector = applyAtoVector
+
+
+local terra initMatrixStuff(handlePtr : &opaque, descrPtr : &opaque)
+-- this function needs to do some stuff in cuda backend, but not here.
+end
+b.initMatrixStuff = initMatrixStuff
+-- linalg stuff END
 
 function b.makeIndexInitializer(Index, dims, dimnames, fieldnames)
 
