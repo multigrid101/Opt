@@ -527,6 +527,17 @@ local function insertMatrixlibEntries(PlanData_t)
 end
 b.insertMatrixlibEntries = insertMatrixlibEntries
 
+local terra computeNnzPatternAT(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nColsA : int, -- if A is nxm, then this is m
+                                nRowsA : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                rowPtrA : &int, colIndA : &int,
+                                rowPtrAT : &int, colIndAT : &int)
+-- This function is empty in this backend but does some work in other backends
+end
+b.computeNnzPatternAT = computeNnzPatternAT
+
 
 local terra computeNnzPatternATA(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib TODO refactor
                                 descr : CUsp.cusparseMatDescr_t, -- needed by cusparse lib TODO refactor

@@ -1503,6 +1503,11 @@ return function(problemSpec)
                                              [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
                                              pd.JTJ_csrRowPtrA, &pd.JTJ_csrColIndA, &pd.JTJ_nnz)
 
+                backend.computeNnzPatternAT(pd.handle, pd.desc,
+                                             nUnknowns, [nResidualsExp],
+                                             [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
+                                             pd.JT_csrRowPtrA, pd.JT_csrColIndA)
+
                 pd.timer:endEvent(&endJTJalloc, 0)
                 
                 var numBytesForJTJVal = pd.JTJ_nnz*sizeof(float) -- TODO why not opt_float here?
@@ -1518,17 +1523,6 @@ return function(problemSpec)
             -- end Section 1)
             
             -- Section 2)
-            -- Do the multiplication JT*J
-            var endJTJmm : backend.Event
-            pd.timer:startEvent("JTJ multiply",&endJTJmm)
-
-            backend.computeATA(pd.handle, pd.desc,
-                               nUnknowns, [nResidualsExp], [nnzExp],
-                               pd.J_csrValA, pd.J_csrRowPtrA, pd.J_csrColIndA,
-                               pd.JTJ_csrValA, pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA)
-
-            pd.timer:endEvent(&endJTJmm, 0)
-           
             -- calculate JT.
             var endJtranspose : backend.Event
             pd.timer:startEvent("J_transpose",&endJtranspose)
@@ -1539,6 +1533,17 @@ return function(problemSpec)
                               pd.JT_csrValA, pd.JT_csrRowPtrA, pd.JT_csrColIndA)
 
             pd.timer:endEvent(&endJtranspose, 0)
+
+            -- Do the multiplication JT*J
+            var endJTJmm : backend.Event
+            pd.timer:startEvent("JTJ multiply",&endJTJmm)
+
+            backend.computeATA(pd.handle, pd.desc,
+                               nUnknowns, [nResidualsExp], [nnzExp],
+                               pd.J_csrValA, pd.J_csrRowPtrA, pd.J_csrColIndA,
+                               pd.JTJ_csrValA, pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA)
+
+            pd.timer:endEvent(&endJTJmm, 0)
             -- end Section 2)
         end
 
