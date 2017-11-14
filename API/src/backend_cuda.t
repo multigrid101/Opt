@@ -565,7 +565,9 @@ local terra computeATA(handle : CUsp.cusparseHandle_t, -- needed by cusparse lib
                                 nUnknowns : int, -- if A is nxm, then this is m
                                 nResiduals : int, -- if A is nxm, then this is n
                                 nnzA : int,
+                                nnzATA : int, -- ignored in this backend
                                 valA : &float, rowPtrA : &int, colIndA : &int,
+                                valAT : &float, rowPtrAT : &int, colIndAT : &int, -- ignored in this backend
                                 valATA : &float, rowPtrATA : &int, colIndATA : &int) -- valATA(out), rowATA(int), colATA(out)
 
   cd(CUsp.cusparseScsrgemm(handle, CUsp.CUSPARSE_OPERATION_TRANSPOSE, CUsp.CUSPARSE_OPERATION_NON_TRANSPOSE,

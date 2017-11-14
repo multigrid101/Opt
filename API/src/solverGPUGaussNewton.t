@@ -1539,8 +1539,9 @@ return function(problemSpec)
             pd.timer:startEvent("JTJ multiply",&endJTJmm)
 
             backend.computeATA(pd.handle, pd.desc,
-                               nUnknowns, [nResidualsExp], [nnzExp],
+                               nUnknowns, [nResidualsExp], [nnzExp], pd.JTJ_nnz,
                                pd.J_csrValA, pd.J_csrRowPtrA, pd.J_csrColIndA,
+                               pd.JT_csrValA, pd.JT_csrRowPtrA, pd.JT_csrColIndA,
                                pd.JTJ_csrValA, pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA)
 
             pd.timer:endEvent(&endJTJmm, 0)
