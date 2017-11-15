@@ -15,6 +15,7 @@ local struct IntList {
 
 terra IntList:init()
   -- 1000 should be enough for most purposes
+  -- TODO free memory
   self.vals = [&int](C.malloc( 1000*sizeof(int) )) 
   C.memset([&opaque](self.vals), -1, 1000*sizeof(int))
   self.length = 0
@@ -30,7 +31,7 @@ terra IntList:getLength()
 end
 
 terra IntList:append(a : int)
-  -- TODO check capacity
+  -- TODO check capacity and resize if necessary
   if self.length+1 >= self.capacity then
     C.printf('\n\nERROR: IntList:append(): capacity exceeded, need to refactor code\n\n')
   end
@@ -114,38 +115,60 @@ local terra addEntry(ri : int, ci : int,
   end
 end
 
+-- TODO create functions for sanity-checking of a matrix. (make sure that
+-- colinds are sorted etc.
+
+-- TODO create Matrix-class (similar to petsc)
+
+-- TODO move these print* functions to a linalg_helper file because we mos
+-- likely need them in all cpu backends (at least for testing)
 local terra printValuesA(nrows : int, ncols : int, nnz : int,
                              rowPtrA : &int, colIndA : &int, valA : &float)
   C.printf('----------  MAT START ----------\n')
   C.printf('\n')
-  for row = 0,nrows do
+  for row = 0,nrows do -- print a row
     var nnzThisRow = rowPtrA[row+1] - rowPtrA[row]
     var currentCol = 0
     for k = 0, nnzThisRow do
+    -- print all nnz values in the row
       var ci = colIndA[rowPtrA[row] + k]
       if currentCol == ci then
+        -- we are printing the currentCol-th screen column. If the next colInd
+        -- (ci) of the matrix is equal to currentCol, then we print
+        -- the corresponding value......or......
         C.printf('%.1f ', valA[rowPtrA[row] + k])
         currentCol = currentCol + 1
       else
+        -- ....otherwise, we print zero-screen-columns until currentCol has reached
+        -- the next colInd in the matrix.....
         for k = 0,(ci-currentCol) do
           C.printf('%.1f ', 0.0f)
           currentCol = currentCol + 1
         end
+        -- and then print the value corresponding to colInd and advance to the
+        -- next loop iteration (i.e. next colInd)
         C.printf('%.1f ', valA[rowPtrA[row] + k])
         currentCol = currentCol + 1
       end
     end
+    -- If the highest colInd is smaller than the number of columns in the
+    -- matrix, we need to fill the end of the row with zeroes. E.g. if the
+    -- colInds for the current row are (0 4 5), but the matrix is 8x10, then
+    -- we need to append 4 zeroes (for indices 6,7,8,9) to the end of the row
+    -- after printing the value for colInd=5.
     for k = 0,(ncols-currentCol) do
       C.printf('%.1f ', 0.0f)
     end
+    -- finish row with newline and empty row before advancing to next row
     C.printf('\n\n')
-  end
+  end -- finished printing the row
   C.printf('----------  MAT END ----------\n')
 end
 la.printValuesA = printValuesA
 
 local terra printNnzPatternA(nrows : int, ncols : int, nnz : int,
                              rowPtrA : &int, colIndA : &int)
+-- see other print* function for explanation of the code.
   C.printf('----------  MAT START ----------\n')
   C.printf('\n')
   for row = 0,nrows do
