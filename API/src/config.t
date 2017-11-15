@@ -11,11 +11,12 @@ c.verboseAD = false
 -- c.numthreads = 2 -- only for backend_cpu_mt, no effect on other backends
 -- c.numthreads = 4 -- only for backend_cpu_mt, no effect on other backends
 c.numthreads = _opt_numthreads -- only for backend_cpu_mt, no effect on other backends
+
 -- c.cpumap = { 0, 1, 2, 3, 4, 5, 6, 7 } -- default -- TODO this feature is broken at the moment
 -- c.cpumap = { 1, 5, 2, 3, 4, 5, 6, 7 }
 
--- NOTE: The size of a single mutex is TODO
-c.nummutexes = 10000 -- adjust by hand (only has effec for backend_cpu_mt) TODO find better solution for this
+-- NOTE: The size of a single mutex is TODO remove this
+-- c.nummutexes = 10000 -- adjust by hand (only has effec for backend_cpu_mt) TODO find better solution for this
 -- c.nummutexes = 386 -- adjust by hand (only has effec for backend_cpu_mt) TODO find better solution for this
 
 c.backend = _opt_backend -- configured in cpp code

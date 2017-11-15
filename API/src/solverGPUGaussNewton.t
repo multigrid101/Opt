@@ -1486,6 +1486,8 @@ return function(problemSpec)
             -- allocate memory for JTJ as is explained in the docs for
             -- cusparse<t>csrgemm.
             -- TODO refactor this allocation stuff and put in init()
+            -- TODO need to refactor to also compute nnz pattern of JT only
+            -- once per solve.
             if pd.JTJ_csrRowPtrA == nil then
                 --C.printf("alloc JTJ\n")
                 var numrows = nUnknowns + 1
@@ -1655,15 +1657,15 @@ return function(problemSpec)
       end
     end
 
-       escape
-         if backend.name == 'CPUMT' then
-           emit quote
-             for k = 0,conf.nummutexes do
-               C.pthread_mutex_init(&([backend.summutex_sym][k]), nil)
-             end
-           end
-         end
-       end
+       -- escape
+       --   if backend.name == 'CPUMT' then
+       --     emit quote
+       --       for k = 0,conf.nummutexes do
+       --         C.pthread_mutex_init(&([backend.summutex_sym][k]), nil)
+       --       end
+       --     end
+       --   end
+       -- end
 
        var pd = [&PlanData](data_)
        pd.timer:init()

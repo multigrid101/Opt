@@ -467,8 +467,8 @@ local terra computeAT(handle : &opaque, -- needed by cusparse lib TODO refactor
 
   -- Assuming that nColsA ~ nRowsA, it doesn't really matter whether we iterate
   -- through A or AT (efficiency-wise). But since we need to *read* from
-  -- A and *write* to AT, it is better to iterate through AT (this discussion
-  -- isn't really relevant here but later for parallelization)
+  -- A and *write* to AT, it is better to iterate through AT because that way
+  -- we avoid race conditions and possibly expensive synchronization.
   -- TODO see if alternative implementation (iterate through A) is cheaper for
   -- single-threaded version.
   var numRowsAT = nUnknowns
@@ -503,7 +503,6 @@ local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refa
   -- reset outVec
   C.memset([&opaque](valOutVec), 0, nRowsA * sizeof(float))
 
--- TODO investigate optimizations due to symmetric A
   for k = 0,nRowsA do
     var offsetThisRowA = rowPtrA[k]
     var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
