@@ -1643,7 +1643,6 @@ return function(problemSpec)
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra init(data_ : &opaque, params_ : &&opaque)
       C.printf('starting init\n')
-    -- backend.initGlobals()
         var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
         var name : &I.__itt_string_handle  = I.__itt_string_handle_create("init()")
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)

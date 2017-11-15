@@ -661,100 +661,91 @@ local GRID_SIZES = c.GRID_SIZES
 
 b.threadcreation_counter = global(int, 0,  'threadcreation_counter')
 
-    -------------------------------- GLOBALS START
-    theThreads = global(C.pthread_t[numthreads], nil, 'theThreads')
+-------------------------------- GLOBALS START
+theThreads = global(C.pthread_t[numthreads], nil, 'theThreads')
 
-    thread_busy_mutex = global(C.pthread_mutex_t[numthreads], nil, "thread_busy_mutex")
-    numkernels_finished_mutex = global(C.pthread_mutex_t, nil, "numkernels_finished_mutex")
-    kernel_running_mutex = global(C.pthread_mutex_t, nil, "kernel_running_mutex")   
-    thread_has_been_canceled_mutex = global(C.pthread_mutex_t, nil, "thread_has_been_canceled_mutex")   
-    ready_for_work_mutex = global(C.pthread_mutex_t, nil, "ready_for_work_mutex")        
-    numthreadsAliveMutex = global(C.pthread_mutex_t, nil, "numthreadsAlive")
+thread_busy_mutex = global(C.pthread_mutex_t[numthreads], nil, "thread_busy_mutex")
+numkernels_finished_mutex = global(C.pthread_mutex_t, nil, "numkernels_finished_mutex")
+kernel_running_mutex = global(C.pthread_mutex_t, nil, "kernel_running_mutex")   
+thread_has_been_canceled_mutex = global(C.pthread_mutex_t, nil, "thread_has_been_canceled_mutex")   
+ready_for_work_mutex = global(C.pthread_mutex_t, nil, "ready_for_work_mutex")        
+numthreadsAliveMutex = global(C.pthread_mutex_t, nil, "numthreadsAlive")
 
-    work_available_cv = global(C.pthread_cond_t[numthreads], nil, "work_available_cv")
-    kernel_finished_cv = global(C.pthread_cond_t, nil, "kernel_finished_cv")        
-    thread_has_been_canceled_cv = global(C.pthread_cond_t, nil, "thread_has_been_canceled_cv")        
-    ready_for_work_cv = global(C.pthread_cond_t, nil, "ready_for_work_cv")        
+work_available_cv = global(C.pthread_cond_t[numthreads], nil, "work_available_cv")
+kernel_finished_cv = global(C.pthread_cond_t, nil, "kernel_finished_cv")        
+thread_has_been_canceled_cv = global(C.pthread_cond_t, nil, "thread_has_been_canceled_cv")        
+ready_for_work_cv = global(C.pthread_cond_t, nil, "ready_for_work_cv")        
 
-    numkernels_finished = global(int, 0, "numkernels_finished")                     
-    -- numwloads_finished = global(int, 0, "numwloads_finished")                      
+numkernels_finished = global(int, 0, "numkernels_finished")                     
+-- numwloads_finished = global(int, 0, "numwloads_finished")                      
 
-    numthreadsAlive = global(int, 0, "numthreadsAlive")
-    --------------------------------- GLOBALS END                  
+numthreadsAlive = global(int, 0, "numthreadsAlive")
+--------------------------------- GLOBALS END                  
 
-    --------------------------------- Task_t START
-    struct Task_t {
-      taskfunction : {&opaque} -> {bool}
-      pd : &opaque
-    }
+--------------------------------- Task_t START
+struct Task_t {
+  taskfunction : {&opaque} -> {bool}
+  pd : &opaque
+}
 
-    terra Task_t:run() : bool
-      debm( C.printf('Task_t:run(): starting\n') )
-      debm( C.printf('Task_t:run(): self.taskfunction points to %d\n', self.taskfunction) )
+terra Task_t:run() : bool
+  debm( C.printf('Task_t:run(): starting\n') )
+  debm( C.printf('Task_t:run(): self.taskfunction points to %d\n',
+                 self.taskfunction) )
 
-      var name = I.__itt_string_handle_create('run_task')
-      var domain = I.__itt_domain_create("Main.Domain")
-      I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
-      I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
-
-
-      var moreWorkWillCome = self.taskfunction(self.pd)
-      debm( C.printf('Task_t:run(): stopping\n') )
-
-      return moreWorkWillCome
-    end
-    --------------------------------- Task_t END
-
-    --------------------------------- TaskQueue_t START
-    TaskQueue_t = terralib.types.newstruct("TaskQueue_t")
-    TaskQueue_t.entries:insert({ type = Task_t[numthreads], field = "threadTasks"})
-
-    terra TaskQueue_t:get(threadIndex : int)
-      return self.threadTasks[threadIndex]
-    end                                                                                                                                                                                                                                            
-    terra TaskQueue_t:set(threadIndex : int, task : Task_t)
-      var domain = I.__itt_domain_create("Main.Domain")
-      debm( C.printf('TaskQueue_t:set(): starting\n') )
-      self.threadTasks[threadIndex] = task
+  var name = I.__itt_string_handle_create('run_task')
+  var domain = I.__itt_domain_create("Main.Domain")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+  I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
 
 
-      -- debm( C.printf('TaskQueue_t:set(): waiiting for readforwork signal\n') )
-      --   C.pthread_mutex_lock(&ready_for_work_mutex)
-      --   C.pthread_cond_wait(&ready_for_work_cv, &ready_for_work_mutex)
-      --   C.pthread_mutex_unlock(&ready_for_work_mutex)
+  var moreWorkWillCome = self.taskfunction(self.pd)
+
+  debm( C.printf('Task_t:run(): stopping\n') )
+  return moreWorkWillCome
+end
+--------------------------------- Task_t END
+
+--------------------------------- TaskQueue_t START
+TaskQueue_t = terralib.types.newstruct("TaskQueue_t")
+TaskQueue_t.entries:insert({ type = Task_t[numthreads], field = "threadTasks"})
+
+terra TaskQueue_t:get(threadIndex : int)
+  return self.threadTasks[threadIndex]
+end                                                                                                                                                                                                                                            
+terra TaskQueue_t:set(threadIndex : int, task : Task_t)
+  var domain = I.__itt_domain_create("Main.Domain")
+  debm( C.printf('TaskQueue_t:set(): starting\n') )
+  self.threadTasks[threadIndex] = task
 
 
+  debm( C.printf('TaskQueue_t:set(): starting to lock thread_busy_mutex[%d],\
+                 its value is %d\n', threadIndex, thread_busy_mutex[0]) )
 
-      debm( C.printf('TaskQueue_t:set(): starting to lock thread_busy_mutex[%d], its value is %d\n', threadIndex, thread_busy_mutex[0]) )
-      var name_signal = I.__itt_string_handle_create('TaskQueue_t:set(): sending work signal')
-      I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_signal)
+  var name_signal = 
+     I.__itt_string_handle_create('TaskQueue_t:set(): sending work signal')
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_signal)
 
-      pt( C.pthread_mutex_lock(&thread_busy_mutex[threadIndex]))
-      -- C.sleep(1)
-      debm( C.printf('TaskQueue_t:set(): signaling that work is available for thread %d\n', threadIndex) )
-      pt( C.pthread_cond_signal(&work_available_cv[threadIndex]))
+  pt( C.pthread_mutex_lock(&thread_busy_mutex[threadIndex]))
+  -- C.sleep(1)
+  debm( C.printf('TaskQueue_t:set(): signaling that work is\
+                  available for thread %d\n', threadIndex) )
 
-      I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name_signal)
+  pt( C.pthread_cond_signal(&work_available_cv[threadIndex]))
 
-      debm( C.printf('TaskQueue_t:set(): starting to unlock thread_busy_mutex[%d]\n', threadIndex) )
-      pt( C.pthread_mutex_unlock(&thread_busy_mutex[threadIndex]))
+  I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name_signal)
 
-      debm( C.printf('TaskQueue_t:set(): stopping\n') )
-    end 
-    taskQueue = global(TaskQueue_t, nil, "taskQueue")
-    --------------------------------- TaskQueue_t END
+  debm( C.printf('TaskQueue_t:set(): starting to unlock\
+                  thread_busy_mutex[%d]\n', threadIndex) )
+  pt( C.pthread_mutex_unlock(&thread_busy_mutex[threadIndex]))
 
-local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) -- compiledKernel is the result of b.makeWrappedFunctions
+  debm( C.printf('TaskQueue_t:set(): stopping\n') )
+end 
+taskQueue = global(TaskQueue_t, nil, "taskQueue")
+--------------------------------- TaskQueue_t END
 
-
-
-
-
--- for k,v in pairs(compiledKernel) do print(k,v) end
--- print('ASDF')
--- printt(compiledKernel.listOfAtomicAddVars)
--- print('ASDF')
--- error()
+-- compiledKernel is the result of b.makeWrappedFunctions
+local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
     kernelName = kernelName.."_"..tostring(ft)
 -- TODO generalize to arbitrary number of threads DONE
 -- TODO current prevention of race-conditions in atomicAdd seems to be inefficient --> introduce separate sums for each thread DONE
@@ -765,27 +756,30 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
 
 
     --------- THREAD POOL STUFF START
-
-
-
-
+    -- TODO this function can go somewhere else outside makeGPULauncher.
     local terra waitForWork(arg : &opaque) : &opaque                                      
       var threadIndex = [int64](arg)                                                
-      debm( C.printf("waitForkWork(tid=%d): starting\n", threadIndex)                          )
-      debm( C.printf("waitForkWork(tid=%d): locking thread_busy_mutex[%d], value before locking is %d\n", threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
-      pt( C.pthread_mutex_lock(&thread_busy_mutex[threadIndex])                         )
-      debm( C.printf("waitForkWork(tid=%d): locking thread_busy_mutex[%d], value after locking is %d\n", threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
+      debm( C.printf("waitForkWork(tid=%d): starting\n", threadIndex) )
+      debm( C.printf("waitForkWork(tid=%d): locking thread_busy_mutex[%d],\
+                      value before locking is %d\n",
+                      threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
+      pt( C.pthread_mutex_lock(&thread_busy_mutex[threadIndex]) )
+      debm( C.printf("waitForkWork(tid=%d): locking thread_busy_mutex[%d],\
+                      value after locking is %d\n",
+                      threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
       -- while numwloads_finished < NUMWLOADS  do                                   
         -- C.sleep(1)
 
       var moreWorkWillCome = true
 
-        C.pthread_mutex_lock(&numthreadsAliveMutex)
-        numthreadsAlive = numthreadsAlive + 1
-        C.pthread_mutex_unlock(&numthreadsAliveMutex)
+      C.pthread_mutex_lock(&numthreadsAliveMutex)
+      numthreadsAlive = numthreadsAlive + 1
+      C.pthread_mutex_unlock(&numthreadsAliveMutex)
 
       while moreWorkWillCome  do                                                                
-        debm( C.printf("waitForkWork(tid=%d): starting to wait for work, the value of thread_busy_mutex[%d] is %d\n", threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
+        debm( C.printf("waitForkWork(tid=%d): starting to wait for work,\
+                        the value of thread_busy_mutex[%d] is %d\n",
+                        threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
 
         -- debm( C.printf("waitForkWork(tid=%d): sending readyforwork signal\n", threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
 
@@ -794,47 +788,34 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
         var domain = I.__itt_domain_create("Main.Domain")
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
-        pt( C.pthread_cond_wait(&work_available_cv[threadIndex], &thread_busy_mutex[threadIndex])) -- unlocks mutex on entering, locks it on exit)
+        -- unlocks mutex on entering, locks it on exit)
+        pt( C.pthread_cond_wait(&work_available_cv[threadIndex],
+            &thread_busy_mutex[threadIndex]))
         I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
 
 
-        debm( C.printf("waitForkWork(tid=%d): after receiving signal for work, value of thread_busy_mutex is %d\n", threadIndex, thread_busy_mutex[threadIndex]) )
+        debm( C.printf("waitForkWork(tid=%d): after receiving signal for work,\
+                        value of thread_busy_mutex is %d\n",
+                        threadIndex, thread_busy_mutex[threadIndex]) )
 
-        debm( C.printf("waitForkWork(tid=%d): receiving work\n", threadIndex)                  )
+        debm( C.printf("waitForkWork(tid=%d): receiving work\n", threadIndex) )
         var task = taskQueue:get(threadIndex)                                       
 
-        debm( C.printf("waitForkWork(tid=%d): running work\n", threadIndex)                    )
+        debm( C.printf("waitForkWork(tid=%d): running work\n", threadIndex) )
         moreWorkWillCome = task:run()                                                        
-        debm( C.printf("waitForkWork(tid=%d): finished running work\n", threadIndex)                    )
+        debm( C.printf("waitForkWork(tid=%d): finished running work\n", threadIndex))
       end                                                                           
 
-      debm( C.printf("waitForkWork(tid=%d): unlocking thread_busy_mutex[%d]\n", threadIndex, threadIndex))
-      pt( C.pthread_mutex_unlock(&thread_busy_mutex[threadIndex])                       )
-      -- C.printf("waitForkWork(tid=%d): finished\n", threadIndex)                         
+      debm( C.printf("waitForkWork(tid=%d): unlocking thread_busy_mutex[%d]\n",
+                      threadIndex, threadIndex))
+      pt( C.pthread_mutex_unlock(&thread_busy_mutex[threadIndex]) )
 
-      -- I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name2)
-      -- I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name2)
-      debm( C.printf("waitForkWork(tid=%d): calling pthread_exit()\n", threadIndex, threadIndex))
+      debm( C.printf("waitForkWork(tid=%d): calling pthread_exit()\n",
+                     threadIndex, threadIndex))
       C.pthread_exit(nil)
-      debm( C.printf("waitForkWork(tid=%d): calling pthread_exit()\n", threadIndex, threadIndex))
       return nil                                                                    
     end             
 
-    local terra initGlobals()
-      -- C.printf('initGlobals(): starting\n')
-      -- C.pthread_key_create(&tid_key, nil)
-
-      -- for k = 0,numthreads do                                                       
-      --   C.printf('initGlobals(): value of thread_busy_mutex[%d] before init is %d\n', k, thread_busy_mutex[k])
-      --   C.pthread_mutex_init(&thread_busy_mutex[k], nil)                            
-      --   C.printf('initGlobals(): value of thread_busy_mutex[%d] after init is %d\n', k, thread_busy_mutex[k])
-      --   C.pthread_cond_init(&work_available_cv[k], nil)                             
-      -- end                                                                           
-      -- C.pthread_mutex_init(&numkernels_finished_mutex, nil)                         
-      -- C.pthread_mutex_init(&kernel_running_mutex, nil)                              
-      -- C.pthread_cond_init(&kernel_finished_cv, nil)  
-    end
-    b.initGlobals = initGlobals
 
     -- TODO create corresponding join function and use in init, cost, and step()
     local terra initThreads()
@@ -842,56 +823,58 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
       pt( C.pthread_key_create(&tid_key, nil))
 
       for k = 0,numthreads do                                                       
-        debm( C.printf('initThreads(): value of thread_busy_mutex[%d] before init is %d\n', k, thread_busy_mutex[k]) )
-        pt( C.pthread_mutex_init(&thread_busy_mutex[k], nil)                            )
-        debm( C.printf('initThreads(): value of thread_busy_mutex[%d] after init is %d\n', k, thread_busy_mutex[k]) )
-        pt( C.pthread_cond_init(&work_available_cv[k], nil)                             )
+        debm( C.printf('initThreads(): value of thread_busy_mutex[%d]\
+                        before init is %d\n', k, thread_busy_mutex[k]) )
+        pt( C.pthread_mutex_init(&thread_busy_mutex[k], nil))
+        debm( C.printf('initThreads(): value of thread_busy_mutex[%d]\
+                        after init is %d\n', k, thread_busy_mutex[k]) )
+        pt( C.pthread_cond_init(&work_available_cv[k], nil) )
       end                                                                           
-      pt( C.pthread_mutex_init(&thread_has_been_canceled_mutex, nil)                         )
-      pt( C.pthread_mutex_init(&numkernels_finished_mutex, nil)                         )
-      pt( C.pthread_mutex_init(&kernel_running_mutex, nil)                              )
-      pt( C.pthread_mutex_init(&ready_for_work_mutex, nil)                              )
-      pt( C.pthread_mutex_init(&numthreadsAliveMutex, nil)                              )
+      pt( C.pthread_mutex_init(&thread_has_been_canceled_mutex, nil) )
+      pt( C.pthread_mutex_init(&numkernels_finished_mutex, nil) )
+      pt( C.pthread_mutex_init(&kernel_running_mutex, nil) )
+      pt( C.pthread_mutex_init(&ready_for_work_mutex, nil) )
+      pt( C.pthread_mutex_init(&numthreadsAliveMutex, nil) )
 
-      pt( C.pthread_cond_init(&kernel_finished_cv, nil)  )
-      pt( C.pthread_cond_init(&thread_has_been_canceled_cv, nil)  )
-      pt( C.pthread_cond_init(&ready_for_work_cv, nil)  )
+      pt( C.pthread_cond_init(&kernel_finished_cv, nil) )
+      pt( C.pthread_cond_init(&thread_has_been_canceled_cv, nil) )
+      pt( C.pthread_cond_init(&ready_for_work_cv, nil) )
 
       numthreadsAlive = 0
 
-      escape
-        -- set cpu affinities
-        if c.cpumap then
-          emit quote
-            var cpusets : C.cpu_set_t[numthreads]
-            var cpumap : int[8]
+      -- set cpu affinities (TODO this is broken, needs to be fixed)
+      -- escape
+      --   if c.cpumap then
+      --     emit quote
+      --       var cpusets : C.cpu_set_t[numthreads]
+      --       var cpumap : int[8]
 
-            escape
-              for k = 1,numthreads do
-                emit quote
-                  cpumap[ [k-1] ] = [ c.cpumap[k] ]
-                end
-              end
-            end
+      --       escape
+      --         for k = 1,numthreads do
+      --           emit quote
+      --             cpumap[ [k-1] ] = [ c.cpumap[k] ]
+      --           end
+      --         end
+      --       end
 
-            -- CPU_ZERO macro -- TODO refactor these macros
-            for k = 0,numthreads do
-              C.memset ( &(cpusets[k]) , 0, sizeof (C.cpu_set_t)) -- 0 is the integer value of '\0'
-            end
+      --       -- CPU_ZERO macro -- TODO refactor these macros
+      --       for k = 0,numthreads do
+      --         C.memset ( &(cpusets[k]) , 0, sizeof (C.cpu_set_t)) -- 0 is the integer value of '\0'
+      --       end
 
-            -- CPU_SET macro
-            for k = 0,numthreads do
-              var cpuid : C.size_t = cpumap[k]
-              ([&C.__cpu_mask](cpusets[k].__bits))[0] = ([&C.__cpu_mask](cpusets[k].__bits))[0] or ([C.__cpu_mask]( 1  << cpuid) )
-            end
+      --       -- CPU_SET macro
+      --       for k = 0,numthreads do
+      --         var cpuid : C.size_t = cpumap[k]
+      --         ([&C.__cpu_mask](cpusets[k].__bits))[0] = ([&C.__cpu_mask](cpusets[k].__bits))[0] or ([C.__cpu_mask]( 1  << cpuid) )
+      --       end
 
 
-            for k = 0,numthreads do
-              tdatas[k].cpuset = cpusets[k]
-            end
-          end
-        end
-      end
+      --       for k = 0,numthreads do
+      --         tdatas[k].cpuset = cpusets[k]
+      --       end
+      --     end
+      --   end
+      -- end
 
       for tid = 0,numthreads do
         pt( C.pthread_create(&theThreads[tid], nil, waitForWork, [&opaque](tid)))
@@ -901,116 +884,95 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
     end
     b.initThreads = initThreads
 
+
+    -- Definition of a task to get threads out of their infinite while-loop
     local terra stopWaitingForWork(dummy : &opaque)
-       -- C.printf('stopWaitingForWork(): starting\n')
-       -- var thisThread = C.pthread_self()
-
-       -- C.printf('stopWaitingForWork(): canceling thread\n')
-       -- pt( C.pthread_cancel(thisThread) )
-
-      -- pt( C.pthread_mutex_lock(&thread_has_been_canceled_mutex))
-      -- pt( C.pthread_cond_signal(&thread_has_been_canceled_cv))
-      -- pt( C.pthread_mutex_unlock(&thread_has_been_canceled_mutex))
-
-       -- C.printf('stopWaitingForWork(): stopping\n')
-
        var moreWorkWillCome = false
        return moreWorkWillCome
     end
+    local stopWaitingForWorkTask = 
+       global(Task_t, `Task_t( {taskfunction=stopWaitingForWork, pd = nil} ),
+              'stopWaitingForWorkTask')
 
-    local stopWaitingForWorkTask = global(Task_t, `Task_t( {taskfunction=stopWaitingForWork, pd = nil} ), 'stopWaitingForWorkTask')
 
     local terra joinThreads()
       debm( C.printf('joinThreads(): starting\n') )
 
-        -- wait for all threads to start
-        var waitForThreadsAliveName = I.__itt_string_handle_create('wait_for_threads_to_start')
-        var domain = I.__itt_domain_create("Main.Domain")
-        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, waitForThreadsAliveName)
-        while true do
-          C.pthread_mutex_lock(&numthreadsAliveMutex)
-          var numalive = numthreadsAlive
-          C.pthread_mutex_unlock(&numthreadsAliveMutex)
+      -- wait for all threads to start (why are we doing this in jointhreads?)
+      var waitForThreadsAliveName = I.__itt_string_handle_create('wait_for_threads_to_start')
+      var domain = I.__itt_domain_create("Main.Domain")
+      I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, waitForThreadsAliveName)
+      while true do -- use spinlock
+        C.pthread_mutex_lock(&numthreadsAliveMutex)
+        var numalive = numthreadsAlive
+        C.pthread_mutex_unlock(&numthreadsAliveMutex)
 
-          if numalive == numthreads then
-            break
-          end
+        if numalive == numthreads then
+          break
         end
-        I.__itt_task_end(domain, I.__itt_null, I.__itt_null, waitForThreadsAliveName)
+      end -- end of spinlock check
+      I.__itt_task_end(domain, I.__itt_null, I.__itt_null, waitForThreadsAliveName)
 
-      for tid = 0,numthreads do                                                       
+      -- send "kill signal" to all threads to get them to exit from their
+      -- infinite "waitForWork" state.
+      for tid = 0,numthreads do
         taskQueue:set(tid, stopWaitingForWorkTask)
       end
 
-      -- pt( C.pthread_mutex_lock(&thread_has_been_canceled_mutex))
-      -- pt( C.pthread_cond_wait(&thread_has_been_canceled_cv, &thread_has_been_canceled_mutex))
-      -- pt( C.pthread_mutex_unlock(&thread_has_been_canceled_mutex))
-
-
+      -- We need to do this here because pthread_join() should be called from
+      -- main thread. The worker-threads can't kill themselves.
       debm( C.printf('joinThreads(): waiting for threads to join\n') )
       for tid = 0,numthreads do                                                       
         pt( C.pthread_join(theThreads[tid], nil))
-        -- pt( C.pthread_cancel(theThreads[tid]))
       end
       debm( C.printf('joinThreads(): threads are joined\n') )
 
-      -- pt( C.pthread_key_create(&tid_key, nil))
-
+      -- cleanup (but necessary because if we forget to destroy then the mutexes
+      -- are in an undefined state after restarting the the threads)
       for k = 0,numthreads do                                                       
-        pt( C.pthread_mutex_destroy(&thread_busy_mutex[k])                            )
+        pt( C.pthread_mutex_destroy(&thread_busy_mutex[k]) )
         pt( C.pthread_cond_destroy(&work_available_cv[k]))
       end                                                                           
       debm( C.printf('joinThreads(): bla1\n') )
       pt( C.pthread_mutex_destroy(&numkernels_finished_mutex))
-      pt( C.pthread_mutex_destroy(&kernel_running_mutex)                              )
-      pt( C.pthread_cond_destroy(&kernel_finished_cv)  )
+      pt( C.pthread_mutex_destroy(&kernel_running_mutex) )
+      pt( C.pthread_cond_destroy(&kernel_finished_cv) )
       debm( C.printf('joinThreads(): bla2\n') )
 
-      pt( C.pthread_cond_destroy(&thread_has_been_canceled_cv)  )
+      pt( C.pthread_cond_destroy(&thread_has_been_canceled_cv) )
       pt( C.pthread_mutex_destroy(&thread_has_been_canceled_mutex) )
       debm( C.printf('joinThreads(): bla3\n') )
 
       pt( C.pthread_mutex_destroy(&numthreadsAliveMutex) )
-
-      -- pt( C.pthread_cond_destroy(&thread_has_been_canceled_cv)  )
-      -- pt( C.pthread_mutex_destroy(&thread_has_been_canceled_mutex) )
-
-
-      for k = 0,numthreads do
-        -- C.printf('joinThreads(): unlocking thread_busy_mutex[%d], its value is %d\n', k, thread_busy_mutex[k])
-        -- pt( C.pthread_mutex_unlock(&thread_busy_mutex[k]))
-        -- C.printf('joinThreads(): after unlocking thread_busy_mutex[%d] its value is %d\n', k, thread_busy_mutex[k])
-        -- pt( C.pthread_cancel(theThreads[k]) ) --> moved to joinThreads)
-      end
       debm( C.printf('joinThreads(): stopping\n') )
     end
     b.joinThreads = joinThreads
 
     local taskfuncsAsLua = {}
     for tid = 0,numthreads-1 do
-        local kmin = {}
-        local kmax = {}
+      local kmin = {}
+      local kmax = {}
 
-        -- outermost dimension is split among threads
-        local dimsize_outerdim = ispace.dims[numdims].size
-        local outerdim = numdims-1
+      -- outermost dimension is split among threads
+      local dimsize_outerdim = ispace.dims[numdims].size
+      local outerdim = numdims-1
 
-         if tid < numthreads-1 then
-           -- last thread needs to be set manually due to roundoff error
-          kmin[ outerdim ] = tid*(dimsize_outerdim/numthreads)
-          kmax[ outerdim ] = (tid+1)*(dimsize_outerdim/numthreads)
-        else
-          -- set outdim for final thread
-          kmin[ outerdim ] = (numthreads-1)*(dimsize_outerdim/numthreads)
-          kmax[ outerdim ] = dimsize_outerdim
-        end
+      if tid < numthreads-1 then
+        -- last thread needs to be set manually due to roundoff error
+        kmin[ outerdim ] = tid*(dimsize_outerdim/numthreads)
+        kmax[ outerdim ] = (tid+1)*(dimsize_outerdim/numthreads)
+      else
+        -- set outdim for final thread
+        kmin[ outerdim ] = (numthreads-1)*(dimsize_outerdim/numthreads)
+        kmax[ outerdim ] = dimsize_outerdim
+      end
 
-       -- all other dimensions traverse everything
-       for d = 1,numdims-1 do
-         local dimsize = ispace.dims[d].size
-         kmin[ d-1 ] = 0
-         kmax[ d-1 ] = dimsize
-       end
+      -- all other dimensions traverse everything
+      for d = 1,numdims-1 do
+        local dimsize = ispace.dims[d].size
+        kmin[ d-1 ] = 0
+        kmax[ d-1 ] = dimsize
+      end
 
       taskfuncsAsLua[tid] = terra(arg : &opaque)
         var domain = I.__itt_domain_create("Main.Domain")
@@ -1070,38 +1032,6 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace) --
     end
     -- error()
     -- THREADPOOL END
-
-
-
-
-    -- local struct thread_data {
-    --   kmin : int[numdims],
-    --   kmax : int[numdims],
-    --   pd : &PlanData
-    --   tid : int -- thread id
-    --   cpuset : C.cpu_set_t
-    -- }
-
-    -- local terra threadLauncher(threadarg : &opaque) : &opaque
-    --     var threaddata = [&thread_data](threadarg)
-    --     var pd = threaddata.pd
-    --     var kmin = threaddata.kmin
-    --     var kmax = threaddata.kmax
-    --     var tid = threaddata.tid
-    --     C.pthread_setspecific(tid_key, [&opaque](tid-1))
-
-    --     var cpuset = threaddata.cpuset
-        
-    --     -- if config.cpumap is not set, then let OS schedule the threads as it sees fit
-    --     escape
-    --       if c.cpumap then
-    --         emit quote
-    --           C.pthread_setaffinity_np(C.pthread_self(), sizeof(C.cpu_set_t), &cpuset)
-    --         end
-    --       end
-    --     end
-
-    --     compiledKernel(@pd, kmin, kmax, tid)
         
 
     -- end
