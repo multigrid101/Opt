@@ -8,6 +8,7 @@ local S = require("std")
 local I = require('ittnotify')
 local util = require("util")
 local conf = require('config')
+local tp = require('threadpool')
 local backend = require(conf.backend)
 require("precision")
 
@@ -1652,7 +1653,7 @@ return function(problemSpec)
     escape
       if backend.name == 'CPUMT' then
         emit quote
-          backend.initThreads()
+          tp.initThreads()
         end
       end
     end
@@ -1743,7 +1744,7 @@ return function(problemSpec)
       escape
         if backend.name == 'CPUMT' then
           emit quote
-            backend.joinThreads()
+            tp.joinThreads()
           end
         end
       end
@@ -1787,7 +1788,7 @@ return function(problemSpec)
     escape
       if backend.name == 'CPUMT' then
         emit quote
-          backend.initThreads()
+          tp.initThreads()
         end
       end
     end
@@ -2097,7 +2098,7 @@ return function(problemSpec)
                     escape
                       if backend.name == 'CPUMT' then
                         emit quote
-                          backend.joinThreads()
+                          tp.joinThreads()
                         end
                       end
                     end
@@ -2112,7 +2113,7 @@ return function(problemSpec)
                     escape
                       if backend.name == 'CPUMT' then
                         emit quote
-                          backend.joinThreads()
+                          tp.joinThreads()
                         end
                       end
                     end

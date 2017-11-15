@@ -1,6 +1,7 @@
 local b = {}
 local S = require("std")
 local c = require('config')
+local tp = require('threadpool')
 local C = terralib.includecstring [[
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -659,324 +660,6 @@ end)
 
 local GRID_SIZES = c.GRID_SIZES
 
--- b.threadcreation_counter = global(int, 0,  'threadcreation_counter')
-
--------------------------------- GLOBALS START
-theThreads = global(C.pthread_t[numthreads], nil, 'theThreads')
-
--- Summary: Synch mechanism used by main-thread to tell worker-threads that
---          work is available for them.
--- init by: initThreads (on main thread)
--- destroyed by: joinThreads (on main thread)
--- used by: (together, wait:worker, signal:main)
--- *  waitForWork(): wait until work is available for this thread.
--- *  TaskQueue_t:set(): signal worker thread that work is available.
-thread_busy_mutex = global(C.pthread_mutex_t[numthreads], nil, "thread_busy_mutex")
-work_available_cv = global(C.pthread_cond_t[numthreads], nil, "work_available_cv")
-
-
--- Summary: Next two pairs (i.e. 4 globals) form a single entity. Synch mechanism
---          to ensure that all worker threads have finished their portion of
---          work before main-thread launches next kernel.
--- init by: initThreads (on main thread)
--- destroyed by: joinThreads (on main thread)
--- used by: (together, wait:main, signal:worker)
--- *  GPULauncher(): reset numkernels_finished to zero
--- *  GPULauncher(): wait for kernel_finished_cv
--- *  taskfunc(): when portion of work is complete, increase numkernel_finished
---                and signal (kernel_finished_cv) main thread that it may
---                continue
-numkernels_finished_mutex = global(C.pthread_mutex_t, nil, "numkernels_finished_mutex")
-numkernels_finished = global(int, 0, "numkernels_finished")                     
---
-kernel_running_mutex = global(C.pthread_mutex_t, nil, "kernel_running_mutex")   
-kernel_finished_cv = global(C.pthread_cond_t, nil, "kernel_finished_cv")        
-
-
-
--- thread_has_been_canceled_mutex = global(C.pthread_mutex_t, nil, "thread_has_been_canceled_mutex")   
--- ready_for_work_mutex = global(C.pthread_mutex_t, nil, "ready_for_work_mutex")        
-
-
--- Summary: Synch mechanism used to ensure that worker-threads are alive *before*
---          main-thread starts sending them signals. Every main-thread function
---          that somehow handles worker-threads should use this mechanism to
---          avoid deadlocks.
--- init by: initThreads (on main thread)
--- destroyed by: joinThreads (on main thread)
--- used by: (together, wait:main, signal:worker)
--- *  GPULauncher(): wait until all threads are alive before putting work into
---                   job-queue (wait until numthreadsAlive==numthreads)
--- *  waitForWork(): increase numthreadsAlive before entering infinite loop
--- * joinThreads(): same as GPULaucher.
-numthreadsAliveMutex = global(C.pthread_mutex_t, nil, "numthreadsAlive")
-numthreadsAlive = global(int, 0, "numthreadsAlive")
-
--- thread_has_been_canceled_cv = global(C.pthread_cond_t, nil, "thread_has_been_canceled_cv")        
--- ready_for_work_cv = global(C.pthread_cond_t, nil, "ready_for_work_cv")        
-
--- numwloads_finished = global(int, 0, "numwloads_finished")                      
-
---------------------------------- GLOBALS END                  
-
---------------------------------- Task_t START
-struct Task_t {
-  taskfunction : {&opaque} -> {bool}
-  pd : &opaque
-}
-
-terra Task_t:run() : bool
-  debm( C.printf('Task_t:run(): starting\n') )
-  debm( C.printf('Task_t:run(): self.taskfunction points to %d\n',
-                 self.taskfunction) )
-
-  var name = I.__itt_string_handle_create('run_task')
-  var domain = I.__itt_domain_create("Main.Domain")
-  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
-  I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
-
-
-  var moreWorkWillCome = self.taskfunction(self.pd)
-
-  debm( C.printf('Task_t:run(): stopping\n') )
-  return moreWorkWillCome
-end
---------------------------------- Task_t END
-
---------------------------------- TaskQueue_t START
-TaskQueue_t = terralib.types.newstruct("TaskQueue_t")
-TaskQueue_t.entries:insert({ type = Task_t[numthreads], field = "threadTasks"})
-
-terra TaskQueue_t:get(threadIndex : int)
-  return self.threadTasks[threadIndex]
-end                                                                                                                                                                                                                                            
-terra TaskQueue_t:set(threadIndex : int, task : Task_t)
-  var domain = I.__itt_domain_create("Main.Domain")
-  debm( C.printf('TaskQueue_t:set(): starting\n') )
-
-  -- insert task into "queue"
-  self.threadTasks[threadIndex] = task
-
-
-  debm( C.printf('TaskQueue_t:set(): starting to lock thread_busy_mutex[%d],\
-                 its value is %d\n', threadIndex, thread_busy_mutex[0]) )
-
-  var name_signal = 
-     I.__itt_string_handle_create('TaskQueue_t:set(): sending work signal')
-  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_signal)
-
-  -- send signal that work is available START
-  pt( C.pthread_mutex_lock(&thread_busy_mutex[threadIndex]))
-
-  debm( C.printf('TaskQueue_t:set(): signaling that work is\
-                  available for thread %d\n', threadIndex) )
-
-  pt( C.pthread_cond_signal(&work_available_cv[threadIndex]))
-
-  I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name_signal)
-
-  debm( C.printf('TaskQueue_t:set(): starting to unlock\
-                  thread_busy_mutex[%d]\n', threadIndex) )
-  pt( C.pthread_mutex_unlock(&thread_busy_mutex[threadIndex]))
-  -- send signal that work is available END
-
-  debm( C.printf('TaskQueue_t:set(): stopping\n') )
-end 
-taskQueue = global(TaskQueue_t, nil, "taskQueue")
---------------------------------- TaskQueue_t END
-
--- threadpool stuff start
-local terra waitForWork(arg : &opaque) : &opaque                                      
-  var threadIndex = [int64](arg)                                                
-  debm( C.printf("waitForkWork(tid=%d): starting\n", threadIndex) )
-  debm( C.printf("waitForkWork(tid=%d): locking thread_busy_mutex[%d],\
-                  value before locking is %d\n",
-                  threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
-  pt( C.pthread_mutex_lock(&thread_busy_mutex[threadIndex]) )
-  debm( C.printf("waitForkWork(tid=%d): locking thread_busy_mutex[%d],\
-                  value after locking is %d\n",
-                  threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
-  -- while numwloads_finished < NUMWLOADS  do                                   
-    -- C.sleep(1)
-
-  var moreWorkWillCome = true
-
-  C.pthread_mutex_lock(&numthreadsAliveMutex)
-  numthreadsAlive = numthreadsAlive + 1
-  C.pthread_mutex_unlock(&numthreadsAliveMutex)
-
-  while moreWorkWillCome  do                                                                
-    debm( C.printf("waitForkWork(tid=%d): starting to wait for work,\
-                    the value of thread_busy_mutex[%d] is %d\n",
-                    threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
-
-    -- debm( C.printf("waitForkWork(tid=%d): sending readyforwork signal\n", threadIndex, threadIndex, thread_busy_mutex[threadIndex]) )
-
-    var name = I.__itt_string_handle_create('wait_for_work')
-    var name2 = I.__itt_string_handle_create('pthread_exit')
-    var domain = I.__itt_domain_create("Main.Domain")
-    I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
-
-    -- unlocks mutex on entering, locks it on exit)
-    pt( C.pthread_cond_wait(&work_available_cv[threadIndex],
-        &thread_busy_mutex[threadIndex]))
-    I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
-
-
-    debm( C.printf("waitForkWork(tid=%d): after receiving signal for work,\
-                    value of thread_busy_mutex is %d\n",
-                    threadIndex, thread_busy_mutex[threadIndex]) )
-
-    debm( C.printf("waitForkWork(tid=%d): receiving work\n", threadIndex) )
-    var task = taskQueue:get(threadIndex)                                       
-
-    debm( C.printf("waitForkWork(tid=%d): running work\n", threadIndex) )
-    moreWorkWillCome = task:run()                                                        
-    debm( C.printf("waitForkWork(tid=%d): finished running work\n", threadIndex))
-  end                                                                           
-
-  debm( C.printf("waitForkWork(tid=%d): unlocking thread_busy_mutex[%d]\n",
-                  threadIndex, threadIndex))
-  pt( C.pthread_mutex_unlock(&thread_busy_mutex[threadIndex]) )
-
-  debm( C.printf("waitForkWork(tid=%d): calling pthread_exit()\n",
-                 threadIndex, threadIndex))
-  C.pthread_exit(nil)
-  return nil                                                                    
-end             
-
-
--- TODO create corresponding join function and use in init, cost, and step()
-local terra initThreads()
-  debm( C.printf('initThreads(): starting\n') )
-  -- pt( C.pthread_key_create(&tid_key, nil))
-
-  for k = 0,numthreads do                                                       
-    debm( C.printf('initThreads(): value of thread_busy_mutex[%d]\
-                    before init is %d\n', k, thread_busy_mutex[k]) )
-    pt( C.pthread_mutex_init(&thread_busy_mutex[k], nil))
-    debm( C.printf('initThreads(): value of thread_busy_mutex[%d]\
-                    after init is %d\n', k, thread_busy_mutex[k]) )
-    pt( C.pthread_cond_init(&work_available_cv[k], nil) )
-  end                                                                           
-  -- pt( C.pthread_mutex_init(&thread_has_been_canceled_mutex, nil) )
-  pt( C.pthread_mutex_init(&numkernels_finished_mutex, nil) )
-  pt( C.pthread_mutex_init(&kernel_running_mutex, nil) )
-  -- pt( C.pthread_mutex_init(&ready_for_work_mutex, nil) )
-  pt( C.pthread_mutex_init(&numthreadsAliveMutex, nil) )
-
-  pt( C.pthread_cond_init(&kernel_finished_cv, nil) )
-  -- pt( C.pthread_cond_init(&thread_has_been_canceled_cv, nil) )
-  -- pt( C.pthread_cond_init(&ready_for_work_cv, nil) )
-
-  numthreadsAlive = 0
-
-  -- set cpu affinities (TODO this is broken, needs to be fixed)
-  -- escape
-  --   if c.cpumap then
-  --     emit quote
-  --       var cpusets : C.cpu_set_t[numthreads]
-  --       var cpumap : int[8]
-
-  --       escape
-  --         for k = 1,numthreads do
-  --           emit quote
-  --             cpumap[ [k-1] ] = [ c.cpumap[k] ]
-  --           end
-  --         end
-  --       end
-
-  --       -- CPU_ZERO macro -- TODO refactor these macros
-  --       for k = 0,numthreads do
-  --         C.memset ( &(cpusets[k]) , 0, sizeof (C.cpu_set_t)) -- 0 is the integer value of '\0'
-  --       end
-
-  --       -- CPU_SET macro
-  --       for k = 0,numthreads do
-  --         var cpuid : C.size_t = cpumap[k]
-  --         ([&C.__cpu_mask](cpusets[k].__bits))[0] = ([&C.__cpu_mask](cpusets[k].__bits))[0] or ([C.__cpu_mask]( 1  << cpuid) )
-  --       end
-
-
-  --       for k = 0,numthreads do
-  --         tdatas[k].cpuset = cpusets[k]
-  --       end
-  --     end
-  --   end
-  -- end
-
-  for tid = 0,numthreads do
-    pt( C.pthread_create(&theThreads[tid], nil, waitForWork, [&opaque](tid)))
-  end
-  -- C.sleep(1)
-  debm( C.printf('initThreads(): stopping\n') )
-end
-b.initThreads = initThreads
-
-
--- Definition of a task to get threads out of their infinite while-loop
-local terra stopWaitingForWork(dummy : &opaque)
-   var moreWorkWillCome = false
-   return moreWorkWillCome
-end
-local stopWaitingForWorkTask = 
-   global(Task_t, `Task_t( {taskfunction=stopWaitingForWork, pd = nil} ),
-          'stopWaitingForWorkTask')
-
-
-local terra joinThreads()
-  debm( C.printf('joinThreads(): starting\n') )
-
-  -- wait for all threads to start (why are we doing this in jointhreads?)
-  var waitForThreadsAliveName = I.__itt_string_handle_create('wait_for_threads_to_start')
-  var domain = I.__itt_domain_create("Main.Domain")
-  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, waitForThreadsAliveName)
-  while true do -- use spinlock
-    C.pthread_mutex_lock(&numthreadsAliveMutex)
-    var numalive = numthreadsAlive
-    C.pthread_mutex_unlock(&numthreadsAliveMutex)
-
-    if numalive == numthreads then
-      break
-    end
-  end -- end of spinlock check
-  I.__itt_task_end(domain, I.__itt_null, I.__itt_null, waitForThreadsAliveName)
-
-  -- send "kill signal" to all threads to get them to exit from their
-  -- infinite "waitForWork" state.
-  for tid = 0,numthreads do
-    taskQueue:set(tid, stopWaitingForWorkTask)
-  end
-
-  -- We need to do this here because pthread_join() should be called from
-  -- main thread. The worker-threads can't kill themselves.
-  debm( C.printf('joinThreads(): waiting for threads to join\n') )
-  for tid = 0,numthreads do                                                       
-    pt( C.pthread_join(theThreads[tid], nil))
-  end
-  debm( C.printf('joinThreads(): threads are joined\n') )
-
-  -- cleanup (but necessary because if we forget to destroy then the mutexes
-  -- are in an undefined state after restarting the the threads)
-  for k = 0,numthreads do                                                       
-    pt( C.pthread_mutex_destroy(&thread_busy_mutex[k]) )
-    pt( C.pthread_cond_destroy(&work_available_cv[k]))
-  end                                                                           
-  debm( C.printf('joinThreads(): bla1\n') )
-  pt( C.pthread_mutex_destroy(&numkernels_finished_mutex))
-  pt( C.pthread_mutex_destroy(&kernel_running_mutex) )
-  pt( C.pthread_cond_destroy(&kernel_finished_cv) )
-  debm( C.printf('joinThreads(): bla2\n') )
-
-  -- pt( C.pthread_cond_destroy(&thread_has_been_canceled_cv) )
-  -- pt( C.pthread_mutex_destroy(&thread_has_been_canceled_mutex) )
-  debm( C.printf('joinThreads(): bla3\n') )
-
-  pt( C.pthread_mutex_destroy(&numthreadsAliveMutex) )
-  debm( C.printf('joinThreads(): stopping\n') )
-end
-b.joinThreads = joinThreads
--- threadpool stuff end
 
 -- compiledKernel is the result of b.makeWrappedFunctions
 local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
@@ -1055,23 +738,23 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
 
         -- signal 'numkernels_finished' to say that this thread is finished.
         -- If this is the last thread to finish.....(see below)
-        pt( C.pthread_mutex_lock(&numkernels_finished_mutex) )
+        pt( C.pthread_mutex_lock(&tp.numkernels_finished_mutex) )
         debm( C.printf("taskfun(): increasing numkernels_finished counter\n") )
-        numkernels_finished = numkernels_finished + 1                               
+        tp.numkernels_finished = tp.numkernels_finished + 1                               
          
         debm( C.printf("taskfun(): checking if all threads are done\n") )
         -- ... (cont.) then signal main thread that it is allowed to continue
         -- and return from here into the worker-thread's infinite wait-loop
-        if numkernels_finished == numthreads then                                   
+        if tp.numkernels_finished == numthreads then                                   
 
           var name = I.__itt_string_handle_create('taskfunc(): sending kernel_finished signal')
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
-          pt( C.pthread_mutex_lock(&kernel_running_mutex) )
-          pt( C.pthread_cond_signal(&kernel_finished_cv) )
-          pt( C.pthread_mutex_unlock(&kernel_running_mutex) )
+          pt( C.pthread_mutex_lock(&tp.kernel_running_mutex) )
+          pt( C.pthread_cond_signal(&tp.kernel_finished_cv) )
+          pt( C.pthread_mutex_unlock(&tp.kernel_running_mutex) )
           I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
         end                                                                         
-        pt( C.pthread_mutex_unlock(&numkernels_finished_mutex) )
+        pt( C.pthread_mutex_unlock(&tp.numkernels_finished_mutex) )
         debm( C.printf('stopping taskfunc\n') )
 
         var moreWorkWillCome = true
@@ -1123,13 +806,13 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
       terra GPULauncher(pd : &PlanData)
       -- C.sleep(1)
           debm( C.printf('starting GPULauncher\n') )
-          var tasks : Task_t[numthreads]
+          var tasks : tp.Task_t[numthreads]
 
           -- import worker-thread-functions from lua into terra
           escape
             for k = 0,numthreads-1 do
               emit quote
-                tasks[k] = Task_t( { taskfunction=[ taskfuncsAsLua[k] ], pd=pd} )
+                tasks[k] = tp.Task_t( { taskfunction=[ taskfuncsAsLua[k] ], pd=pd} )
               end
             end
           end
@@ -1175,15 +858,15 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
 
           -- lock kernel_running_mutex
           debm( C.printf('GPULauncher(): locking kernel_running_mutex\n') )
-          pt( C.pthread_mutex_lock(&kernel_running_mutex))
+          pt( C.pthread_mutex_lock(&tp.kernel_running_mutex))
           
           -- reset numkernels_finished to zero
           debm( C.printf('GPULauncher(): locking numkernels_finished_mutex\n') )
-          pt( C.pthread_mutex_lock(&numkernels_finished_mutex))
+          pt( C.pthread_mutex_lock(&tp.numkernels_finished_mutex))
           debm( C.printf('GPULauncher(): setting numkernels_finished to zero\n') )
-          numkernels_finished = 0                                                     
+          tp.numkernels_finished = 0                                                     
           debm( C.printf('GPULauncher(): unlocking numkernels_finished_mutex\n') )
-          pt( C.pthread_mutex_unlock(&numkernels_finished_mutex))
+          pt( C.pthread_mutex_unlock(&tp.numkernels_finished_mutex))
 
           -- make sure that the worker-threads are actually alive (via spinlock)
           -- we need this to ensure that taskQueue:set() (run by this, the main
@@ -1196,9 +879,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
               pd.timer:startEvent('waitThreadsStart',&threadStartEvent)
           end
           while true do -- spinlock
-            C.pthread_mutex_lock(&numthreadsAliveMutex)
-            var numalive = numthreadsAlive
-            C.pthread_mutex_unlock(&numthreadsAliveMutex)
+            C.pthread_mutex_lock(&tp.numthreadsAliveMutex)
+            var numalive = tp.numthreadsAlive
+            C.pthread_mutex_unlock(&tp.numthreadsAliveMutex)
 
             if numalive == numthreads then
               break
@@ -1218,9 +901,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
           -- synchronize as next workload might depend on result of this workload 
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_waitTaskFinish)
           debm( C.printf('GPULauncher(): waiting for kernel-tasks to finish\n') )
-          pt( C.pthread_cond_wait(&kernel_finished_cv, &kernel_running_mutex))
+          pt( C.pthread_cond_wait(&tp.kernel_finished_cv, &tp.kernel_running_mutex))
           debm( C.printf('GPULauncher(): unlocking kernel_running_mutex\n') )
-          pt( C.pthread_mutex_unlock(&kernel_running_mutex))
+          pt( C.pthread_mutex_unlock(&tp.kernel_running_mutex))
           debm( C.printf('inside GPULauncher3\n') )
           I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name_waitTaskFinish)
 
