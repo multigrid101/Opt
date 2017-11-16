@@ -352,7 +352,8 @@ terra TaskQueue_t:set(threadIndex : int, task : Task_t)
   debm( C.printf('TaskQueue_t:set(): stopping\n') )
 end 
 
-taskQueue = global(TaskQueue_t, nil, "taskQueue")
+local theTaskQueue = global(TaskQueue_t, nil, "theTaskQueue")
+tp.theTaskQueue = theTaskQueue
 --------------------------------- TaskQueue_t END
 
 -- threadpool stuff start
@@ -400,7 +401,7 @@ local terra waitForWork(arg : &opaque) : &opaque
                     threadIndex, thread_busy_mutex[threadIndex]) )
 
     debm( C.printf("waitForkWork(tid=%d): receiving work\n", threadIndex) )
-    var task = taskQueue:get(threadIndex)                                       
+    var task = theTaskQueue:get(threadIndex)                                       
 
     debm( C.printf("waitForkWork(tid=%d): running work\n", threadIndex) )
     moreWorkWillCome = task:run()                                                        
@@ -518,7 +519,7 @@ local terra joinThreads()
   -- send "kill signal" to all threads to get them to exit from their
   -- infinite "waitForWork" state.
   for tid = 0,numthreads do
-    taskQueue:set(tid, stopWaitingForWorkTask)
+    theTaskQueue:set(tid, stopWaitingForWorkTask)
   end
 
   -- We need to do this here because pthread_join() should be called from

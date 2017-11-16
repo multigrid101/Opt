@@ -863,7 +863,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
           -- add tasks for workload to task-queue                                       
           for k = 0,numthreads do                                                     
             debm( C.printf('GPULauncher(): inserting task %d into taskQueue\n', k) )
-            taskQueue:set(k, tasks[k])                                                
+            tp.theTaskQueue:set(k, tasks[k])                                                
           end                                                                         
           
           -- synchronize as next workload might depend on result of this workload 
