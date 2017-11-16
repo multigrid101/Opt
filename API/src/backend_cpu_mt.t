@@ -736,25 +736,8 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
         compiledKernel(@pd, kmin_terra, kmax_terra, [tid])
         I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name_func)
 
-        -- signal 'numkernels_finished' to say that this thread is finished.
-        -- If this is the last thread to finish.....(see below)
-        pt( C.pthread_mutex_lock(&tp.numkernels_finished_mutex) )
-        debm( C.printf("taskfun(): increasing numkernels_finished counter\n") )
-        tp.numkernels_finished = tp.numkernels_finished + 1                               
-         
-        debm( C.printf("taskfun(): checking if all threads are done\n") )
-        -- ... (cont.) then signal main thread that it is allowed to continue
-        -- and return from here into the worker-thread's infinite wait-loop
-        if tp.numkernels_finished == numthreads then                                   
+        tp.theKernelFinishedByAllThreadsBarrier:signal()
 
-          var name = I.__itt_string_handle_create('taskfunc(): sending kernel_finished signal')
-          I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
-          pt( C.pthread_mutex_lock(&tp.kernel_running_mutex) )
-          pt( C.pthread_cond_signal(&tp.kernel_finished_cv) )
-          pt( C.pthread_mutex_unlock(&tp.kernel_running_mutex) )
-          I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
-        end                                                                         
-        pt( C.pthread_mutex_unlock(&tp.numkernels_finished_mutex) )
         debm( C.printf('stopping taskfunc\n') )
 
         var moreWorkWillCome = true
@@ -857,16 +840,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
           I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name2)
 
           -- lock kernel_running_mutex
-          debm( C.printf('GPULauncher(): locking kernel_running_mutex\n') )
-          pt( C.pthread_mutex_lock(&tp.kernel_running_mutex))
-          
-          -- reset numkernels_finished to zero
-          debm( C.printf('GPULauncher(): locking numkernels_finished_mutex\n') )
-          pt( C.pthread_mutex_lock(&tp.numkernels_finished_mutex))
-          debm( C.printf('GPULauncher(): setting numkernels_finished to zero\n') )
-          tp.numkernels_finished = 0                                                     
-          debm( C.printf('GPULauncher(): unlocking numkernels_finished_mutex\n') )
-          pt( C.pthread_mutex_unlock(&tp.numkernels_finished_mutex))
+          tp.theKernelFinishedByAllThreadsBarrier:initialLock()
 
           -- make sure that the worker-threads are actually alive (via spinlock)
           -- we need this to ensure that taskQueue:set() (run by this, the main
@@ -878,15 +852,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
           if ([_opt_collect_kernel_timing]) then
               pd.timer:startEvent('waitThreadsStart',&threadStartEvent)
           end
-          while true do -- spinlock
-            C.pthread_mutex_lock(&tp.numthreadsAliveMutex)
-            var numalive = tp.numthreadsAlive
-            C.pthread_mutex_unlock(&tp.numthreadsAliveMutex)
 
-            if numalive == numthreads then
-              break
-            end
-          end
+          tp.theThreadsAliveBarrier:wait()
+
           if ([_opt_collect_kernel_timing]) then
               pd.timer:endEvent(&threadStartEvent, 0)
           end
@@ -901,9 +869,9 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
           -- synchronize as next workload might depend on result of this workload 
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_waitTaskFinish)
           debm( C.printf('GPULauncher(): waiting for kernel-tasks to finish\n') )
-          pt( C.pthread_cond_wait(&tp.kernel_finished_cv, &tp.kernel_running_mutex))
+          tp.theKernelFinishedByAllThreadsBarrier:wait()
           debm( C.printf('GPULauncher(): unlocking kernel_running_mutex\n') )
-          pt( C.pthread_mutex_unlock(&tp.kernel_running_mutex))
+          tp.theKernelFinishedByAllThreadsBarrier:finalUnlock()
           debm( C.printf('inside GPULauncher3\n') )
           I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name_waitTaskFinish)
 
