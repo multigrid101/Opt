@@ -795,7 +795,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
           escape
             for k = 0,numthreads-1 do
               emit quote
-                tasks[k] = tp.Task_t( { taskfunction=[ taskfuncsAsLua[k] ], pd=pd} )
+                tasks[k] = tp.Task_t( { taskfunction=[ taskfuncsAsLua[k] ], arg=pd} )
               end
             end
           end

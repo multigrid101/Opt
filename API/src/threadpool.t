@@ -288,7 +288,7 @@ end
 --------------------------------- Task_t START
 local struct Task_t {
   taskfunction : {&opaque} -> {bool}
-  pd : &opaque
+  arg : &opaque
 }
 tp.Task_t = Task_t
 
@@ -303,7 +303,7 @@ terra Task_t:run() : bool
   I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
 
 
-  var moreWorkWillCome = self.taskfunction(self.pd)
+  var moreWorkWillCome = self.taskfunction(self.arg)
 
   debm( C.printf('Task_t:run(): stopping\n') )
   return moreWorkWillCome
@@ -500,7 +500,7 @@ local terra stopWaitingForWork(dummy : &opaque)
    return moreWorkWillCome
 end
 local stopWaitingForWorkTask = 
-   global(Task_t, `Task_t( {taskfunction=stopWaitingForWork, pd = nil} ),
+   global(Task_t, `Task_t( {taskfunction=stopWaitingForWork, arg = nil} ),
           'stopWaitingForWorkTask')
 
 
