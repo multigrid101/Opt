@@ -5,6 +5,13 @@ local C = terralib.includecstring [[
 ]]
 local la = {} -- this module
 
+tp = require('threadpool')
+
+c = require('config')
+numthreads = c.numthreads
+-- numthreads = 3
+
+
 -- IntList  helper needed below START
 -- TODO adjust comments
 local struct IntList {
@@ -491,7 +498,142 @@ end
 la.computeAT = computeAT
 
 
-local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refactor
+-- multi-threaded version START
+-- TODO it should be possible (although difficult) to develop code-transformations
+-- similar to openmp to transform the serial implementation of this function
+-- into the parallel one
+local function lowerbound(limitQuote, tid)
+  return `[tid] * ([limitQuote] / [numthreads])
+end
+local function upperbound(limitQuote, tid)
+  return `([tid]+1) * ([limitQuote] / [numthreads])
+end
+local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse lib TODO refactor
+                           descr : &opaque, -- needed by cusparse lib TODO refactor
+                           nColsA : int, -- if A is nxm, then this is m
+                           nRowsA : int, -- if A is nxm, then this is n
+                           nnzA : int,
+                           valA : &float, rowPtrA : &int, colIndA : &int,
+                           valInVec : &float, valOutVec : &float) -- valInVec(in), valOutVec(out)
+  escape
+    -- 1) Define loop bounds
+    local function lowerbound(limitQuote, tid)
+      if tid <= numthreads-1 then
+        return `[tid] * ([limitQuote] / [numthreads])
+      else
+        error('\n\nERROR: lowerbound(): tid higher than number of threads\n\n')
+      end
+    end
+    local function upperbound(limitQuote, tid)
+      if tid < numthreads-1 then
+        return `([tid]+1) * ([limitQuote] / [numthreads])
+      elseif tid == numthreads-1 then
+        return `limitQuote
+      else
+        error('\n\nERROR: upperbound(): tid higher than number of threads\n\n')
+      end
+    end
+
+    -- 2) Define tasks (a task is a tuple ('void f(void* arg)', void* arg))
+    -- 2a) Define threadData (the struct that is passed to the worker-thread function)
+    local struct WorkerThreadData {
+      valOutVec : &float,
+      valInVec : &float,
+      valA : &float,
+      rowPtrA : &int,
+      colIndA : &int
+      nRowsA : int
+    }
+
+    -- 2b) define threadfunc()'s, i.e. the functions that are executed by each
+    --     worker-thread
+    local taskfuncs = {}
+    for tid = 0,numthreads-1 do
+      taskfuncs[tid] = terra(arg : &opaque)
+        -- unpack arg
+        var data = [&WorkerThreadData](arg)
+        var valOutVec = data.valOutVec
+        var valInVec = data.valInVec
+        var valA = data.valA
+        var rowPtrA = data.rowPtrA
+        var colIndA = data.colIndA
+        var nRowsA = data.nRowsA
+
+        for k = [ lowerbound(`nRowsA,tid) ], [ upperbound(`nRowsA,tid) ] do
+          var offsetThisRowA = rowPtrA[k]
+          var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
+
+          for l = 0,nnzThisRowA do
+            valOutVec[k] = valOutVec[k]
+                         + valInVec[colIndA[offsetThisRowA+l]] * valA[offsetThisRowA+l]
+          end
+        end
+
+        -- barrier worker-side
+        tp.theKernelFinishedByAllThreadsBarrier:signal()
+
+        -- return to infinit loop with the message that more work will follow,
+        -- i.e. that we wish to remain in the infinite loop
+        var moreWorkWillCome = true
+        return moreWorkWillCome
+      end
+      taskfuncs[tid]:setname('taskfunc_applyAtoVector_' .. tostring(tid))
+      print(taskfuncs[tid])
+    end
+
+    -- 3) define the launcher-function that is run by the main-thread.
+    -- NOTE: This quote contains the whole body of the actual 'MatVecMult' function,
+    -- everything else is just metaprogramming
+    emit quote
+
+  -- reset outVec
+  C.memset([&opaque](valOutVec), 0, nRowsA * sizeof(float))
+
+      -- C.printf('bla1\n')
+      -- a) ensure that all threads are alive
+      -- tp.ThreadsAliveBarrier:wait()
+      --> this is not done by GPULauncher, so we probably don't have to do it
+      --  here
+
+      -- a) prepare WorkerThreadData (i.e. load with stuff)
+      var theData : WorkerThreadData
+      theData.valOutVec = valOutVec
+      theData.valInVec = valInVec
+      theData.valA = valA
+      theData.rowPtrA = rowPtrA
+      theData.colIndA = colIndA
+      theData.nRowsA = nRowsA
+
+      -- b) define Tasks
+      var tasks : tp.Task_t[ numthreads ]
+      escape
+        for tid = 0,numthreads-1 do
+          emit quote
+            tasks[tid].taskfunction = [ taskfuncs[tid] ]
+            tasks[tid].arg = &theData
+          end
+        end
+      end
+
+      -- call initial lock on barrier
+      tp.theKernelFinishedByAllThreadsBarrier:initialLock()
+
+
+      -- c) put Tasks into taskQueue.
+      for tid = 0,[numthreads] do
+        tp.theTaskQueue:set(tid, tasks[tid])
+      end
+
+      -- d) barrier main-side
+      tp.theKernelFinishedByAllThreadsBarrier:wait()
+      tp.theKernelFinishedByAllThreadsBarrier:finalUnlock()
+    end
+  end
+end
+print(applyAtoVectorMultiThread)
+
+
+local terra applyAtoVectorSerial(handle : &opaque, -- needed by cusparse lib TODO refactor
                            descr : &opaque, -- needed by cusparse lib TODO refactor
                            nColsA : int, -- if A is nxm, then this is m
                            nRowsA : int, -- if A is nxm, then this is n
@@ -513,7 +655,8 @@ local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refa
     end
   end
 end
-la.applyAtoVector = applyAtoVector
+-- la.applyAtoVector = applyAtoVectorSerial
+la.applyAtoVector = applyAtoVectorMultiThread
 
 
 local terra initMatrixStuff(handlePtr : &opaque, descrPtr : &opaque)
