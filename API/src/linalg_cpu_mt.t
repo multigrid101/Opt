@@ -559,6 +559,7 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
         var colIndA = data.colIndA
         var nRowsA = data.nRowsA
 
+        -- do Mat*Vec
         for k = [ lowerbound(`nRowsA,tid) ], [ upperbound(`nRowsA,tid) ] do
           var offsetThisRowA = rowPtrA[k]
           var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
@@ -569,7 +570,7 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
           end
         end
 
-        -- barrier worker-side
+        -- barrier worker-side (signal main-thread that we are done)
         tp.theKernelFinishedByAllThreadsBarrier:signal()
 
         -- return to infinit loop with the message that more work will follow,
@@ -585,11 +586,9 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
     -- NOTE: This quote contains the whole body of the actual 'MatVecMult' function,
     -- everything else is just metaprogramming
     emit quote
+      -- reset outVec
+      C.memset([&opaque](valOutVec), 0, nRowsA * sizeof(float))
 
-  -- reset outVec
-  C.memset([&opaque](valOutVec), 0, nRowsA * sizeof(float))
-
-      -- C.printf('bla1\n')
       -- a) ensure that all threads are alive
       -- tp.ThreadsAliveBarrier:wait()
       --> this is not done by GPULauncher, so we probably don't have to do it
@@ -624,7 +623,7 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
         tp.theTaskQueue:set(tid, tasks[tid])
       end
 
-      -- d) barrier main-side
+      -- d) barrier main-side (wait until all workers are done)
       tp.theKernelFinishedByAllThreadsBarrier:wait()
       tp.theKernelFinishedByAllThreadsBarrier:finalUnlock()
     end

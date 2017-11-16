@@ -44,7 +44,7 @@ local solver_parameter_defaults = {
     min_trust_region_radius = 1e-32,
     max_trust_region_radius = 1e16,
     -- q_tolerance = 0.0001, -- original
-    q_tolerance = 0.1, -- SEB
+    q_tolerance = 0.1, -- SEB (also in ceres, I think)
     function_tolerance = 0.000001,
     trust_region_radius = 1e4,
     radius_decrease_factor = 2.0,
@@ -1479,7 +1479,7 @@ return function(problemSpec)
             if isGraph then
                 gpu.saveJToCRS_Graph(pd)
             end
-            --logSolver("... done\n")
+            -- logSolver("... done\n")
 
             -- Section 1):
             -- check if memory for JTJ has already been allocated. If yes, then
@@ -1694,6 +1694,7 @@ return function(problemSpec)
                             int(nnzExp),int(nResidualsExp))
                    
                   -- J alloc
+                  -- TODO put allocation of matrices together in one place
                   cd( backend.allocateDevice(&pd.J_csrValA, sizeof(opt_float)*nnzExp, opt_float))
                   cd( backend.allocateDevice(&pd.J_csrColIndA, sizeof(int)*nnzExp, int))
                   cd( backend.memsetDevice(pd.J_csrColIndA, -1,
