@@ -1,6 +1,6 @@
 opt = {} --anchor it in global namespace, otherwise it can be collected
 
-TRACE = true -- TODO added by SO to turn on/off lots of print-statements required to understand how the code works
+TRACE = false -- TODO added by SO to turn on/off lots of print-statements required to understand how the code works
 function printt(thing)
   print('the name of the thing:')
   if TRACE then
@@ -431,6 +431,8 @@ function A.GraphFunction:__tostring() return tostring(self.graphname) end
 -- puts 'ft' and 'functions' into an 'A.ProblemFunctions' and inserts that into self.functions
 -- TODO only called once from within ProblemSpecAD, maybe refactor?
 function ProblemSpec:Functions(ft, functions)
+-- ft: a 'kind', e.g. 'CenteredFunction(...)'
+-- functions: List of terra functions
     self:Stage "functions"
     for k,v in pairs(functions) do
         if k ~= "derivedfrom" then
@@ -1831,12 +1833,22 @@ end
 
 -- TODO only used in 'createfunction', so make local there.
 local function removeboundaries(exp)
+    print('\n\n\n')
+    print('START inside removeboundaries:')
     if ad.ExpVector:isclassof(exp) or terralib.islist(exp) then return exp:map(removeboundaries) end
     local function nobounds(a)
         if BoundsAccess:isclassof(a) and a.min:IsZero() and a.max:IsZero() then return ad.toexp(1)
         else return ad.v[a] end
     end
-    return exp:rename(nobounds)
+    local returnval = exp:rename(nobounds)
+    print('\n')
+    print('the exp after renaming (=returnval):')
+    printt(returnval)
+    
+
+    print('END inside removeboundaries:')
+    print('\n\n\n')
+    return returnval 
 end
 
 -- TODO only used in next function, so make local there
@@ -1987,6 +1999,11 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
     end)
     
     local irroots = results:map(irmap)
+
+    print('\n')
+    print('The irroots')
+    printt(irroots)
+
     for i,s in ipairs(scatters) do
         irroots:insert(irmap(s.expression))
     end
@@ -2568,8 +2585,10 @@ end
 
 -- TODO move to ProblemSpecAD stuff
 function ProblemSpecAD:AddFunctions(functionspecs) -- takes fspecs, compiles them and stores compiled functions in self.P.functions
+    print('\n\n\n')
+    print('START Inside ProblemSpecAD:AddFunctions()')
     local kind_to_functionmap = {}
-    local kinds = List()
+    local kinds = List() -- 'kinds[1]' is e.g. 'CenteredFunction'...
     for i,fs in ipairs(functionspecs) do -- group by unique function kind to pass to ProblemSpec:Functions call
         local fm = kind_to_functionmap[fs.kind]
         if not fm then
@@ -2579,6 +2598,16 @@ function ProblemSpecAD:AddFunctions(functionspecs) -- takes fspecs, compiles the
         end
         assert(not fm[fs.name],"function already defined!")
         fm[fs.name] = self:CompileFunctionSpec(fs) -- takes a FunctionSpec and turns it into a "functionmap"
+        print('\n')
+        print('START The compiled functionspec')
+        printt(fm[fs.name])
+        print('END The compiled functionspec')
+        print('\n')
+        print('The kinds:')
+        printt(kinds)
+        print('\n')
+        print('The name:')
+        print(fs.name)
         if fm.derivedfrom and fs.derivedfrom then
             assert(fm.derivedfrom == fs.derivedfrom, "not same energy spec?")
         end
@@ -2588,6 +2617,8 @@ function ProblemSpecAD:AddFunctions(functionspecs) -- takes fspecs, compiles the
         local fm = kind_to_functionmap[k]
         self.P:Functions(k,fm)
     end
+    print('END Inside ProblemSpecAD:AddFunctions()')
+    print('\n\n\n')
 end
 
 
