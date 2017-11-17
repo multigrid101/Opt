@@ -514,7 +514,10 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
                            nRowsA : int, -- if A is nxm, then this is n
                            nnzA : int,
                            valA : &float, rowPtrA : &int, colIndA : &int,
-                           valInVec : &float, valOutVec : &float) -- valInVec(in), valOutVec(out)
+                           valInVec : &float, valOutVec : &float,
+                           bounds : &int)
+  -- the bounds arg provides the loop bounds for each thread s.th. thread k
+  -- loops from bounds[k] to bounds[k+1]
   escape
     -- 1) Define loop bounds
     local function lowerbound(limitQuote, tid)
@@ -543,6 +546,7 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
       rowPtrA : &int,
       colIndA : &int
       nRowsA : int
+      bounds : &int
     }
 
     -- 2b) define threadfunc()'s, i.e. the functions that are executed by each
@@ -558,20 +562,36 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
         var rowPtrA = data.rowPtrA
         var colIndA = data.colIndA
         var nRowsA = data.nRowsA
+        var bounds = data.bounds
 
-        -- do Mat*Vec
-        for k = [ lowerbound(`nRowsA,tid) ], [ upperbound(`nRowsA,tid) ] do
+
+        -- TODO do some sanity-checking on bounds and use default if bounds
+        -- is nil or infeasible
+        var low : int, upp : int
+        if bounds == nil then
+          C.printf('WARNING: no bounds provided to applyAtoVector(), switching to default bounds.\n')
+          low= [ lowerbound(`nRowsA,tid) ]
+          upp= [ upperbound(`nRowsA,tid) ]
+        else
+          low= bounds[ [tid] ]
+          upp= bounds[ [tid+1] ]
+        end
+
+        var nnzThisThread = 0
+        for k = low, upp do
           var offsetThisRowA = rowPtrA[k]
           var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
 
           var tmp : float = 0.0f
           for l = 0,nnzThisRowA do
             tmp = tmp + valInVec[colIndA[offsetThisRowA+l]] * valA[offsetThisRowA+l]
+            nnzThisThread = nnzThisThread + 1
           end
           valOutVec[k] = tmp
         end
+        -- C.printf(['Thread ' .. tostring(tid) .. ' did %d nnz\n'], nnzThisThread)
 
-        -- barrier worker-side (signal main-thread that we are done)
+        -- barrier worker-side
         tp.theKernelFinishedByAllThreadsBarrier:signal()
 
         -- return to infinit loop with the message that more work will follow,
@@ -587,9 +607,11 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
     -- NOTE: This quote contains the whole body of the actual 'MatVecMult' function,
     -- everything else is just metaprogramming
     emit quote
+
       -- reset outVec
       C.memset([&opaque](valOutVec), 0, nRowsA * sizeof(float))
 
+      -- C.printf('bla1\n')
       -- a) ensure that all threads are alive
       -- tp.ThreadsAliveBarrier:wait()
       --> this is not done by GPULauncher, so we probably don't have to do it
@@ -603,6 +625,7 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
       theData.rowPtrA = rowPtrA
       theData.colIndA = colIndA
       theData.nRowsA = nRowsA
+      theData.bounds = bounds
 
       -- b) define Tasks
       var tasks : tp.Task_t[ numthreads ]
@@ -624,7 +647,7 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
         tp.theTaskQueue:set(tid, tasks[tid])
       end
 
-      -- d) barrier main-side (wait until all workers are done)
+      -- d) barrier main-side
       tp.theKernelFinishedByAllThreadsBarrier:wait()
       tp.theKernelFinishedByAllThreadsBarrier:finalUnlock()
     end
@@ -658,6 +681,40 @@ local terra applyAtoVectorSerial(handle : &opaque, -- needed by cusparse lib TOD
 end
 -- la.applyAtoVector = applyAtoVectorSerial
 la.applyAtoVector = applyAtoVectorMultiThread
+
+local terra computeBoundsA(bounds : &int, rowPtrA : &int,
+                           nnzA : int, numRowsA : int)
+-- TODO need to cover all corner-cases in this function
+  -- compute approximate number of nnz entries per thread
+  var nnzPerThread = nnzA / numthreads
+
+  -- loop through all rows, collect their nnz until we have reached nnzPerThread,
+  -- then reset tmpNnz and compute bounds for next thread
+  var tmpNnz = 0
+  var totalNnz = 0
+  var tid = 0
+  bounds[0] = 0
+  bounds[numthreads] = numRowsA
+
+  for row = 0,numRowsA do
+    var nnzThisRow = rowPtrA[row+1] - rowPtrA[row]
+
+    tmpNnz = tmpNnz + nnzThisRow
+    totalNnz = totalNnz + nnzThisRow
+
+    if tid+1 < numthreads then
+      if tmpNnz <= nnzPerThread then
+        -- keep overwriting this
+        bounds[tid+1] = row
+      else
+        -- reset but include current row
+        tmpNnz = nnzThisRow
+        tid = tid + 1
+      end
+    end
+  end
+end
+la.computeBoundsA = computeBoundsA
 
 
 local terra initMatrixStuff(handlePtr : &opaque, descrPtr : &opaque)

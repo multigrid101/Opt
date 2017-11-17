@@ -601,7 +601,9 @@ local terra applyAtoVector(handle : CUsp.cusparseHandle_t, -- needed by cusparse
                                 nResiduals : int, -- if A is nxm, then this is n
                                 nnzA : int,
                                 valA : &float, rowPtrA : &int, colIndA : &int,
-                                valInVec : &float, valOutVec : &float) -- valInVec(in), valOutVec(out)
+                                valInVec : &float, valOutVec : &float,
+                                bounds : &int) -- valInVec(in), valOutVec(out)
+  -- bounds arg is ignored in this backend
 
   var consts = array(0.f,1.f,2.f)
   cd(CUsp.cusparseScsrmv(
@@ -614,6 +616,13 @@ local terra applyAtoVector(handle : CUsp.cusparseHandle_t, -- needed by cusparse
           ))
 end
 b.applyAtoVector = applyAtoVector
+
+
+-- this needs to do stuff in cpu_mt backend but is just a dummy here
+local terra computeBoundsA(bounds : &int, rowPtrA : &int,
+                           nnzA : int, numRowsA : int)
+end
+b.computeBoundsA = computeBoundsA
 
 
 local terra initMatrixStuff(handlePtr : &CUsp.cusparseHandle_t, descrPtr : &CUsp.cusparseMatDescr_t)

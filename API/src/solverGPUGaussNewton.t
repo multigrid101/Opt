@@ -247,16 +247,20 @@ return function(problemSpec)
         J_csrValA : &opt_float
         J_csrColIndA : &int
         J_csrRowPtrA : &int
+        J_bounds : int[backend.numthreads+1] -- for cpu_mt TODO refactor
           
         JT_csrValA : &float -- TODO why no opt_float here?
         JT_csrRowPtrA : &int
         JT_csrColIndA : &int
+        JT_bounds : int[backend.numthreads+1] -- for cpu_mt TODO refactor
 
         JTJ_csrValA : &float -- TODO why no opt_float here?
         JTJ_csrRowPtrA : &int
         JTJ_csrColIndA : &int
 
         JTJ_nnz : int
+
+        JTJ_bounds : int[backend.numthreads+1] -- for cpu_mt TODO refactor
 	    
         Jp : &float
     }
@@ -1506,10 +1510,18 @@ return function(problemSpec)
                                              [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
                                              pd.JTJ_csrRowPtrA, &pd.JTJ_csrColIndA, &pd.JTJ_nnz)
 
+                backend.computeBoundsA(&(pd.JTJ_bounds[0]), pd.JTJ_csrRowPtrA,
+                                      pd.JTJ_nnz, nUnknowns)
+
+
                 backend.computeNnzPatternAT(pd.handle, pd.desc,
                                              nUnknowns, [nResidualsExp],
                                              [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
                                              pd.JT_csrRowPtrA, pd.JT_csrColIndA)
+                backend.computeBoundsA(&(pd.J_bounds[0]), pd.J_csrRowPtrA,
+                                      [nnzExp], nUnknowns)
+                backend.computeBoundsA(&(pd.JT_bounds[0]), pd.JT_csrRowPtrA,
+                                      [nnzExp], nUnknowns)
 
                 pd.timer:endEvent(&endJTJalloc, 0)
                 
@@ -1610,7 +1622,8 @@ return function(problemSpec)
                                 nUnknowns, nUnknowns, pd.JTJ_nnz,
                                 pd.JTJ_csrValA, pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA,
                                 [&float](pd.p._contiguousallocation),
-                                [&float](pd.Ap_X._contiguousallocation))
+                                [&float](pd.Ap_X._contiguousallocation),
+                                pd.JTJ_bounds)
 
                 pd.timer:endEvent(&endJTJp, 0)
             else
@@ -1620,7 +1633,8 @@ return function(problemSpec)
                 backend.applyAtoVector(pd.handle, pd.desc,
                                 nUnknowns, [nResidualsExp], [nnzExp],
                                 pd.J_csrValA, pd.J_csrRowPtrA, pd.J_csrColIndA,
-                                [&float](pd.p._contiguousallocation), pd.Jp)
+                                [&float](pd.p._contiguousallocation), pd.Jp,
+                                pd.J_bounds)
 
                 pd.timer:endEvent(&endJp, 0)
 
@@ -1631,7 +1645,8 @@ return function(problemSpec)
                 backend.applyAtoVector(pd.handle, pd.desc,
                                 [nResidualsExp], nUnknowns, [nnzExp],
                                 pd.JT_csrValA, pd.JT_csrRowPtrA, pd.JT_csrColIndA,
-                                pd.Jp, [&float](pd.Ap_X._contiguousallocation))
+                                pd.Jp, [&float](pd.Ap_X._contiguousallocation),
+                                pd.JT_bounds)
 
                 pd.timer:endEvent(&endJT, 0)
             end

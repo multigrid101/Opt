@@ -372,6 +372,10 @@ b.computeNnzPatternAT = la.computeNnzPatternAT
 
 b.applyAtoVector = la.applyAtoVector
 
+b.computeBoundsA = la.computeBoundsA
+
+
+
 
 local terra initMatrixStuff(handlePtr : &opaque, descrPtr : &opaque)
 -- this function needs to do some stuff in cuda backend, but not here.

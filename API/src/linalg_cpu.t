@@ -520,8 +520,10 @@ local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refa
                            nRowsA : int, -- if A is nxm, then this is n
                            nnzA : int,
                            valA : &float, rowPtrA : &int, colIndA : &int,
-                           valInVec : &float, valOutVec : &float) -- valInVec(in), valOutVec(out)
+                           valInVec : &float, valOutVec : &float,
+                           bounds : &int) -- valInVec(in), valOutVec(out)
 -- performs 'valOutVec <- A*valInVec'
+-- bounds arg is ignored in this backend
 
   -- reset outVec
   C.memset([&opaque](valOutVec), 0, nRowsA * sizeof(float))
@@ -546,5 +548,11 @@ local terra initMatrixStuff(handlePtr : &opaque, descrPtr : &opaque)
 end
 la.initMatrixStuff = initMatrixStuff
 -- linalg stuff END
+
+-- this needs to do stuff in cpu_mt backend but is just a dummy here
+local terra computeBoundsA(bounds : &int, rowPtrA : &int,
+                           nnzA : int, numRowsA : int)
+end
+la.computeBoundsA = computeBoundsA
 
 return la
