@@ -728,14 +728,27 @@ function ImageType:terratype()
     if self._terratype then return self._terratype end
     local scalartype = self.scalartype -- is float or double for e.g. opt_float3
     local vectortype = self:ElementType() -- returns util.Vector(scalartype,channelcount), e.g. opt_float3
+    -- GENERAL NOTE ON META-PROGRAMMED (HERE FOR EACH BACKEND) TYPES:
+    -- Here, we use meta-programming to achieve what is usually achieved by
+    -- subclassing. In the simple case (here), we get a separate Image-class
+    -- for each backend.
+    --
+    -- About the role and scope of members: members such as helperData and
+    -- sumUpHelperArrays()
+    -- (used only in one backend) should behave like private variables, i.e.
+    -- should only be used within that backend
+    --
+    -- How to achieve 'subclassing': TODO finish comment
 
     local struct Image {
         data : &vectortype -- e.g. &float, &double, &opt_float3, ...
         tex  : C.cudaTextureObject_t; -- <-- this member is not required unless GPU is used.
+        -- FIXME refactor
+        helperData : &vectortype -- NOTE: only for backend_cpu_mt, NEVER use in other backends
     }
     self._terratype = Image
 
-    local channelcount = self.channelcount -- is 3 for opt_float3
+    local channelcount = self.channelcount -- example: is 3 for opt_float3
     local textured, pitched = self:usestexture() -- for non-cuda, this is false,false or throws error
     local Index = self.ispace:indextype()
 
@@ -866,6 +879,7 @@ function ImageType:terratype()
 
     -- setGPUptr START
     if textured then -- TODO textured and pitched are gpu concepts, so refactor them to that backend
+    print('here1')
         local W,H = cardinality,0
         if pitched then
             W, H = self.ispace.dims[1].size, self.ispace.dims[2].size
@@ -880,8 +894,12 @@ function ImageType:terratype()
             self.data = [&vectortype](ptr)
         end
     else
+    print('here2')
         terra Image:setGPUptr(ptr : &uint8)
           self.data = [&vectortype](ptr)
+        end
+        terra Image:setHelperGPUptr(ptr : &uint8) -- FIXME refactor to backend_cpu_mt
+          self.helperData = [&vectortype](ptr)
         end
     end
     print(Image.methods.setGPUptr)
@@ -892,6 +910,13 @@ function ImageType:terratype()
         self.data = nil
         -- C.printf('address before: %d\n', self.data)
         self:setGPUptr(ptr) -- short explanation: sets self.data = ptr
+        -- C.printf('%d\n', (self.data)[12])
+        -- C.printf('address after: %d\n', self.data)
+    end
+    terra Image:initHelperFromGPUptr( ptr : &uint8 ) -- FIXME refactor to backend_cpu_mt
+        self.helperData = nil
+        -- C.printf('address before: %d\n', self.data)
+        self:setHelperGPUptr(ptr) -- short explanation: sets self.data = ptr
         -- C.printf('%d\n', (self.data)[12])
         -- C.printf('address after: %d\n', self.data)
     end
@@ -919,7 +944,10 @@ function ImageType:terratype()
     -- need functions to set multithread-version helper arrays to zero and
     -- add up helper arrays
     terra Image:setHelperArraysToZero() -- only relevant for backend_cpu_mt
-        cd( backend.memsetDevice([&opaque](&(self.data[self:cardinality()])), 0, backend.numthreads*self:totalbytes()) )
+        -- FIXME
+        -- cd( backend.memsetDevice([&opaque](&(self.data[self:cardinality()])), 0, backend.numthreads*self:totalbytes()) )
+        cd( backend.memsetDevice([&opaque](self.helperData), 0, backend.numthreads*self:totalbytes()) )
+
       -- for tid = 0,backend.numthreads do
       --   var thread_offset = self:cardinality() * (tid+1)
       --   for k = 0,self:cardinality() do
@@ -937,7 +965,9 @@ function ImageType:terratype()
         for tid = 0,backend.numthreads do
       for k = 0,self:cardinality() do
     -- C.printf('Image:sumUpHelperArrays(): tid=%d, numthreads=%d\n', tid, backend.numthreads)
-          self.data[k] = self.data[k] + self.data[k + self:cardinality()*(tid+1)]
+          -- FIXME
+          -- self.data[k] = self.data[k] + self.data[k + self:cardinality()*(tid+1)]
+          self.data[k] = self.data[k] + self.helperData[k + self:cardinality()*(tid)]
         end
       end
     end
@@ -1022,8 +1052,9 @@ function UnknownType:terratype()
 
     --- initGPU START
     if use_contiguous_allocation then
+    -- TODO refactor backend-specific stuff, it doesn't belong here
         T.entries:insert { "_contiguousallocation", &opaque }
-        terra T:initGPU()
+        terra T:initGPU() --> uses nothing backend-specific
             var size = 0
             escape -- calculate total number of bytes required to hold all images in a single array
                 for i,ip in ipairs(images) do
@@ -1033,29 +1064,42 @@ function UnknownType:terratype()
                 end
             end
 
-            var data : &uint8 -- allocate and initialize with zero and save pointer to 'self' TODO why 'uint8'?
-            -- cd(C.cudaMalloc([&&opaque](&data), size))
-            cd( backend.allocateDevice(&data, size, uint8) )
+            var data : &uint8
+            var helperData : &uint8
+            -- TODO refactor
+            -- cd( backend.allocateDevice(&data, size, uint8) )
+            cd( backend.allocateDevice(&data, (1)*size, uint8) )
+            cd( backend.allocateDevice(&helperData, (backend.numthreads)*size, uint8) )
             self._contiguousallocation = data
-            -- cd(C.cudaMemset([&opaque](data), 0, size))
-            cd( backend.memsetDevice(data, 0,  size) )
+
+            -- TODO refactor
+            -- cd( backend.memsetDevice(data, 0, size) )
+            cd( backend.memsetDevice(data, 0,  (1)*size) )
+            cd( backend.memsetDevice(helperData, 0,  (backend.numthreads)*size) )
 
             -- set tpic1.data and tpic2.data to the correct location, i.e.
             -- _contiguousallocation: oooooooooooooooooooooooooooooooooooooooooo <-- large array
             --                        |               |                          <-- line indicates a pointer
             --                     tpic1.data      tpic2.data
-            size = 0
+            var sizeData = 0
+            var sizeHelper = 0
             escape
                 for i,ip in ipairs(images) do
                     emit quote 
-                        self.[ip.name]:initFromGPUptr(data+size)
-                        size = size + self.[ip.name]:totalbytes() 
+                        self.[ip.name]:initFromGPUptr(data+sizeData)
+                        self.[ip.name]:initHelperFromGPUptr(helperData+sizeHelper)
+                        -- TODO refactor
+                        sizeData = sizeData + self.[ip.name]:totalbytes() 
+                        sizeHelper = sizeHelper + backend.numthreads*self.[ip.name]:totalbytes() 
+                        -- size = size + (backend.numthreads+1)*self.[ip.name]:totalbytes() 
                     end
                 end
             end
         end
+        print(T.methods.initGPU)
+        -- error()
     else
-        terra T:initGPU()
+        terra T:initGPU() --> uses backend-specific Image:initGPU()
             escape -- just iterate over tpic1, tpic2 and initialize them
                 for i,ip in ipairs(images) do
                     emit quote self.[ip.name]:initGPU() end
@@ -1065,8 +1109,13 @@ function UnknownType:terratype()
     end
     --- initGPU END
     terra T:totalbytes()
+    -- calculate total number of bytes required to hold all images in a single
+    -- array. The calculated number refers to the **single-threaded version**.
+    -- If a client wants to allocate space for extra copies (e.g. in the
+    -- multi-threaded version), then it is the client's responsibility to
+    -- allocate (and calculate) the extra space.
         var size = 0
-        escape -- calculate total number of bytes required to hold all images in a single array
+        escape 
             for i,ip in ipairs(images) do
                 emit quote 
                     size = size + self.[ip.name]:totalbytes()

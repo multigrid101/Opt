@@ -545,6 +545,7 @@ end)
 -- the extra arrays but they will not be used or traversed.
 -- TODO perform initialization and summation on extra arrays in parallel
 function b.make_Image_initGPU(imagetype_terra)
+-- TODO change comments, they are not correct
 -- we allocate (numthreads+1) arrays.
 -- so for 2 threads, we have three arrays. the first one holds the actual values,
 -- the other ones are temporary arrays used for summation etc.
@@ -560,11 +561,20 @@ function b.make_Image_initGPU(imagetype_terra)
     local initGPU= terra(self : &imagetype_terra)
         var data : &uint8 -- we cast this to the correct type later inside setGPUptr
         -- C.printf('allocating space for %d arrays, with %d elements (%d bytes) each\n', numthreads+1, self:cardinality(), self:totalbytes())
+        var helperData : &uint8
+        
+        -- FIXME
+        -- b.cd( b.allocateDevice(&data, (numthreads+1)*self:totalbytes(), uint8) )
+        -- b.cd( b.memsetDevice(data, 0, (numthreads+1)*self:totalbytes()) )
+        b.cd( b.allocateDevice(&data, (1)*self:totalbytes(), uint8) )
+        b.cd( b.memsetDevice(data, 0, (1)*self:totalbytes()) )
 
-        b.cd( b.allocateDevice(&data, (numthreads+1)*self:totalbytes(), uint8) )
-        b.cd( b.memsetDevice(data, 0, (numthreads+1)*self:totalbytes()) )
+        b.cd( b.allocateDevice(&helperData, (numthreads)*self:totalbytes(), uint8) )
+        b.cd( b.memsetDevice(helperData, 0, (numthreads)*self:totalbytes()) )
+
 
         self:initFromGPUptr(data) -- (short explanataion): set self.data = data (and cast to appropriate ptr-type)
+        self:initHelperFromGPUptr(helperData) -- (short explanataion): set self.data = data (and cast to appropriate ptr-type)
     end
     initGPU:setname('Image.initGPU')
 
@@ -613,7 +623,9 @@ function b.make_Image_atomicAddChannel(imagetype_terra, indextype_terra, scalart
 
       -- C.printf('    atomicAddChannel(): calling from thread %d, adding into index %d\n', tid, idx:tooffset() + self:cardinality()*(tid+1))
 
-      var addr : &scalartype_terra = &self.data[idx:tooffset() + self:cardinality()*(tid+1)].data[c]
+      -- FIXME
+      -- var addr : &scalartype_terra = &self.data[idx:tooffset() + self:cardinality()*(tid+1)].data[c]
+      var addr : &scalartype_terra = &self.helperData[idx:tooffset() + self:cardinality()*(tid)].data[c]
       b.atomicAdd_sync(addr,value, idx.d0)
   end
   atomicAddChannel:setname('Image.atomicAddChannel')
