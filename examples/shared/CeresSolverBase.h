@@ -5,7 +5,8 @@
 
 #if USE_CERES
 #define GLOG_NO_ABBREVIATED_SEVERITIES
-#include "ceres/ceres.h"
+/* #include "ceres/ceres.h" */
+#include "/home/sebastian/Desktop/ceres-solver-1.13.0/include/ceres/ceres.h"
 #include "glog/logging.h"
 using ceres::DynamicAutoDiffCostFunction;
 using ceres::AutoDiffCostFunction;
