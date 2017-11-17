@@ -743,7 +743,7 @@ function ImageType:terratype()
     local struct Image {
         data : &vectortype -- e.g. &float, &double, &opt_float3, ...
         tex  : C.cudaTextureObject_t; -- <-- this member is not required unless GPU is used.
-        -- FIXME refactor
+        -- TODO refactor
         helperData : &vectortype -- NOTE: only for backend_cpu_mt, NEVER use in other backends
     }
     self._terratype = Image
@@ -898,7 +898,7 @@ function ImageType:terratype()
         terra Image:setGPUptr(ptr : &uint8)
           self.data = [&vectortype](ptr)
         end
-        terra Image:setHelperGPUptr(ptr : &uint8) -- FIXME refactor to backend_cpu_mt
+        terra Image:setHelperGPUptr(ptr : &uint8) -- TODO refactor to backend_cpu_mt
           self.helperData = [&vectortype](ptr)
         end
     end
@@ -913,7 +913,7 @@ function ImageType:terratype()
         -- C.printf('%d\n', (self.data)[12])
         -- C.printf('address after: %d\n', self.data)
     end
-    terra Image:initHelperFromGPUptr( ptr : &uint8 ) -- FIXME refactor to backend_cpu_mt
+    terra Image:initHelperFromGPUptr( ptr : &uint8 ) -- TODO refactor to backend_cpu_mt
         self.helperData = nil
         -- C.printf('address before: %d\n', self.data)
         self:setHelperGPUptr(ptr) -- short explanation: sets self.data = ptr
@@ -944,7 +944,7 @@ function ImageType:terratype()
     -- need functions to set multithread-version helper arrays to zero and
     -- add up helper arrays
     terra Image:setHelperArraysToZero() -- only relevant for backend_cpu_mt
-        -- FIXME
+        -- TODO refactor
         -- cd( backend.memsetDevice([&opaque](&(self.data[self:cardinality()])), 0, backend.numthreads*self:totalbytes()) )
         cd( backend.memsetDevice([&opaque](self.helperData), 0, backend.numthreads*self:totalbytes()) )
 
@@ -965,7 +965,7 @@ function ImageType:terratype()
         for tid = 0,backend.numthreads do
       for k = 0,self:cardinality() do
     -- C.printf('Image:sumUpHelperArrays(): tid=%d, numthreads=%d\n', tid, backend.numthreads)
-          -- FIXME
+          -- TODO refactor
           -- self.data[k] = self.data[k] + self.data[k + self:cardinality()*(tid+1)]
           self.data[k] = self.data[k] + self.helperData[k + self:cardinality()*(tid)]
         end

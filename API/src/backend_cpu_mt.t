@@ -563,7 +563,7 @@ function b.make_Image_initGPU(imagetype_terra)
         -- C.printf('allocating space for %d arrays, with %d elements (%d bytes) each\n', numthreads+1, self:cardinality(), self:totalbytes())
         var helperData : &uint8
         
-        -- FIXME
+        -- TODO refactor
         -- b.cd( b.allocateDevice(&data, (numthreads+1)*self:totalbytes(), uint8) )
         -- b.cd( b.memsetDevice(data, 0, (numthreads+1)*self:totalbytes()) )
         b.cd( b.allocateDevice(&data, (1)*self:totalbytes(), uint8) )
@@ -623,7 +623,7 @@ function b.make_Image_atomicAddChannel(imagetype_terra, indextype_terra, scalart
 
       -- C.printf('    atomicAddChannel(): calling from thread %d, adding into index %d\n', tid, idx:tooffset() + self:cardinality()*(tid+1))
 
-      -- FIXME
+      -- TODO refactor
       -- var addr : &scalartype_terra = &self.data[idx:tooffset() + self:cardinality()*(tid+1)].data[c]
       var addr : &scalartype_terra = &self.helperData[idx:tooffset() + self:cardinality()*(tid)].data[c]
       b.atomicAdd_sync(addr,value, idx.d0)
