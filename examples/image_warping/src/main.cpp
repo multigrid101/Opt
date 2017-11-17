@@ -67,7 +67,11 @@ int main(int argc, const char * argv[]) {
   
     std::string filename = "../data/cat512.png";
 
-    int downsampleFactor = 1;
+    /* int downsampleFactor = 1; */
+    int downsampleFactor = argparser.get<int>("stride");
+    /* int downsampleFactor = 50; */
+    /* int downsampleFactor = 100; */
+    /* int downsampleFactor = 5; */
 	bool lmOnlyFullSolve = false;
     /* if (argc > 1) { */
     /*     filename = argv[1]; */
@@ -117,13 +121,20 @@ int main(int argc, const char * argv[]) {
     ColorImageR32 imageR32Mask(imageMask.getWidth() / downsampleFactor, imageMask.getHeight() / downsampleFactor);
     for (unsigned int y = 0; y < imageMask.getHeight() / downsampleFactor; y++) {
         for (unsigned int x = 0; x < imageMask.getWidth() / downsampleFactor; x++) {
-            imageR32Mask(x, y) = imageMask(x*downsampleFactor, y*downsampleFactor).x;
-            if (imageMask(x*downsampleFactor, y*downsampleFactor).x == 0.0f) {
+            imageR32Mask(x, y) = imageMask(x*downsampleFactor, y*downsampleFactor).x; // original
+            /* imageR32Mask(x, y) = 0.0f; //SEB */
+            /* imageR32Mask(2, 2) = 1.0f; //SEB */
+            /* if (imageMask(x*downsampleFactor, y*downsampleFactor).x == 0.0f) { // original */
+            if (imageR32Mask(x,y) == 0.0f) { // SEB, original doesn't work if we set mask to zero globally
                 ++activePixels;
             }
 		}
 	}
+
     printf("numActivePixels: %d\n", activePixels);
+
+    
+
 	
     for (auto& constraint : constraints) {
         for (auto& c : constraint) {
@@ -151,11 +162,22 @@ int main(int argc, const char * argv[]) {
     params.useCUDA = false;
 
     /* params.nonLinearIter = 8; // original */
+    /* params.nonLinearIter = 3; // original */
+    /* params.nonLinearIter = 100; */
     params.nonLinearIter = argparser.get<int>("nIterations");
 
     /* params.linearIter = 400; // original */
-
+    /* params.linearIter = 5; */
     params.linearIter = argparser.get<int>("lIterations");
+
+        /* params.useCeres = true; // new, not in original */
+        params.useCeres = false; // new, not in original
+
+        /* params.useOptLM = true; // new, not in original */
+        /* params.useOpt = false; // new, not in original */
+
+        params.useOptLM = false; // new, not in original
+        params.useOpt = true; // new, not in original
 
     if (performanceRun) {
         params.useCUDA = false;
@@ -168,7 +190,8 @@ int main(int argc, const char * argv[]) {
         params.useCUDA = false;
         params.useOpt = false;
         params.useOptLM = true;
-        params.linearIter = 500;
+        params.linearIter = 500; //original
+        /* params.linearIter = 5; */
         if (image.getWidth() > 1024) {
             params.nonLinearIter = 100;
         }
