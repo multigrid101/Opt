@@ -243,6 +243,7 @@ double CeresSolverWarping::solve(const NamedParameters& solverParameters, const 
 #endif
     options->function_tolerance = 1e-2;
     options->gradient_tolerance = 1e-4 * options->function_tolerance;
+    /* options->max_linear_solver_iterations = 5; */
 
     cout << "Solving..." << endl;
 
@@ -260,4 +261,4 @@ double CeresSolverWarping::solve(const NamedParameters& solverParameters, const 
     return m_finalCost;
 }
 
-#endif
+#endif // USE_CERES

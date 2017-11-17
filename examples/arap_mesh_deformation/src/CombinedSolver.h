@@ -29,6 +29,7 @@ class CombinedSolver : public CombinedSolverBase
 
 			unsigned int N = (unsigned int)mesh->n_vertices();
 			unsigned int numedges = (unsigned int)mesh->n_edges(); // by SO
+                        printf("From CombinedSolver: vertices: %d, edges: %d useCeres: %d\n", N, numedges, m_combinedSolverParameters.useCeres);
 
             /* m_dims = { N }; */ //original
             m_dims = { N, numedges }; //by SO

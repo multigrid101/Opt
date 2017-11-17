@@ -62,6 +62,7 @@ public:
 
     ~OptSolver()
 	{
+                printf("~OptSolver(): start\n");
 		if (m_plan) {
 			Opt_PlanFree(m_optimizerState, m_plan);
 		}
@@ -69,6 +70,7 @@ public:
 		if (m_problem) {
 			Opt_ProblemDelete(m_optimizerState, m_problem);
 		}
+                printf("~OptSolver(): stop\n");
 	}
 
 

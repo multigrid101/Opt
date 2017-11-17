@@ -120,6 +120,7 @@ public:
 		resetGPU();
         
         /* addSolver(std::make_shared<CUDAWarpingSolver>(m_dims), "CUDA", m_combinedSolverParameters.useCUDA); */
+        printf("useCeres is %d\n", m_combinedSolverParameters.useCeres);
         addSolver(std::make_shared<CeresSolverWarping>(m_dims), "Ceres", m_combinedSolverParameters.useCeres);
         addOptSolvers(m_dims, "image_warping.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 	}

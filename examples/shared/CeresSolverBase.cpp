@@ -5,10 +5,14 @@ using namespace std;
 #if USE_CERES
 std::unique_ptr<ceres::Solver::Options> CeresSolverBase::initializeOptions(const NamedParameters& solverParameters) const {
     std::unique_ptr<ceres::Solver::Options> options = std::unique_ptr<ceres::Solver::Options>(new ceres::Solver::Options());
-    options->num_threads = 8;
-    options->num_linear_solver_threads = 8;
+    options->num_threads = 4;
+    options->num_linear_solver_threads = 3;
     options->linear_solver_type = ceres::LinearSolverType::SPARSE_NORMAL_CHOLESKY;
-    options->max_num_iterations = 10000;
+    options->max_num_iterations = 10000; //original
+    /* options->max_linear_solver_iterations = 10; // SEB */
+    options->max_linear_solver_iterations = 1000; // SEB
+    /* options->max_linear_solver_iterations = 10; // SEB */
+    options->max_num_iterations = 1;
     options->function_tolerance = 1e-3;
     options->gradient_tolerance = 1e-4 * options->function_tolerance;
     return options;
@@ -33,6 +37,7 @@ double CeresSolverBase::launchProfiledSolveAndSummary(const std::unique_ptr<cere
     {
         iterationTotalTime += i.iteration_time_in_seconds;
         totalLinearItereations += i.linear_solver_iterations;
+        printf("cost=(%f) ", i.cost);
         cout << "Iteration: " << i.linear_solver_iterations << " " << i.iteration_time_in_seconds * 1000.0 << "ms," << " cost: " << i.cost << endl;
     }
     if (profileSolve) {

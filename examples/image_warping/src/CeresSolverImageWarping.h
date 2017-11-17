@@ -9,6 +9,7 @@ public:
 #if !USE_CERES
 double CeresSolverWarping::solve(const NamedParameters& solverParameters, const NamedParameters& problemParameters, bool profileSolve, std::vector<SolverIteration>& iter)
 {
+    printf("running default method for Ceres solver\n");
     return nan("");
 }
 #endif
