@@ -63,6 +63,7 @@ int main(int argc, const char * argv[]) {
     }
 
     OpenMesh::Subdivider::Uniform::Sqrt3T<SimpleMesh> subdivider;
+    int numSubdivides = argparser.get<int>("stride");
 
     // Initialize subdivider
     if (lmOnlyFullSolve) {
@@ -75,7 +76,7 @@ int main(int argc, const char * argv[]) {
             //OpenMesh::Subdivider::Uniform::CatmullClarkT<SimpleMesh> catmull;
             // Execute 1 subdivision steps
             subdivider.attach(*mesh);
-            subdivider(1);
+            subdivider(numSubdivides);
             subdivider.detach();
     }
     printf("Faces: %d\nVertices: %d\n", (int)mesh->n_faces(), (int)mesh->n_vertices());
@@ -89,7 +90,9 @@ int main(int argc, const char * argv[]) {
     /* params.numIter = 1; */
     params.nonLinearIter = argparser.get<int>("nIterations");
     params.linearIter = argparser.get<int>("lIterations");
+
     params.useOpt = true;
+        params.earlyOut = true;
     if (performanceRun) {
         params.useCUDA = false;
         params.useOpt = true;
