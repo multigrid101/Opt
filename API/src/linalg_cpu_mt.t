@@ -564,10 +564,11 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
           var offsetThisRowA = rowPtrA[k]
           var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
 
+          var tmp : float = 0.0f
           for l = 0,nnzThisRowA do
-            valOutVec[k] = valOutVec[k]
-                         + valInVec[colIndA[offsetThisRowA+l]] * valA[offsetThisRowA+l]
+            tmp = tmp + valInVec[colIndA[offsetThisRowA+l]] * valA[offsetThisRowA+l]
           end
+          valOutVec[k] = tmp
         end
 
         -- barrier worker-side (signal main-thread that we are done)
@@ -648,10 +649,11 @@ local terra applyAtoVectorSerial(handle : &opaque, -- needed by cusparse lib TOD
     var offsetThisRowA = rowPtrA[k]
     var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
 
+    var tmp : float = 0.0f
     for l = 0,nnzThisRowA do
-      valOutVec[k] = valOutVec[k]
-                   + valInVec[colIndA[offsetThisRowA+l]] * valA[offsetThisRowA+l]
+      tmp = tmp + valInVec[colIndA[offsetThisRowA+l]] * valA[offsetThisRowA+l]
     end
+    valOutVec[k] = tmp
   end
 end
 -- la.applyAtoVector = applyAtoVectorSerial
