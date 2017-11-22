@@ -2004,7 +2004,7 @@ local function createfunction(problemspec,name,Index,arguments,results,scatters)
 
     print('\n')
     print('The irroots')
-    printt(irroots)
+    -- printt(irroots)
 
     for i,s in ipairs(scatters) do
         irroots:insert(irmap(s.expression))
