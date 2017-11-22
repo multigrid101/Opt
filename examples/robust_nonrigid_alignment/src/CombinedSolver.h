@@ -93,13 +93,16 @@ class CombinedSolver : public CombinedSolverBase
             std::cout << "Average Edge Length: " << m_averageEdgeLength << std::endl;
 
             std::vector<unsigned int> dims = { N, E };
-            /* printf("number of\n") */
-            m_vertexPosTargetFloat3     = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
-            m_vertexNormalTargetFloat3  = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
-            m_robustWeights             = createEmptyOptImage(dims, OptImage::Type::FLOAT, 1, location, true);
-            m_vertexPosFloat3           = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
-            m_vertexPosFloat3Urshape    = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
-            m_anglesFloat3              = createEmptyOptImage(dims, OptImage::Type::FLOAT, 3, location, true);
+            std::vector<unsigned int> graphDims = { N };
+            printf("start creating opt images\n");
+
+            m_vertexPosTargetFloat3     = createEmptyOptImage(graphDims, OptImage::Type::FLOAT, 3, location, true);
+            m_vertexNormalTargetFloat3  = createEmptyOptImage(graphDims, OptImage::Type::FLOAT, 3, location, true);
+            m_robustWeights             = createEmptyOptImage(graphDims, OptImage::Type::FLOAT, 1, location, true);
+            m_vertexPosFloat3           = createEmptyOptImage(graphDims, OptImage::Type::FLOAT, 3, location, true);
+            m_vertexPosFloat3Urshape    = createEmptyOptImage(graphDims, OptImage::Type::FLOAT, 3, location, true);
+            m_anglesFloat3              = createEmptyOptImage(graphDims, OptImage::Type::FLOAT, 3, location, true);
+            printf("stop creating opt images\n");
             
 			resetGPUMemory();   
 
