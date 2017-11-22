@@ -2,6 +2,11 @@
 #include "CombinedSolver.h"
 #include "OpenMesh.h"
 #include "../../shared/ArgParser.h"
+#include <OpenMesh/Tools/Subdivider/Uniform/SubdividerT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/LongestEdgeT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/LoopT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/CatmullClarkT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/Sqrt3T.hh>
 
 int main(int argc, const char * argv[])
 {
@@ -30,7 +35,13 @@ int main(int argc, const char * argv[])
     /* params.linearIter = 60;//original */
     params.linearIter = argparser.get<int>("lIterations");
 
-    int3 voxelGridSize = make_int3(5, 20, 5);
+    OpenMesh::Subdivider::Uniform::Sqrt3T<SimpleMesh> subdivider;
+    int numSubdivides = argparser.get<int>("numSubdivides");
+    subdivider.attach(*mesh);
+    subdivider(numSubdivides);
+    subdivider.detach();
+
+    int3 voxelGridSize = make_int3(5*(numSubdivides+1), 20*(numSubdivides*1), 5*(numSubdivides+1));
 
     int numthreads = argparser.get<int>("numthreads");
     std::string backend = argparser.get<std::string>("backend");

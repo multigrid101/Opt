@@ -95,6 +95,7 @@ protected:
 static std::shared_ptr<OptImage> createEmptyOptImage(std::vector<unsigned int> dims, OptImage::Type type, unsigned int channelCount, OptImage::Location location, bool isUnknown) {
     void* data;
     size_t size = totalElementsFromDims(dims) * OptImage::typeSize(type) * channelCount;
+        printf("createEmptyOptImage(): requested size (bytes) is %d*%d*%d = %d\n", totalElementsFromDims(dims), OptImage::typeSize(type), channelCount, size);
     if (location == OptImage::Location::CPU) {
         data = malloc(size); 
     } else {

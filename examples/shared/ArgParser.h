@@ -26,6 +26,7 @@ class ArgParser {
 
         ("numvertices", po::value<int>()->default_value(-1), "number of vertices in the graph, ignored for image examples")
         ("stride", po::value<int>()->default_value(1), "stride in both x and y direction")
+        ("numSubdivides", po::value<int>()->default_value(0), "number of subdivision in the mesh")
       ;
       
 

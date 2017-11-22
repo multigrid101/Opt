@@ -63,7 +63,7 @@ int main(int argc, const char * argv[]) {
     }
 
     OpenMesh::Subdivider::Uniform::Sqrt3T<SimpleMesh> subdivider;
-    int numSubdivides = argparser.get<int>("stride");
+    int numSubdivides = argparser.get<int>("numSubdivides");
 
     // Initialize subdivider
     if (lmOnlyFullSolve) {

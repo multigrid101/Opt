@@ -1,5 +1,5 @@
 EXECUTABLE = volumetric_mesh_deformation
-OBJS = build/CUDAWarpingSolver.o build/WarpingSolver.o build/mLibSource.o build/main.o 
+OBJS = build/CeresSolver.o build/shared/CeresSolverBase.o build/CUDAWarpingSolver.o build/WarpingSolver.o build/mLibSource.o build/main.o 
 
 UNAME := $(shell uname)
 ifeq ($(UNAME), Darwin)

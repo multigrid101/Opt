@@ -2,6 +2,11 @@
 #include "CombinedSolver.h"
 #include "OpenMesh.h"
 #include "../../shared/ArgParser.h"
+#include <OpenMesh/Tools/Subdivider/Uniform/SubdividerT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/LongestEdgeT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/LoopT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/CatmullClarkT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/Sqrt3T.hh>
 
 int main(int argc, const char * argv[])
 {
@@ -31,6 +36,14 @@ int main(int argc, const char * argv[])
         std::cout << filename << std::endl;
         exit(1);
     }
+
+    OpenMesh::Subdivider::Uniform::Sqrt3T<SimpleMesh> subdivider;
+    int numSubdivides = argparser.get<int>("numSubdivides");
+    subdivider.attach(*mesh);
+    subdivider(numSubdivides);
+    subdivider.detach();
+
+
     CombinedSolverParameters params;
     params.useOpt = true;
     params.useOptLM = false;

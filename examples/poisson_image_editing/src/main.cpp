@@ -20,19 +20,31 @@ int main(int argc, const char * argv[]) {
 	const unsigned int offsetY = 0;
 	const bool invertMask = false;
 
+
+    int stride = argparser.get<int>("stride");
+    printf("stride is %d\n", stride);
+
+
+
+
     ColorImageR8G8B8A8	   image = LodePNG::load(inputImage0);
-	ColorImageR32G32B32A32 imageR32(image.getWidth(), image.getHeight());
-	for (unsigned int y = 0; y < image.getHeight(); y++) {
-		for (unsigned int x = 0; x < image.getWidth(); x++) {
-			imageR32(x,y) = image(x,y);
+    int targetWidth = image.getWidth()/stride;
+    int targetHeight = image.getHeight()/stride;
+
+
+	/* ColorImageR32G32B32A32 imageR32(image.getWidth(), image.getHeight()); */
+	ColorImageR32G32B32A32 imageR32(targetWidth, targetHeight);
+	for (unsigned int y = 0; y < targetHeight; y++) {
+		for (unsigned int x = 0; x < targetWidth; x++) {
+			imageR32(x,y) = image(stride*x,stride*y);
 		}
 	}
 
 	ColorImageR8G8B8A8	   image1 = LodePNG::load(inputImage1);
-	ColorImageR32G32B32A32 imageR321(image1.getWidth(), image1.getHeight());
-	for (unsigned int y = 0; y < image1.getHeight(); y++) {
-		for (unsigned int x = 0; x < image1.getWidth(); x++) {
-			imageR321(x, y) = image1(x, y);
+	ColorImageR32G32B32A32 imageR321(targetWidth, targetHeight);
+	for (unsigned int y = 0; y < targetHeight; y++) {
+		for (unsigned int x = 0; x < targetWidth; x++) {
+			imageR321(x, y) = image1(stride*x, stride*y);
 		}
 	}
 
@@ -47,10 +59,10 @@ int main(int argc, const char * argv[]) {
 
 	
 	const ColorImageR8G8B8A8 imageMask = LodePNG::load(inputImageMask);
-	ColorImageR32 imageR32Mask(imageMask.getWidth(), imageMask.getHeight());
-	for (unsigned int y = 0; y < imageMask.getHeight(); y++) {
-		for (unsigned int x = 0; x < imageMask.getWidth(); x++) {
-			unsigned char c = imageMask(x, y).x;
+	ColorImageR32 imageR32Mask(targetWidth, targetHeight);
+	for (unsigned int y = 0; y < targetHeight; y++) {
+		for (unsigned int x = 0; x < targetWidth; x++) {
+			unsigned char c = imageMask(stride*x, stride*y).x;
 			if (invertMask) {
 				if (c == 255) c = 0;
 				else c = 255;
@@ -60,11 +72,11 @@ int main(int argc, const char * argv[]) {
 		}
 	}
 
-	ColorImageR32 imageR32MaskLarge(image.getWidth(), image.getHeight());
+	ColorImageR32 imageR32MaskLarge(targetWidth, targetHeight);
 	imageR32MaskLarge.setPixels(0);
-	for (unsigned int y = 0; y < imageMask.getHeight(); y++) {
-		for (unsigned int x = 0; x < imageMask.getWidth(); x++) {
-			imageR32MaskLarge(x + offsetY, y + offsetX) = imageR32Mask(x, y);
+	for (unsigned int y = 0; y < targetHeight; y++) {
+		for (unsigned int x = 0; x < targetWidth; x++) {
+			imageR32MaskLarge(x + offsetY, y + offsetX) = imageR32Mask(stride*x, stride*y);
 		}
 	}
 	

@@ -2,6 +2,11 @@
 #include "CombinedSolver.h"
 #include "OpenMesh.h"
 #include "../../shared/ArgParser.h"
+#include <OpenMesh/Tools/Subdivider/Uniform/SubdividerT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/LongestEdgeT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/LoopT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/CatmullClarkT.hh>
+#include <OpenMesh/Tools/Subdivider/Uniform/Sqrt3T.hh>
 
 static SimpleMesh* createMesh(std::string filename) {
     SimpleMesh* mesh = new SimpleMesh();
@@ -52,6 +57,12 @@ int main(int argc, const char * argv[])
     std::vector<int4> sourceTetIndices = getSourceTetIndices(tetmeshFilename);
 
     SimpleMesh* sourceMesh = createMesh(sourceFilename);
+
+    OpenMesh::Subdivider::Uniform::Sqrt3T<SimpleMesh> subdivider;
+    int numSubdivides = argparser.get<int>("numSubdivides");
+    subdivider.attach(*sourceMesh);
+    subdivider(numSubdivides);
+    subdivider.detach();
 
     std::vector<SimpleMesh*> targetMeshes;
     for (auto target : targetFiles) {
