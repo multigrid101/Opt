@@ -43,8 +43,8 @@ local solver_parameter_defaults = {
     min_relative_decrease = 1e-3,
     min_trust_region_radius = 1e-32,
     max_trust_region_radius = 1e16,
-    -- q_tolerance = 0.0001, -- original
-    q_tolerance = 0.1, -- SEB (also in ceres, I think)
+    q_tolerance = 0.0001, -- original
+    -- q_tolerance = 0.1, -- SEB (also in ceres, I think)
     function_tolerance = 0.000001,
     trust_region_radius = 1e4,
     radius_decrease_factor = 2.0,
@@ -581,6 +581,9 @@ return function(problemSpec)
         print(fmap.applyJTJ)
         -- printt(fmap)
         -- for k,v in pairs(fmap) do print(k) end
+        -- for k,v in pairs(fmap.applyJTJ.definition.body.statements) do print(k,v) end
+        -- get numlinesofcode of the automatically generated terra function
+        print(table.getn(fmap.applyJTJ.definition.body.statements))
         -- error()
 
         if multistep_alphaDenominator_compute then
