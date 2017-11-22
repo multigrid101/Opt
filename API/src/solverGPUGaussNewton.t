@@ -1522,7 +1522,7 @@ return function(problemSpec)
                                              [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
                                              pd.JT_csrRowPtrA, pd.JT_csrColIndA)
                 backend.computeBoundsA(&(pd.J_bounds[0]), pd.J_csrRowPtrA,
-                                      [nnzExp], nUnknowns)
+                                      [nnzExp], [nResidualsExp])
                 backend.computeBoundsA(&(pd.JT_bounds[0]), pd.JT_csrRowPtrA,
                                       [nnzExp], nUnknowns)
 
