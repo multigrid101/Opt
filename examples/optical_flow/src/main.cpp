@@ -1,6 +1,7 @@
 ﻿#include "mLibInclude.h"
 #include "CombinedSolver.h"
 #include "ImageHelper.h"
+#include "../../shared/ArgParser.h"
 
 
 void renderFlowVecotors(ColorImageR8G8B8A8& image, const BaseImage<float2>& flowVectors) {
@@ -26,11 +27,15 @@ int main(int argc, const char * argv[]) {
 
     std::string srcFile = "../data/dogdance0.png";
     std::string tarFile = "../data/dogdance1.png";
-    if (argc > 1) {
-        assert(argc > 2);
-        srcFile = argv[1];
-        tarFile = argv[2];
-    }
+
+    ArgParser argparser;
+    argparser.parse(argc, argv);
+
+    /* if (argc > 1) { */
+    /*     assert(argc > 2); */
+    /*     srcFile = argv[1]; */
+    /*     tarFile = argv[2]; */
+    /* } */
 
 	ColorImageR8G8B8A8 imageSrc = LodePNG::load(srcFile);
 	ColorImageR8G8B8A8 imageTar = LodePNG::load(tarFile);
@@ -43,8 +48,19 @@ int main(int argc, const char * argv[]) {
     params.nonLinearIter = 1;
     params.linearIter = 50;
 
-    CombinedSolver solver(imageSrcGray, imageTarGray, params, OptImage::Location::GPU);
-    CombinedSolver solver_cpu(imageSrcGray, imageTarGray, params, OptImage::Location::CPU);
+        int numthreads = argparser.get<int>("numthreads");
+
+        std::string backend = argparser.get<std::string>("backend");
+
+        OptImage::Location location;
+        if (backend == "backend_cuda") {
+          location = OptImage::Location::GPU;
+        } else {
+          location = OptImage::Location::CPU;
+        }
+
+    CombinedSolver solver(imageSrcGray, imageTarGray, params, location, backend, numthreads);
+    /* CombinedSolver solver_cpu(imageSrcGray, imageTarGray, params, OptImage::Location::CPU); */
 
     solver.solveAll();
     /* solver_cpu.solveAll(); */

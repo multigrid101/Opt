@@ -17,7 +17,7 @@ static void updateOptImage(std::shared_ptr<OptImage> dst, BaseImage<T> src) {
 
 class CombinedSolver : public CombinedSolverBase {
 public:
-    CombinedSolver(const ColorImageR32& sourceImage, const ColorImageR32& targetImage, const CombinedSolverParameters& params, OptImage::Location loation) {
+    CombinedSolver(const ColorImageR32& sourceImage, const ColorImageR32& targetImage, const CombinedSolverParameters& params, OptImage::Location location, std::string backend, int numthreads) {
         m_combinedSolverParameters = params;
         m_location = location;
 
@@ -33,10 +33,10 @@ public:
 			ImageHelper::filterGaussian(sourceFiltered, sigmas[i]);
 			LodePNG::save(ImageHelper::convertGrayToColor(targetFiltered), "target_filtered" + std::to_string(i) + ".png");
 			LodePNG::save(ImageHelper::convertGrayToColor(sourceFiltered), "source_filtered" + std::to_string(i) + ".png");
-			m_levels[i].init(sourceFiltered, targetFiltered);
+			m_levels[i].init(sourceFiltered, targetFiltered, m_location);
 		}		
 		resetGPU();
-        addOptSolvers(m_levels[0].m_dims, "optical_flow.t", m_combinedSolverParameters.optDoublePrecision);
+        addOptSolvers(m_levels[0].m_dims, "optical_flow.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 	}
 
 
@@ -112,14 +112,15 @@ private:
 
 	struct HierarchyLevel {
 
-		void init(const ColorImageR32& source, const ColorImageR32& target) {
+		void init(const ColorImageR32& source, const ColorImageR32& target, OptImage::Location location) {
 			assert(source.getWidth() == target.getWidth() && source.getHeight() == target.getHeight());
             m_dims = { source.getWidth(), source.getHeight() };
-            m_source        = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, m_location, true);
-            m_target        = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, m_location, true);
-            m_targetDU      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, m_location, true);
-            m_targetDV      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, m_location, true);
-            m_flowVectors   = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, m_location, true);
+            m_source        = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, location, true);
+            m_target        = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, location, true);
+            m_targetDU      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, location, true);
+            m_targetDV      = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 1, location, true);
+            m_flowVectors   = createEmptyOptImage(m_dims, OptImage::Type::FLOAT, 2, location, true);
+            m_location = location;
 
 			ColorImageR32 targetDU = computeDU(target);
 			ColorImageR32 targetDV = computeDV(target);
@@ -178,7 +179,15 @@ private:
 
 		BaseImage<float2> getFlowVectors() const {
             BaseImage<float2> flowVectors(m_dims[0], m_dims[1]);
+
+
+            if (m_location == OptImage::Location::GPU) {
             cudaSafeCall(cudaMemcpy(flowVectors.getData(), m_flowVectors->data(), sizeof(float2)*m_dims[0]*m_dims[1], cudaMemcpyDeviceToHost));
+            } else {
+            memcpy(flowVectors.getData(), m_flowVectors->data(), sizeof(float2)*m_dims[0]*m_dims[1]);
+            }
+
+
 			return flowVectors;
 		}
 
@@ -188,6 +197,8 @@ private:
 		std::shared_ptr<OptImage>	m_targetDU;
 		std::shared_ptr<OptImage>	m_targetDV;
 		std::shared_ptr<OptImage>	m_flowVectors;	//unknowns
+
+                OptImage::Location m_location;
 	};
 
     float m_weightFit;
