@@ -200,6 +200,9 @@ return function(problemSpec)
         lIterations : int       --linear iterations
     }
 
+    TUnknownType:printpretty()
+    problemSpec:ParameterType():printpretty()
+    -- error()
     
 
     local struct PlanData { -- structs are a terra concept (not a lua concept), see 'exotypes' section in the docs
@@ -1896,7 +1899,7 @@ return function(problemSpec)
                 cusparseOuter(pd) -- does nothing if use_materialized_jacobian == false
 
                 for lIter = 0, pd.solverparameters.lIterations do				
-                    C.printf("\ndoing a linear iteration %d\n", lIter)
+                    -- C.printf("\ndoing a linear iteration %d\n", lIter)
 
                     var liniterEvent : backend.Event
                     var lItername : &I.__itt_string_handle  = I.__itt_string_handle_create("lIter")
