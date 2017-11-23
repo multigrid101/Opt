@@ -22,18 +22,27 @@ private:
     std::vector<unsigned int> m_dims;
     OptImage::Location m_location;
 public:
-    CombinedSolver(const SFSSolverInput& inputGPU, CombinedSolverParameters params, OptImage::Location location)
+    CombinedSolver(const SFSSolverInput& inputGPU, CombinedSolverParameters params, OptImage::Location location, std::string backend, int numthreads)
 	{
         m_combinedSolverParameters = params;
-        m_initialUnknown = std::make_shared<SimpleBuffer>(*inputGPU.initialUnknown, true);
-        m_result = std::make_shared<SimpleBuffer>(*inputGPU.initialUnknown, true);
         m_location = location;
-        inputGPU.setParameters(m_problemParams, m_result);
+
+        bool onGPU;
+        if (location == OptImage::Location::GPU) {
+          onGPU = true;
+        } else {
+          onGPU = false;
+        }
+
+        m_initialUnknown = std::make_shared<SimpleBuffer>(*inputGPU.initialUnknown, onGPU);
+        m_result = std::make_shared<SimpleBuffer>(*inputGPU.initialUnknown, onGPU);
+
+        inputGPU.setParameters(m_problemParams, m_result, location);
 
         m_dims = { (unsigned int)m_result->width(), (unsigned int)m_result->height() };
 
         addSolver(std::make_shared<CUDAImageSolver>(m_dims), "CUDA", m_combinedSolverParameters.useCUDA);
-        addOptSolvers(m_dims, "shape_from_shading.t", m_combinedSolverParameters.optDoublePrecision);
+        addOptSolvers(m_dims, "shape_from_shading.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
         addSolver(std::make_shared<CeresImageSolver>(m_dims), "Ceres", m_combinedSolverParameters.useCeres);
 	}
 
@@ -59,7 +68,15 @@ public:
     }
 
 	void resetGPUMemory() {
-        cudaSafeCall(cudaMemcpy(m_result->data(), m_initialUnknown->data(), m_dims[0]*m_dims[1]*sizeof(float), cudaMemcpyDeviceToDevice));
+            printf("CombinedSolver::resetGPUMemory(): starting\n");
+            if (m_location == OptImage::Location::GPU) {
+            printf("calling cudamemcpy\n");
+                cudaSafeCall(cudaMemcpy(m_result->data(), m_initialUnknown->data(), m_dims[0]*m_dims[1]*sizeof(float), cudaMemcpyDeviceToDevice));
+            } else {
+            printf("calling normal memcpy\n");
+                memcpy(m_result->data(), m_initialUnknown->data(), m_dims[0]*m_dims[1]*sizeof(float));
+            }
+            printf("CombinedSolver::resetGPUMemory(): stopping\n");
 	}
 
 };

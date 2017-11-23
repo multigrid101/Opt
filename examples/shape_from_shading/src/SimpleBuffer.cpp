@@ -45,13 +45,16 @@ SimpleBuffer::SimpleBuffer(std::string filename, bool onGPU, bool clampInfinity)
     }
 
     
+    printf("SimpleBuffer::ctor(): size=%d\n", size);
 
     if (m_onGPU) {
+        printf("SimpleBuffer::ctor(): allocating size=%d on GPU\n", size);
         cudaMalloc(&m_data, size);
         cudaMemcpy(m_data, ptr, size, cudaMemcpyHostToDevice);
         free(ptr);
     } else {
-        m_data = ptr;
+        printf("SimpleBuffer::ctor(): allocating size=%d on CPU\n", size);
+        m_data = ptr; // original
     }
 }
 

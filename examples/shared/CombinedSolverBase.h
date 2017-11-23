@@ -97,7 +97,9 @@ protected:
     std::vector<SolverInfo> m_solverInfo;
 
     virtual void singleSolve(SolverInfo s) {
+        printf("CombinedSolver::singleSolve(): starting\n");
         preSingleSolve();
+        printf("CombinedSolver::singleSolve(): finished preSingleSolve()\n");
         if (m_combinedSolverParameters.numIter == 1) {
             preNonlinearSolve(0);
             std::cout << "//////////// (" << s.name << ") ///////////////" << std::endl;
@@ -117,6 +119,7 @@ protected:
             }
         }
         postSingleSolve();
+        printf("CombinedSolver::singleSolve(): stopping\n");
     }
     // Set to true in preNonlinearSolve or postNonlinearSolve to finish the solve before the specified number of iterations
     bool m_endSolveEarly = false;

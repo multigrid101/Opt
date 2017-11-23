@@ -5,11 +5,12 @@
 #include "../../shared/NamedParameters.h"
 #include <memory>
 #include <string>
-static  std::shared_ptr<OptImage> createWrapperOptImage(std::shared_ptr<SimpleBuffer> simpleBuffer) {
+static  std::shared_ptr<OptImage> createWrapperOptImage(std::shared_ptr<SimpleBuffer> simpleBuffer, OptImage::Location location) {
     std::vector<unsigned int> dims = { (unsigned int)simpleBuffer->width(), (unsigned int)simpleBuffer->height() };
     OptImage::Type t = (simpleBuffer->type() == SimpleBuffer::DataType::FLOAT) ? OptImage::Type::FLOAT : OptImage::Type::UCHAR;
     bool isUnknown = (t == OptImage::Type::FLOAT);
-    return std::shared_ptr<OptImage>(new OptImage(dims, simpleBuffer->data(), t, 1, OptImage::Location::GPU, isUnknown, false));
+
+    return std::shared_ptr<OptImage>(new OptImage(dims, simpleBuffer->data(), t, 1, location, isUnknown, false));
 }
 
 struct SFSSolverInput {
@@ -19,7 +20,7 @@ struct SFSSolverInput {
     std::shared_ptr<SimpleBuffer>   maskEdgeMap; //uint8s, and actually the row and column maps stuck together...
     TerraSolverParameters           parameters;
 
-    void setParameters(NamedParameters& probParams, std::shared_ptr<SimpleBuffer> unknownImage) const {
+    void setParameters(NamedParameters& probParams, std::shared_ptr<SimpleBuffer> unknownImage, OptImage::Location location) const {
         probParams.set("w_p", (void*)&parameters.weightFitting);
         probParams.set("w_s", (void*)&parameters.weightRegularizer);
         probParams.set("w_g", (void*)&parameters.weightShading);
@@ -33,15 +34,24 @@ struct SFSSolverInput {
             probParams.set(buff, (void*)&(parameters.lightingCoefficients[i]));
         }
         
-        auto unknown = createWrapperOptImage(unknownImage);
+        auto unknown = createWrapperOptImage(unknownImage, location);
         probParams.set("X", unknown);
-        probParams.set("D_i", createWrapperOptImage(targetDepth));
-        probParams.set("Im", createWrapperOptImage(targetIntensity));
-        std::shared_ptr<OptImage> edgeMaskR = createEmptyOptImage(unknown->dims(), OptImage::Type::UCHAR, 1, OptImage::GPU, false);
-        std::shared_ptr<OptImage> edgeMaskC = createEmptyOptImage(unknown->dims(), OptImage::Type::UCHAR, 1, OptImage::GPU, false);
+
+        auto di = createWrapperOptImage(targetDepth, location);
+        probParams.set("D_i", di);
+
+        probParams.set("Im", createWrapperOptImage(targetIntensity, location));
+
+        std::shared_ptr<OptImage> edgeMaskR = createEmptyOptImage(unknown->dims(), OptImage::Type::UCHAR, 1, location, false);
+        std::shared_ptr<OptImage> edgeMaskC = createEmptyOptImage(unknown->dims(), OptImage::Type::UCHAR, 1, location, false);
+
         size_t pixCount = initialUnknown->width()*initialUnknown->height();
-        edgeMaskR->update(maskEdgeMap->data(), pixCount*sizeof(unsigned char), OptImage::Location::GPU);
-        edgeMaskC->update((unsigned char*)maskEdgeMap->data() + pixCount, pixCount*sizeof(unsigned char), OptImage::Location::GPU);
+
+        /* edgeMaskR->update(maskEdgeMap->data(), pixCount*sizeof(unsigned char), OptImage::Location::GPU); */
+        /* edgeMaskC->update((unsigned char*)maskEdgeMap->data() + pixCount, pixCount*sizeof(unsigned char), OptImage::Location::GPU); */
+        edgeMaskR->update(maskEdgeMap->data(), pixCount*sizeof(unsigned char), location);
+        edgeMaskC->update((unsigned char*)maskEdgeMap->data() + pixCount, pixCount*sizeof(unsigned char), location);
+
         probParams.set("edgeMaskR", edgeMaskR);
         probParams.set("edgeMaskC", edgeMaskC);
     }
