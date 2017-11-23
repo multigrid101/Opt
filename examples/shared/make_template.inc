@@ -1,7 +1,7 @@
-# CXX = clang++
-CXX = g++
-# LINK = clang++
-LINK = g++
+CXX = clang++
+# CXX = g++
+LINK = clang++
+# LINK = g++
 NVCC = /usr/local/cuda/bin/nvcc
 SRC ?= src
 CUDAHOME += /usr/local/cuda
@@ -9,13 +9,19 @@ TERRAHOME ?= ../../../terra
 TERRA ?= ../../../terra/release/terra
 SHARED ?= ../shared
 
+ifeq ($(CXX), clang++)
+  OMPLFLAG = -fopenmp=libiomp5
+else
+  OMPLFLAG = -fopenmp
+endif
+
 ifeq ($(UNAME), Linux)
   S4 = 64
 endif
 
 FLAGS += -O3 -g -std=c++11 -Isrc -Isrc/cutil/inc -I../../API/release/include -I$(TERRAHOME)/include -I$(CUDAHOME)/include -I../external/mLib/include -I../external -I../external/OpenMesh/include -I/home/sebastian/Desktop/ceres-solver-1.13.0/include/ -I/usr/include/eigen3 -I/home/sebastian/Desktop/ceres-solver-1.13.0/config/
 NVCCFLAGS += -arch sm_30 $(FLAGS)
-LFLAGS += -std=c++11 -L/home/sebastian/Desktop/ceres-bin/lib -lceres -L../../API/release/lib -L$(CUDAHOME)/lib$(S4) -lcudart -L$(TERRAHOME)/lib -lterra -ldl -lboost_program_options -L /opt/intel/vtune_amplifier_xe_2017/lib64 -littnotify -lglog -lgflags -fopenmp -lgomp -lm -llapack -lcamd -lamd -lccolamd -lcolamd -lcholmod -lblas -lcxsparse
+LFLAGS += -std=c++11 -L/home/sebastian/Desktop/ceres-bin/lib -lceres -L../../API/release/lib -L$(CUDAHOME)/lib$(S4) -lcudart -L$(TERRAHOME)/lib -lterra -ldl -lboost_program_options -L /opt/intel/vtune_amplifier_xe_2017/lib64 -littnotify -lglog -lgflags $(OMPLFLAG) -lgomp -lm -llapack -lcamd -lamd -lccolamd -lcolamd -lcholmod -lblas -lcxsparse
 UNAME := $(shell uname)
 
 ifeq ($(UNAME), Darwin)

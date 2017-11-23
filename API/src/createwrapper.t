@@ -112,7 +112,7 @@ struct Opt_InitializationParameters {
     collectPerKernelTimingInfo : int
 
     -- possible values: 'backend_cpu', 'backend_gpu', backend_cpu_mt'
-    backend : rawstring
+    backend : int8[20];
 
     -- only has effect for backend_cuda_mt, is set to 1 otherwise
     numthreads : int
@@ -177,7 +177,7 @@ local terra NewState(params : Opt_InitializationParameters) : &LibraryState
     C.lua_pushboolean(L,params.collectPerKernelTimingInfo);
     C.lua_setfield(L,LUA_GLOBALSINDEX,"_opt_collect_kernel_timing")
 
-    C.lua_pushstring(L,params.backend)
+    C.lua_pushstring(L,&(params.backend[0]))
     C.lua_setfield(L,LUA_GLOBALSINDEX,"_opt_backend")
 
     C.lua_pushnumber(L,params.numthreads);

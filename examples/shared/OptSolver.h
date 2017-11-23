@@ -49,7 +49,11 @@ public:
         initParams.verbosityLevel = 1;
         initParams.collectPerKernelTimingInfo = 1;
         initParams.doublePrecision = (int)doublePrecision;
-        initParams.backend = backend.c_str();
+
+
+        strcpy(initParams.backend, backend.c_str());
+
+
         initParams.numthreads = numthreads;
         m_optimizerState = Opt_NewState(initParams);
 		m_problem = Opt_ProblemDefine(m_optimizerState, terraFile.c_str(), optName.c_str());

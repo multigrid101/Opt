@@ -21,7 +21,10 @@ struct Opt_InitializationParameters {
 	int collectPerKernelTimingInfo;
 
         // possible values: 'backend_cuda', 'backend_cpu', 'backend_cpu_mt'
-        char* backend;
+        /* char* backend; */
+        char backend[20];
+        /* enum Opt_Backend backend; */
+        /* int backend; */
 
         // only has effect for backend_cpu_mt, is set to 1 otherwise
         int numthreads;
