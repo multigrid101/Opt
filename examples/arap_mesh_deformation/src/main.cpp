@@ -64,6 +64,7 @@ int main(int argc, const char * argv[]) {
 
     OpenMesh::Subdivider::Uniform::Sqrt3T<SimpleMesh> subdivider;
     int numSubdivides = argparser.get<int>("numSubdivides");
+    if (numSubdivides < 1) {numSubdivides = 1;} // needs to be >=1 for this example or else we get a segfault
 
     // Initialize subdivider
     if (lmOnlyFullSolve) {
