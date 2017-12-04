@@ -20,9 +20,9 @@ class CombinedSolver : public CombinedSolverBase
                         m_location = location;
 
             unsigned int N = (unsigned int)mesh->n_vertices();
-            unsigned int numedges = (unsigned int)mesh->n_edges();
 
             initializeConnectivity();
+            unsigned int numedges = (unsigned int)m_graph->edgeCount();
             std::vector<unsigned int> dims = { N, numedges };
             m_rotationMatrices = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 9, location, true);
             m_vertexPositions = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
