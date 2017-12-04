@@ -15,6 +15,7 @@ class ArgParser {
         ("backend", po::value<std::string>()->default_value("backend_cpu"), "set backend to 'backend_cuda', 'backend_cpu' or 'backend_cpu_mt'")
         ("numthreads", po::value<int>()->default_value(1), "set the number of threads (only has effect for backend_cpu_mt)")
 
+        ("oIterations", po::value<int>()->default_value(1), "number of outer iterations (e.g. for optical_flow).")
         ("nIterations", po::value<int>()->default_value(1), "number of non-linear iterations.")
         ("lIterations", po::value<int>()->default_value(1), "number of linear iterations.")
 
