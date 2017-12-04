@@ -27,18 +27,21 @@ class CombinedSolver : public CombinedSolverBase
             m_combinedSolverParameters = params;
             m_location = location;
 
+            initializeConnectivity();
 			unsigned int N = (unsigned int)mesh->n_vertices();
-			unsigned int numedges = (unsigned int)mesh->n_edges(); // by SO
+			unsigned int numedges = (unsigned int)m_graph->edgeCount(); // by SO
                         printf("From CombinedSolver: vertices: %d, edges: %d useCeres: %d\n", N, numedges, m_combinedSolverParameters.useCeres);
 
             /* m_dims = { N }; */ //original
             m_dims = { N, numedges }; //by SO
+
             m_vertexPosFloat3           = createEmptyOptImage({m_dims[0]}, OptImage::Type::FLOAT, 3, location, true);
             m_anglesFloat3              = createEmptyOptImage({m_dims[0]}, OptImage::Type::FLOAT, 3, location, true);
             m_vertexPosFloat3Urshape    = createEmptyOptImage({m_dims[0]}, OptImage::Type::FLOAT, 3, location, true);
             m_vertexPosTargetFloat3     = createEmptyOptImage({m_dims[0]}, OptImage::Type::FLOAT, 3, location, true);
 
-            initializeConnectivity();
+
+
             resetGPUMemory();
             
             addSolver(std::make_shared<CUDAWarpingSolver>(N, d_numNeighbours, d_neighbourIdx, d_neighbourOffset), "CUDA", m_combinedSolverParameters.useCUDA);
