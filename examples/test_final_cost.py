@@ -1,8 +1,13 @@
 from Test import ExampleRun
 import re
+import pdb
 
 # Runs all examples to see if their costs are correct. For this purpose, we
-# use very small problem sizes and a very small number of iterations.
+# use very small problem sizes and a very small number of iterations (usually just 1).
+# This way, we mainly test that **Opt** is doing what it is supposed to do but
+# we might miss some errors in Opt that can occur if we do more than one iteration
+# (not very likely) or (more likely) errors that occur in the cpp-code if more
+# than one outer iteration is used (e.g. in optical flow).
 # USAGE:
 # > python test_final_cost.py
 
@@ -23,6 +28,8 @@ folders = []
 # # the error here can be around 1e-5 with stride=1, so we use stride=12
 # folders.append("intrinsic_image_decomposition")
 
+# even with oIterations=1, we will get two solver outputs because of the
+# 'numLevels' parameter in combinedSolver.h (numLevels=2)
 folders.append("optical_flow")
 
 # the error here will be slightly too large (~1.1e-6) for 4 threads,
@@ -50,7 +57,7 @@ referenceCosts['embedded_mesh_deformation'] = 0.36712926 # CUDA
 referenceCosts['image_warping'] = 1774.3405 # CUDA
 referenceCosts['intrinsic_image_decomposition'] = 3.3105300000e6 #CUDA, stride=12 (53x30 px)
 referenceCosts['poisson_image_editing'] = 1530364.25 # CUDA, stride=4 (112x80 px)
-referenceCosts['optical_flow'] = -1
+referenceCosts['optical_flow'] = 0.52119255 # CUDA, result of first!!! level
 referenceCosts['robust_nonrigid_alignment'] = 66.784683 # CUDA cost of first!!! solve
 referenceCosts['shape_from_shading'] = -1
 referenceCosts['volumetric_mesh_deformation'] = 189.74081 # CUDA
@@ -64,7 +71,7 @@ strides['cotangent_mesh_smoothing'] = -1
 strides['embedded_mesh_deformation'] = -1
 strides['image_warping'] = -1
 strides['intrinsic_image_decomposition'] = 12
-strides['optical_flow'] = -1
+strides['optical_flow'] = 16
 strides['poisson_image_editing'] = 4
 strides['robust_nonrigid_alignment'] = -1
 strides['shape_from_shading'] = -1
