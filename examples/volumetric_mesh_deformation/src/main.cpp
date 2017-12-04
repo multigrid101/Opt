@@ -41,7 +41,7 @@ int main(int argc, const char * argv[])
     subdivider(numSubdivides);
     subdivider.detach();
 
-    int3 voxelGridSize = make_int3(5*(numSubdivides+1), 20*(numSubdivides*1), 5*(numSubdivides+1));
+    int3 voxelGridSize = make_int3(5*(numSubdivides+1), 20*(numSubdivides+1), 5*(numSubdivides+1));
 
     int numthreads = argparser.get<int>("numthreads");
     std::string backend = argparser.get<std::string>("backend");
