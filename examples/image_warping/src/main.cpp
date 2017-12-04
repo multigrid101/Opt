@@ -157,12 +157,11 @@ int main(int argc, const char * argv[]) {
     CombinedSolverParameters params;
 
     /* params.numIter = 19; // original */
-    params.numIter = 1;
+    params.numIter = argparser.get<int>("oIterations");
 
     params.useCUDA = false;
 
     /* params.nonLinearIter = 8; // original */
-    /* params.nonLinearIter = 3; // original */
     /* params.nonLinearIter = 100; */
     params.nonLinearIter = argparser.get<int>("nIterations");
 

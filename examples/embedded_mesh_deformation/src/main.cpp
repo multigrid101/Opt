@@ -67,7 +67,7 @@ int main(int argc, const char * argv[])
     params.useOptLM = true;
 
     /* params.numIter = 31; // original */
-    params.numIter = 1;
+    params.numIter = argparser.get<int>("oIterations");
 
     /* params.nonLinearIter = 5; // original */
     params.nonLinearIter = argparser.get<int>("nIterations");
