@@ -89,6 +89,7 @@ int main(int argc, const char * argv[]) {
     /* params.nonLinearIter = 20; */ //original
     /* params.linearIter = 100; */ //original
     /* params.numIter = 1; */
+    params.numIter = argparser.get<int>("oIterations");
     params.nonLinearIter = argparser.get<int>("nIterations");
     params.linearIter = argparser.get<int>("lIterations");
 
