@@ -23,9 +23,10 @@ public:
         m_location = location;
 
         unsigned int N = (unsigned int)mesh->n_vertices();
-        unsigned int numedges = (unsigned int)mesh->n_edges();
 
         initializeConnectivity();
+
+        unsigned int numedges = m_graph->edgeCount();
         std::vector<unsigned int> dims = { N, numedges };
 
         m_unknown = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);

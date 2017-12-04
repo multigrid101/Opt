@@ -57,7 +57,6 @@ int main(int argc, const char * argv[])
 
     float weightFit = 1.0f;
     float weightReg = 0.5f;
-    weightReg = 5.0f;
 
     int numthreads = argparser.get<int>("numthreads");
     std::string backend = argparser.get<std::string>("backend");

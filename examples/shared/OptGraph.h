@@ -42,6 +42,10 @@ public:
         return m_indices.size();
     }
 
+    int edgeCount() const {
+        return m_edgeCount;
+    }
+
     int* gpuVertexPtr(int index) {
         return (int*)m_gpuIndices[index]->data();
     }
