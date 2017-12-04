@@ -37,16 +37,51 @@ int main(int argc, const char * argv[]) {
     /*     tarFile = argv[2]; */
     /* } */
 
-	ColorImageR8G8B8A8 imageSrc = LodePNG::load(srcFile);
+	ColorImageR8G8B8A8 imageSrc_ = LodePNG::load(srcFile);
 	ColorImageR8G8B8A8 imageTar = LodePNG::load(tarFile);
 
-	ColorImageR32 imageSrcGray = imageSrc.convertToGrayscale();
-	ColorImageR32 imageTarGray = imageTar.convertToGrayscale();
+        // original pictures, not downscaled
+	ColorImageR32 imageSrcGray_ = imageSrc_.convertToGrayscale();
+	ColorImageR32 imageTarGray_ = imageTar.convertToGrayscale();
 
+
+    // downscale according to the stride parameter
+    int stride = argparser.get<int>("stride");
+
+    ColorImageR8G8B8A8 imageSrc(imageSrc_.getWidth()/stride, imageSrc_.getHeight()/stride);
+    ColorImageR32 imageSrcGray(imageSrcGray_.getWidth()/stride, imageSrcGray_.getHeight()/stride);
+    ColorImageR32 imageTarGray(imageTarGray_.getWidth()/stride, imageTarGray_.getHeight()/stride);
+
+    for (unsigned int j = 0; j < imageSrcGray.getHeight(); j++) {
+        for (unsigned int i = 0; i < imageSrcGray.getWidth(); i++) {
+            imageSrcGray(i,j) = imageSrcGray_(i*stride, j*stride);
+        }
+    }
+    for (unsigned int j = 0; j < imageTarGray.getHeight(); j++) {
+        for (unsigned int i = 0; i < imageTarGray.getWidth(); i++) {
+            imageTarGray(i,j) = imageTarGray_(i*stride, j*stride);
+        }
+    }
+    for (unsigned int j = 0; j < imageSrc.getHeight(); j++) {
+        for (unsigned int i = 0; i < imageSrc.getWidth(); i++) {
+            imageSrc(i,j) = imageSrc_(i*stride, j*stride);
+        }
+    }
+    
+
+    // define solver parameters
     CombinedSolverParameters params;
-    params.numIter = 3;
-    params.nonLinearIter = 1;
-    params.linearIter = 50;
+
+    /* params.numIter = 3; //original */
+    params.numIter = argparser.get<int>("oIterations");
+
+
+    /* params.nonLinearIter = 1; //original */
+    params.nonLinearIter = argparser.get<int>("nIterations");
+
+
+    /* params.linearIter = 50; //original */
+    params.linearIter = argparser.get<int>("lIterations");
 
         int numthreads = argparser.get<int>("numthreads");
 
