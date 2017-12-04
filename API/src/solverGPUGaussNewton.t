@@ -1206,12 +1206,15 @@ return function(problemSpec)
         --         util.atomicAdd_nosync(pd.scratch, cost)
         --     end
         -- end
+        -- Index:printpretty()
+        -- error()
         terra kernels.computeCost_Graph(pd : PlanData, [kernelArglist], [backend.threadarg])
             var cost : opt_float = opt_float(0.0f)
             -- var tIdx = 0
             -- if util.getValidGraphElement(pd,[graphname],&tIdx) then
             var tIdx : Index
             if tIdx:initFromCUDAParams([kernelArglist]) then
+            -- C.printf("visiting idx %d\n", tIdx.d0)
                 cost = fmap.cost(tIdx.d0, pd.parameters, [backend.threadarg])
             end 
             cost = util.warpReduce(cost)
@@ -1224,7 +1227,7 @@ return function(problemSpec)
         end
         kernels.computeCost_Graph.listOfAtomicAddVars = {}
         kernels.computeCost_Graph.compileForMultiThread = true
-        -- print(kernels.computeModelCost_Graph)
+        print(kernels.computeCost_Graph)
         print(fmap.cost)
         -- error()
 
@@ -2050,6 +2053,7 @@ return function(problemSpec)
                 gpu.precompute(pd)
                 C.printf("step(): stopping precompute\n")
                 var newCost = computeCost(pd)
+                C.printf("new cost is %f\n", newCost)
 
                 escape 
                     if problemSpec:UsesLambda() then

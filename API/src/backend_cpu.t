@@ -679,7 +679,9 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
             local ks = delegate.GraphFunctions(graphname, problemfunction.functionmap,nil, ispace) -- by SO
             for name,func in pairs(ks) do            
                 kernelFunctions[getkname(name,problemfunction.typ)] = cpucompile(func, ispace)
+                print(kernelFunctions[getkname(name,problemfunction.typ)])
             end
+            -- error()
         end
     end
     -- error()
