@@ -6,10 +6,15 @@
 #include <memory>
 #include <string>
 static  std::shared_ptr<OptImage> createWrapperOptImage(std::shared_ptr<SimpleBuffer> simpleBuffer, OptImage::Location location) {
+
+    // get width and height from simpleBuffer
     std::vector<unsigned int> dims = { (unsigned int)simpleBuffer->width(), (unsigned int)simpleBuffer->height() };
+
+    // get datatype
     OptImage::Type t = (simpleBuffer->type() == SimpleBuffer::DataType::FLOAT) ? OptImage::Type::FLOAT : OptImage::Type::UCHAR;
     bool isUnknown = (t == OptImage::Type::FLOAT);
 
+    // wrap simpleBuffer data in OptImage
     return std::shared_ptr<OptImage>(new OptImage(dims, simpleBuffer->data(), t, 1, location, isUnknown, false));
 }
 

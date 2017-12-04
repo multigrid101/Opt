@@ -17,16 +17,16 @@ folders = []
 
 # The problem size here is a few hundred unknowns. We cannot go smaller because
 # that causes some segfault in the cpp code. May we can fix this at a later point.
-# folders.append("arap_mesh_deformation")
+folders.append("arap_mesh_deformation")
 
-# folders.append("cotangent_mesh_smoothing")
+folders.append("cotangent_mesh_smoothing")
 
-# folders.append("embedded_mesh_deformation")
+folders.append("embedded_mesh_deformation")
 
-# folders.append("image_warping")
+folders.append("image_warping")
 
 # # the error here can be around 1e-5 with stride=1, so we use stride=12
-# folders.append("intrinsic_image_decomposition")
+folders.append("intrinsic_image_decomposition")
 
 # even with oIterations=1, we will get two solver outputs because of the
 # 'numLevels' parameter in combinedSolver.h (numLevels=2)
@@ -34,15 +34,16 @@ folders.append("optical_flow")
 
 # the error here will be slightly too large (~1.1e-6) for 4 threads,
 # so we use stride = 4
-# folders.append("poisson_image_editing")
+folders.append("poisson_image_editing")
 
 # # this is broken at the moment so ignore the error, need to find out when this happened
 # # Run anyway to make sure we don't get compile-time or run-time errors
-# folders.append("robust_nonrigid_alignment") # note: this solver does more than one solve because singleSolve is overwritten by CombinedSolver
+folders.append("robust_nonrigid_alignment") # note: this solver does more than one solve because singleSolve is overwritten by CombinedSolver
 
+# currently NOT INCLUDED because the up/downscaling will be complicated
 # folders.append("shape_from_shading")
 
-# folders.append("volumetric_mesh_deformation")
+folders.append("volumetric_mesh_deformation")
 # -----------------------------------------------------------------------------
 
 
