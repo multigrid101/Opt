@@ -46,9 +46,9 @@ int main(int argc, const char * argv[])
     /* solverInputCPU.load(inputFilenamePrefix, false); */
 
     CombinedSolverParameters params;
-    params.nonLinearIter = 60;
-    params.linearIter = 10;
     params.useOpt = true;
+    params.nonLinearIter = argparser.get<int>("nIterations");
+    params.linearIter = argparser.get<int>("lIterations");
     if (performanceRun) {
         params.useCUDA  = false;
         params.useOpt   = true;
