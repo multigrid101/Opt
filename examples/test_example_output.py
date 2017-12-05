@@ -3,6 +3,7 @@ import re
 import os
 import subprocess as sp
 import pdb
+import sys
 
 # Runs all examples with a single backend and many iterations to see if
 # the outputs look reasonable. That way, we can detect bugs in the cpp-code
@@ -11,7 +12,12 @@ import pdb
 # Example-outputs need to be inspected by hand, but at least we can can catch
 # run-time/compile-time problems.
 # USAGE:
-# > python test_example_output.py
+# > python test_example_output.py <backend>
+#
+# EXAMPLE:
+# > python test_example_output.py backend_cpu
+#
+# default backend is cuda
 
 # -----------------------------------------------------------------------------
 # define list of folders to run:
@@ -42,8 +48,12 @@ folders.append("volumetric_mesh_deformation")
 
 
 
-# backends = ["backend_cuda", "backend_cpu", "backend_cpu_mt"]
-backends = ["backend_cuda"]
+if len(sys.argv)>1:
+    backends = [sys.argv[1]]
+else:
+    backends = ["backend_cuda"]
+
+
 
 #------------------------------------------------------------------------------
 # DEFINE ITERATION ARGS
