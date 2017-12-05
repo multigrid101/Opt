@@ -169,14 +169,9 @@ int main(int argc, const char * argv[]) {
     /* params.linearIter = 5; */
     params.linearIter = argparser.get<int>("lIterations");
 
-        /* params.useCeres = true; // new, not in original */
-        params.useCeres = false; // new, not in original
-
-        /* params.useOptLM = true; // new, not in original */
-        /* params.useOpt = false; // new, not in original */
-
-        params.useOptLM = false; // new, not in original
-        params.useOpt = true; // new, not in original
+    params.useOpt = argparser.get<bool>("useOpt");
+    params.useOptLM = argparser.get<bool>("useOptLM");
+    params.useCeres = argparser.get<bool>("useCeres");
 
     if (performanceRun) {
         params.useCUDA = false;

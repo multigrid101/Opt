@@ -93,7 +93,10 @@ int main(int argc, const char * argv[]) {
     params.nonLinearIter = argparser.get<int>("nIterations");
     params.linearIter = argparser.get<int>("lIterations");
 
-    params.useOpt = true;
+    params.useOpt = argparser.get<bool>("useOpt");
+    params.useOptLM = argparser.get<bool>("useOptLM");
+    params.useCeres = argparser.get<bool>("useCeres");
+
     if (performanceRun) {
         params.useCUDA = false;
         params.useOpt = true;

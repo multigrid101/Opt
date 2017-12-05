@@ -46,6 +46,10 @@ int main(int argc, const char * argv[])
     int numthreads = argparser.get<int>("numthreads");
     std::string backend = argparser.get<std::string>("backend");
 
+    params.useOpt = argparser.get<bool>("useOpt");
+    params.useOptLM = argparser.get<bool>("useOptLM");
+    params.useCeres = argparser.get<bool>("useCeres");
+
     OptImage::Location location;
     if (backend == "backend_cuda") {
       location = OptImage::Location::GPU;

@@ -1,6 +1,10 @@
 #pragma once
 #include <boost/program_options.hpp>
 #include <string.h>
+#include <fstream>
+#include <stdio.h>
+
+// TODO clean me up, some args are not neded.
 
 namespace po = boost::program_options;
 class ArgParser {
@@ -19,6 +23,10 @@ class ArgParser {
         ("nIterations", po::value<int>()->default_value(1), "number of non-linear iterations.")
         ("lIterations", po::value<int>()->default_value(1), "number of linear iterations.")
 
+        ("useOpt", po::value<bool>()->implicit_value(true)->default_value(false), "if true, then an instance of Opt's Gauss Newton solver is run.")
+        ("useOptLM", po::value<bool>()->implicit_value(true)->default_value(false), "if true, then an instance of Opt's LM solver is run.")
+        ("useCeres", po::value<bool>()->implicit_value(true)->default_value(false), "if true, then an instance of the Ceres solver is run.")
+
         ("width", po::value<int>()->default_value(640), "width of the image (pixels), ignored for graph-examples")
         ("stride_x", po::value<int>()->default_value(1), "example, if this is 3, then only every 3rd pixel in x-direction of the input image is loaded into Opt, see also stride arg")
 
@@ -29,14 +37,27 @@ class ArgParser {
         ("stride", po::value<int>()->default_value(1), "stride in both x and y direction")
         ("numSubdivides", po::value<int>()->default_value(0), "number of subdivision in the mesh")
       ;
-      
+
 
 
     }
 
     void parse(int argc, const char* argv[]) {
+      // command line args get 'stored' before config file args, so the command
+      // line args take precedence
       po::store(po::parse_command_line(argc, argv, *m_desc), m_variablemap);
       po::notify(m_variablemap);    
+
+      std::string configFileName = "args.config";
+      
+      std::ifstream ifs(configFileName.c_str());
+      if (!ifs) {
+        printf("WARNING! Cannot open config file!\n");
+      }
+      else {
+        po::store(po::parse_config_file(ifs, *m_desc), m_variablemap);
+        po::notify(m_variablemap);    
+      }
       
       if (m_variablemap.count("help")) {
         std::cout << *m_desc << "\n";

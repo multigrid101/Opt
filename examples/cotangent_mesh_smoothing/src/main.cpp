@@ -45,8 +45,9 @@ int main(int argc, const char * argv[])
 
 
     CombinedSolverParameters params;
-    params.useOpt = true;
-    params.useOptLM = false;
+    params.useOpt = argparser.get<bool>("useOpt");
+    params.useOptLM = argparser.get<bool>("useOptLM");
+    params.useCeres = argparser.get<bool>("useCeres"); // makes no sense here
 
     /* params.nonLinearIter = 5; //original */
     params.nonLinearIter = argparser.get<int>("nIterations");

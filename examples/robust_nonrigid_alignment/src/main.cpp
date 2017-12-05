@@ -81,8 +81,9 @@ int main(int argc, const char * argv[])
     /* params.linearIter = 250;//original */
     params.linearIter = argparser.get<int>("lIterations");
 
-    params.useOpt = false;
-    params.useOptLM = true;
+    params.useOpt = argparser.get<bool>("useOpt");
+    params.useOptLM = argparser.get<bool>("useOptLM");
+    params.useCeres = argparser.get<bool>("useCeres");
 
     int numthreads = argparser.get<int>("numthreads");
     std::string backend = argparser.get<std::string>("backend");

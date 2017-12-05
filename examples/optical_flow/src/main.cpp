@@ -87,6 +87,10 @@ int main(int argc, const char * argv[]) {
 
         std::string backend = argparser.get<std::string>("backend");
 
+    params.useOpt = argparser.get<bool>("useOpt");
+    params.useOptLM = argparser.get<bool>("useOptLM");
+    params.useCeres = argparser.get<bool>("useCeres"); // makes no sense here
+
         OptImage::Location location;
         if (backend == "backend_cuda") {
           location = OptImage::Location::GPU;
