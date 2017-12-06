@@ -2019,6 +2019,14 @@ return function(problemSpec)
                     -- pd.scanBetaNumerator:memcpyDevice(pd.scanAlphaNumerator)
                     [backend.ReduceVar.memcpyDevice( `pd.scanAlphaNumerator, `pd.scanBetaNumerator)]
                     
+                    -- TODO need to add some sort of (e.g. residual-based) termination-criterion
+                    -- for the GN and LM solver. At the moment, only LM can exit early with the
+                    -- code below, but with GN, the CG solver has no way of knowing
+                    -- when it is done.
+                    -- TODO refactor CG solver into different file so that it
+                    -- can be re-used for other optimization methods, also
+                    -- try to create an abstraction for linear solvers so that
+                    -- we can later add e.g. direct linear solvers.
                     if [problemSpec:UsesLambda()] then
                         Q1 = fetchQ(pd)
                         var zeta = [opt_float](lIter+1)*(Q1 - Q0) / Q1 
