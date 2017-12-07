@@ -258,6 +258,16 @@ b.ReduceVar.allocate = function(variable)
 end
 b.ReduceVarHost.allocate2 = b.ReduceVar.allocate
 
+b.ReduceVar.free = function(variable)
+  return quote
+            for k = 0,b.numthreads+1 do
+              C.free([variable][k])
+            end
+            C.free([variable])
+         end
+end
+b.ReduceVarHost.free = b.ReduceVar.free
+
 b.ReduceVar.getDataPtr = function(varquote, k)
   return `[varquote][k]
 end

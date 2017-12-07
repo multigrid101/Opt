@@ -1382,7 +1382,9 @@ return function(problemSpec)
         -- C.printf('stopping computeCost, scratch cost addresses are is %d | %d\n', pd.scratch[0], pd.scratch[1])
         -- C.printf('stopping computeCost, final cost addresses is %d | %d\n', f[0], f[1])
         -- C.printf('stopping computeCost, final cost is %f | %f\n', f[0][0], f[1][0])
-        return [backend.ReduceVarHost.getData2( `f, 0)]
+        var returnVal = [backend.ReduceVarHost.getData2( `f, 0)]
+        [backend.ReduceVarHost.free(`f)]
+        return  returnVal
     end
     print(computeCost)
     -- error()

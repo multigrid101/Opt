@@ -351,6 +351,16 @@ b.ReduceVar.allocate = function(variable)
 end
 b.ReduceVarHost.allocate2 = b.ReduceVar.allocate
 
+b.ReduceVar.free = function(variable)
+  return quote
+            for k = 0,b.numthreads+1 do
+              C.free([variable][k])
+            end
+            C.free([variable])
+         end
+end
+b.ReduceVarHost.free = b.ReduceVar.free
+
 b.ReduceVar.getDataPtr = function(varquote, k)
   -- TODO the use of this function is confusing, (input = k, return = k+1)
   -- rename to e.g. getDataPtrForThreadID(var, tid), that would make more sense
@@ -1002,7 +1012,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
       wrappedfunc:setname('wrappedfunc')
       wrappedfunc.listOfAtomicAddVars = kernel.listOfAtomicAddVars
       wrappedfunc.compileForMultiThread = true
-      print(wrappedfunc)
+      -- print(wrappedfunc)
       -- error()
 
       return wrappedfunc

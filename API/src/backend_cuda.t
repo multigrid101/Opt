@@ -295,6 +295,12 @@ b.ReduceVarHost.allocate2 = function(variable) -- modified method name to avoid 
     return quote [variable] = [&opt_float](C.malloc(sizeof(opt_float))) end
 end
 
+b.ReduceVarHost.free = function(variable)
+  return quote
+            C.free([variable])
+         end
+end
+
 b.ReduceVarHost.getData2 = function( varquote, index ) -- modified method name to avoid name clash with ReduceVar methods
   return `@[varquote]
 end
