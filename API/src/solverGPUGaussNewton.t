@@ -580,13 +580,14 @@ return function(problemSpec)
         end
         kernels.PCGStep1.listOfAtomicAddVars = {}
         kernels.PCGStep1.compileForMultiThread = true
+        -- kernels.PCGStep1.compileForMultiThread = false
         print(kernels.PCGStep1)
         print(fmap.applyJTJ)
         -- printt(fmap)
         -- for k,v in pairs(fmap) do print(k) end
         -- for k,v in pairs(fmap.applyJTJ.definition.body.statements) do print(k,v) end
         -- get numlinesofcode of the automatically generated terra function
-        print(table.getn(fmap.applyJTJ.definition.body.statements))
+        -- print(table.getn(fmap.applyJTJ.definition.body.statements))
         -- error()
 
         if multistep_alphaDenominator_compute then
@@ -1732,7 +1733,9 @@ return function(problemSpec)
                             int(nnzExp),int(nResidualsExp))
                    
                   -- J alloc
-                  -- TODO put allocation of matrices together in one place
+                  -- TODO put allocation of matrices together in one place.
+                  -- Currently, JTJ is allocated inside step (only during first
+                  -- step) if it is required but this could be done here as well.
                   cd( backend.allocateDevice(&pd.J_csrValA, sizeof(opt_float)*nnzExp, opt_float))
                   cd( backend.allocateDevice(&pd.J_csrColIndA, sizeof(int)*nnzExp, int))
                   cd( backend.memsetDevice(pd.J_csrColIndA, -1,
@@ -1768,6 +1771,8 @@ return function(problemSpec)
            end 
          end
       C.printf('inside init3\n')
+      -- TODO can we put this inside step()?? At the moment, this is done at
+      -- here and at the end of each step but that seems a little illogical.
        gpu.precompute(pd)
       C.printf('inside init4\n')
        pd.prevCost = computeCost(pd)
@@ -2091,6 +2096,7 @@ return function(problemSpec)
                                      if cost_change <= absolute_function_tolerance then
                                          logSolver("\nFunction tolerance reached, exiting\n")
                                          cleanup(pd)
+                                         -- TODO need to join threads here and below
                                          return 0
                                      end
 

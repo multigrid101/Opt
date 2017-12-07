@@ -14,6 +14,7 @@ local C = terralib.includecstring [[
 #endif
 ]]
 local I = require('ittnotify')
+-- error()
 
 b.name = 'CPU'
 b.numthreads = 1 -- DO NOT CHANGE THIS
@@ -451,6 +452,7 @@ function b.make_Image_initGPU(imagetype_terra)
 end
 
 function b.make_Image_metamethods__apply(imagetype_terra, indextype_terra, vectortype_terra, loadAsVector, VT)
+-- TODO move this back to o.t
     local metamethods__apply
     if loadAsVector then
         metamethods__apply = terra(self : &imagetype_terra, idx : indextype_terra) : vectortype_terra
@@ -469,15 +471,14 @@ function b.make_Image_metamethods__apply(imagetype_terra, indextype_terra, vecto
 end
 
 function b.make_Image_metamethods__update(imagetype_terra, indextype_terra, vectortype_terra, loadAsVector, VT)
+-- TODO move this back to o.t
     local metamethods__update
     if loadAsVector then
         metamethods__update = terra(self : &imagetype_terra, idx : indextype_terra, v : vectortype_terra)
-      -- TODO backend-specific
             VT(self.data)[idx:tooffset()] = @VT(&v)
         end
     else
         metamethods__update = terra(self : &imagetype_terra, idx : indextype_terra, v : vectortype_terra)
-      -- TODO backend-specific
             self.data[idx:tooffset()] = v
         end
     end
@@ -640,7 +641,16 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
 
 
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
-        [wrappedquote]
+
+        -- escape
+        -- local thequote = texec("compiledfunc(): loop time", false,
+        --   wrappedquote
+        -- )
+        -- emit quote [thequote] end
+        -- end
+
+          [wrappedquote]
+
         I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
       end
       print(wrappedfunc)
@@ -679,9 +689,10 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
 	       assert(dimcount <= 3, "cannot launch over images with more than 3 dims")
            local ks = delegate.CenterFunctions(ispace,problemfunction.functionmap) -- ks are the kernelfunctions as shown in gaussNewtonGPU.t
            for name,func in pairs(ks) do
-             -- print(name,func) -- debug
+             print(name,func) -- debug
                 kernelFunctions[getkname(name,problemfunction.typ)] = cpucompile(func, ispace)
            end
+            -- error()
         else
             local graphname = problemfunction.typ.graphname
             local ispace = problemfunction.typ.ispace -- by SO

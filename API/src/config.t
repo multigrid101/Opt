@@ -24,6 +24,7 @@ c.backend = _opt_backend -- configured in cpp code
 -- c.use_contiguous_allocation = false
 c.use_contiguous_allocation = true
 
+-- only relevant for cuda
 -- c.use_bindless_texture = true
 c.use_bindless_texture = false
 

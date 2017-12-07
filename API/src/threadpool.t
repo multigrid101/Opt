@@ -27,6 +27,7 @@ end)
 pth = {}
 pth[16] = 'EBUSY'
 -- for k,v in pairs(C) do print(k,v) end
+-- error()
 -- local asdf = C.ESRCH
 
 ptcode = global(int, 0, "ptcode")
@@ -419,7 +420,8 @@ local terra waitForWork(arg : &opaque) : &opaque
   C.pthread_exit(nil)
   return nil                                                                    
 end             
-
+print(waitForWork)
+-- error()
 
 -- TODO create corresponding join function and use in init, cost, and step()
 local terra initThreads()
@@ -507,7 +509,9 @@ local stopWaitingForWorkTask =
 local terra joinThreads()
   debm( C.printf('joinThreads(): starting\n') )
 
-  -- wait for all threads to start (why are we doing this in jointhreads?)
+  -- wait for all threads to start. We need to do this even in joinThreads()
+  -- because otherwise, inserting something into the taskqueue (see below)
+  -- may lead to a deadlock.
   var waitForThreadsAliveName = I.__itt_string_handle_create('wait_for_threads_to_start')
   var domain = I.__itt_domain_create("Main.Domain")
   I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, waitForThreadsAliveName)

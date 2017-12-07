@@ -973,7 +973,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
 
         end
       end
-      print(wrappedquote)
+      -- print(wrappedquote)
 
       -- for k,v in pairs(rawstring) do print(k,v) end
       -- error()
@@ -1054,7 +1054,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
 
         end
       end
-      print(wrappedquote)
+      -- print(wrappedquote)
 
       -- local wrappedfunc = terra([pd_sym])
       local kminsym = symbol(int[numdims], 'kmin')
@@ -1070,7 +1070,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
 
         I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
       end
-      print(wrappedfunc)
+      -- print(wrappedfunc)
       -- error()
 
       wrappedfunc.compileForMultiThread = kernel.compileForMultiThread
@@ -1119,8 +1119,11 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
                   error('compileForMultiThread attribute of kernel not set')
                 end
                 func.name = name .. '_' ..  tostring(problemfunction.typ)
-                kernelFunctions[getkname(name,problemfunction.typ)] = cpucompilefunc(func, ispace)
+                local compiledfunc = cpucompilefunc(func, ispace)
+                kernelFunctions[getkname(name,problemfunction.typ)] = compiledfunc
+                print(compiledfunc)
            end
+           -- error()
         else
             local graphname = problemfunction.typ.graphname
             local ispace = problemfunction.typ.ispace -- by SO
