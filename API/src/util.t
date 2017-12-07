@@ -16,6 +16,7 @@ util.C = terralib.includecstring [[
 #include <unistd.h>
 #include <math.h>
 #include <cuda_runtime.h>
+#include <sys/time.h>
 #ifdef _WIN32
 	#include <io.h>
 #endif
@@ -33,6 +34,35 @@ if terralib.linkllvm then
 else
     terralib.linklibrary(libdevice)
 end
+
+-------------------------------------------------------------------------------
+-- MACRO FOR TIMED EXECUTION START
+-- displays execution time in milliseconds
+-- Example usage:
+-- util.texec("step(): PCGStep1", true,
+--   gpu.PCGStep1(pd)
+-- )
+util.texec = macro(function(msg, ptrintOutput, stmt)
+return quote
+  var start : C.timeval
+  var stop : C.timeval
+
+  C.gettimeofday(&start, nil)
+  [stmt]
+  C.gettimeofday(&stop, nil)
+
+  var elapsed : double
+  elapsed = 1000*(stop.tv_sec - start.tv_sec)
+  elapsed = elapsed + (stop.tv_usec - start.tv_usec)/[double](1e3)
+
+  if [ptrintOutput] then
+    C.printf("TEXEC: %s t = %f ms\n", [msg], elapsed)
+  end
+end
+end)
+-- MACRO FOR TIMED EXECUTION END
+-------------------------------------------------------------------------------
+
 local mathParamCount = {sqrt = 1,
 cos  = 1,
 acos = 1,

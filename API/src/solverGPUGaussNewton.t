@@ -1931,7 +1931,11 @@ return function(problemSpec)
                     [backend.ReduceVar.setToConst( `pd.q, 0)]
 
                     if not initialization_parameters.use_materialized_jacobian then
-                        gpu.PCGStep1(pd)
+
+                        util.texec("step(): PCGStep1", true,
+                          gpu.PCGStep1(pd)
+                        )
+
                         if isGraph then
                                 gpu.PCGStep1_Graph(pd)
                         end
