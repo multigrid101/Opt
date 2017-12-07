@@ -2005,7 +2005,9 @@ return function(problemSpec)
 
                         -- TEST END
 
-                        gpu.PCGStep2(pd)
+                        util.texec("step(): PCGStep2", true,
+                          gpu.PCGStep2(pd)
+                        )
                     end
 
                 -- TEST START
