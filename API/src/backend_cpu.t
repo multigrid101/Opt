@@ -339,6 +339,47 @@ b.ReduceVar.reduceAllThreads = function(varquote)
 end
 b.ReduceVarHost.reduceAllThreads2 = b.ReduceVar.reduceAllThreads
 ---------------- ReduceVar end
+-- TODO alternative version of reduceVar below yielded no performance improvment
+-- ---------------- ReduceVar start
+-- b.ReduceVar = &opt_float
+-- b.ReduceVarHost = b.ReduceVar
+
+-- b.ReduceVar.allocate = function(variable)
+--   return quote
+--               [variable] = [&opt_float](C.malloc(sizeof(opt_float)))
+--          end
+-- end
+-- b.ReduceVarHost.allocate2 = b.ReduceVar.allocate
+
+-- b.ReduceVar.getDataPtr = function(varquote, k)
+--   return `[varquote]
+-- end
+
+-- b.ReduceVar.getData = function(varquote, k)
+--   return `@[varquote]
+-- end
+-- b.ReduceVarHost.getData2 = b.ReduceVar.getData
+
+-- b.ReduceVar.setToConst = function(varquote, val)
+--   return quote
+--            @[varquote] = val
+--          end
+-- end
+
+-- b.ReduceVar.memcpyDevice2Host = function(targetquote, sourcequote)
+--   print(targetquote)
+--     return quote
+--                C.memcpy([&opaque]([targetquote]), [&opaque]([sourcequote]), sizeof(opt_float))
+--            end
+--   end
+-- b.ReduceVar.memcpyDevice = b.ReduceVar.memcpyDevice2Host
+
+-- b.ReduceVar.reduceAllThreads = function(varquote)
+--   return quote
+--          end
+-- end
+-- b.ReduceVarHost.reduceAllThreads2 = b.ReduceVar.reduceAllThreads
+-- ---------------- ReduceVar end
 
 -- atomicAdd START
 -- if c.opt_float == float then
