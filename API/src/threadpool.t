@@ -7,6 +7,7 @@ local C = terralib.includecstring [[
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 ]]
 local I = require('ittnotify')
 
@@ -358,8 +359,44 @@ tp.theTaskQueue = theTaskQueue
 --------------------------------- TaskQueue_t END
 
 -- threadpool stuff start
+local struct thread_data {
+  threadId : int -- the thread id. first worker thread gets 0, next gets 1, etc.
+  cpuset : C.cpu_set_t
+}
+-- thread_data:printpretty()
+-- error()
+local tdatas = global(thread_data[numthreads], nil, "tdatas")
 local terra waitForWork(arg : &opaque) : &opaque                                      
+  -- var tdata = [&thread_data](arg)
   var threadIndex = [int64](arg)                                                
+  var tdata = tdatas[threadIndex]
+
+  -- var threadIndex = [int64](arg)                                                
+  -- var threadIndex = tdata.threadId
+  -- var threadIndex : int  = 0
+  C.printf("TID = %d\n", threadIndex)
+  -- threadIndex = 0
+  -- var cpuset = (@tdata).cpuset
+  var cpuset = tdata.cpuset
+  C.printf("CPUSET = %d\n", cpuset)
+  -- for k = 0,16 do
+  --   C.printf("tid=%d: cpuset__bits[%d] = %lu\n", threadIndex, k, cpuset.__bits[k])
+  -- end
+
+  escape
+    if c.cpumap then
+      emit quote
+    var bla : int
+          pt( C.pthread_setaffinity_np(C.pthread_self(), sizeof(C.cpu_set_t), &cpuset) )
+
+          -- pt(1234)
+          -- bla = C.pthread_setaffinity_np(C.pthread_self(), sizeof(C.cpu_set_t), &cpuset) 
+          -- C.printf("bla = %d\n", bla)
+          -- C.printf("bla2 = %lu\n", cpuset.__bits)
+      end
+    end
+  end
+
   debm( C.printf("waitForkWork(tid=%d): starting\n", threadIndex) )
   debm( C.printf("waitForkWork(tid=%d): locking thread_busy_mutex[%d],\
                   value before locking is %d\n",
@@ -453,42 +490,71 @@ local terra initThreads()
   -- pt( C.pthread_cond_init(&thread_has_been_canceled_cv, nil) )
   -- pt( C.pthread_cond_init(&ready_for_work_cv, nil) )
 
+  -- var tdatas : thread_data[numthreads]
+
+  -- tdatas is global, see above
+  for k = 0,numthreads do
+    tdatas[k].threadId = k
+  end
+
   -- set cpu affinities (TODO this is broken, needs to be fixed)
-  -- escape
-  --   if c.cpumap then
-  --     emit quote
-  --       var cpusets : C.cpu_set_t[numthreads]
-  --       var cpumap : int[8]
+  escape
+    if c.cpumap then
+      emit quote
+        var cpusets : C.cpu_set_t[numthreads]
+        var cpumap : int[8]
 
-  --       escape
-  --         for k = 1,numthreads do
-  --           emit quote
-  --             cpumap[ [k-1] ] = [ c.cpumap[k] ]
-  --           end
-  --         end
-  --       end
+        escape
+          for k = 1,numthreads do
+            emit quote
+              cpumap[ [k-1] ] = [ c.cpumap[k] ]
+            end
+          end
+        end
 
-  --       -- CPU_ZERO macro -- TODO refactor these macros
-  --       for k = 0,numthreads do
-  --         C.memset ( &(cpusets[k]) , 0, sizeof (C.cpu_set_t)) -- 0 is the integer value of '\0'
-  --       end
+        -- CPU_ZERO macro -- TODO refactor these macros
+        for k = 0,numthreads do
+          C.memset ( &(cpusets[k]) , 0, sizeof (C.cpu_set_t)) -- 0 is the integer value of '\0'
+        end
 
-  --       -- CPU_SET macro
-  --       for k = 0,numthreads do
-  --         var cpuid : C.size_t = cpumap[k]
-  --         ([&C.__cpu_mask](cpusets[k].__bits))[0] = ([&C.__cpu_mask](cpusets[k].__bits))[0] or ([C.__cpu_mask]( 1  << cpuid) )
-  --       end
+        -- CPU_SET macro, calling the macro like below leads to a
+        -- 'CPU_SET' not found error by terra. appearently, terra cannot
+        -- parse the required macros in <sched.h> , we therefore have to define
+        -- them by hand.
+        -- C.CPU_SET(0, &cpusets[0])
+        for k = 0,numthreads do
+          var cpuid : C.size_t = cpumap[k]
+          ([&C.__cpu_mask](cpusets[k].__bits))[0] = ([&C.__cpu_mask](cpusets[k].__bits))[0] or ([C.__cpu_mask]( 1  << cpuid) )
+        end
 
 
-  --       for k = 0,numthreads do
-  --         tdatas[k].cpuset = cpusets[k]
-  --       end
-  --     end
-  --   end
-  -- end
+        for k = 0,numthreads do
+          tdatas[k].cpuset = cpusets[k]
+          C.printf("cpuset[%d] = %d\n", k, cpusets[k])
+          -- C.memcpy(&(tdatas[k].cpuset), &cpusets[k], sizeof(C.cpu_set_t))
+        end
+      end
+    end
+  end
 
   for tid = 0,numthreads do
+    -- pt( C.pthread_create(&theThreads[tid], nil, waitForWork, [&opaque](tid)))
+    tdatas[tid].threadId = tid
+    -- C.printf("tid = %d\n", tdatas[tid].threadId)
+    -- C.printf("cpuset = %d\n", tdatas[tid].cpuset)
+
+
+    -- WARNING: The following function may return before the new thread is
+    -- actually alive, thus causing THIS function to return and thereby invalidating
+    -- whatever is stored is 'tdatas' (if tdatas was local to this function), which
+    -- is why we need tdatas to be global.
+    -- We need to make sure that the new thread
+    -- has time to call waitForWork() and copy whatever it needs from
+    -- tdatas.
+    -- According to the man pages for pthread_create, pthread_create() will
+    -- always at least save the id of the new thread in its first arg.
     pt( C.pthread_create(&theThreads[tid], nil, waitForWork, [&opaque](tid)))
+    -- pt( C.pthread_create(&theThreads[tid], nil, waitForWork, &tdatas[tid]))
   end
   -- C.sleep(1)
   debm( C.printf('initThreads(): stopping\n') )
