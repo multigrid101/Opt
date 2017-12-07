@@ -2,6 +2,7 @@ local C = terralib.includecstring [[
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/time.h>
 ]]
 local la = {} -- this module
 
@@ -65,6 +66,7 @@ terra IntList:sortInPlace()
   --        - See PetscSortInt() in sorti.c of petsc source
   C.qsort(self.vals, self.length, sizeof(int), compare_ints)
 end
+-- error()
 
 terra IntList:copyInto( v : &int )
 -- copies values of self into some integer array
@@ -578,6 +580,14 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
         end
 
         var nnzThisThread = 0
+
+        var start : C.timeval
+        var stop : C.timeval
+        var elapsed : double
+        C.gettimeofday(&start, nil)
+
+
+        var offsetThisRowA = 0
         for k = low, upp do
           var offsetThisRowA = rowPtrA[k]
           var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
@@ -590,6 +600,11 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
           valOutVec[k] = tmp
         end
         -- C.printf(['Thread ' .. tostring(tid) .. ' did %d nnz\n'], nnzThisThread)
+
+        C.gettimeofday(&stop, nil)
+        elapsed = 1000*(stop.tv_sec - start.tv_sec)
+        elapsed = elapsed + (stop.tv_usec - start.tv_usec)/(double)(1e3)
+        C.printf("loop time %d was %f for %d nnz\n", tid, elapsed, nnzThisThread)
 
         -- barrier worker-side
         tp.theKernelFinishedByAllThreadsBarrier:signal()

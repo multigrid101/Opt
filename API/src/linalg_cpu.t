@@ -2,6 +2,7 @@ local C = terralib.includecstring [[
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/time.h>
 ]]
 local la = {} -- this module
 
@@ -529,6 +530,11 @@ local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refa
   C.memset([&opaque](valOutVec), 0, nRowsA * sizeof(float))
 
 -- TODO investigate optimizations due to symmetric A
+        var start : C.timeval
+        var stop : C.timeval
+        var elapsed : double
+        C.gettimeofday(&start, nil)
+
   for k = 0,nRowsA do
     var offsetThisRowA = rowPtrA[k]
     var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
@@ -539,6 +545,11 @@ local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refa
     end
     valOutVec[k] = tmp
   end
+
+        C.gettimeofday(&stop, nil)
+        elapsed = 1000*(stop.tv_sec - start.tv_sec)
+        elapsed = elapsed + (stop.tv_usec - start.tv_usec)/(double)(1e3)
+        C.printf("loop time was %f\n", elapsed)
 end
 la.applyAtoVector = applyAtoVector
 
