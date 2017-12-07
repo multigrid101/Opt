@@ -22,6 +22,39 @@ b.numthreads = 1 -- DO NOT CHANGE THIS
 b.threadarg = {}
 b.threadarg_val = 1
 
+-- TODO atm, this is defined here AND in util.t because util.t depends on the
+-- backend file. Need to refactor to fix this somehow
+-------------------------------------------------------------------------------
+-- MACRO FOR TIMED EXECUTION START
+-- displays execution time in milliseconds
+-- Example usage:
+-- util.texec("step(): PCGStep1", true,
+--   gpu.PCGStep1(pd)
+-- )
+local texec = function(msg, ptrintOutput, stmt)
+-- return quote
+-- var a = 1
+-- end
+return quote
+  var start : C.timeval
+  var stop : C.timeval
+
+  C.gettimeofday(&start, nil)
+  [stmt]
+  C.gettimeofday(&stop, nil)
+
+  var elapsed : double
+  elapsed = 1000*(stop.tv_sec - start.tv_sec)
+  elapsed = elapsed + (stop.tv_usec - start.tv_usec)/[double](1e3)
+
+  if [ptrintOutput] then
+    C.printf("TEXEC: %s t = %f ms\n", [msg], elapsed)
+  end
+end
+end
+-- MACRO FOR TIMED EXECUTION END
+-------------------------------------------------------------------------------
+
 
 --------------------------- Timing stuff start
 -- TODO put in separate file
