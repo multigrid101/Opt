@@ -1685,6 +1685,23 @@ return function(problemSpec)
     -- TODO put in extra file 'solverskeleton.t' or something similar
     local terra init(data_ : &opaque, params_ : &&opaque)
       C.printf('starting init\n')
+
+      -- TODO This is a quickfix for a performance issue. Without it, all calls
+      -- to the
+      -- MatVec Multiplication inside step() are slower during the first Newton-
+      -- Iteration than during subsequent iterations (19ms vs. 11ms) in one
+      -- example. So far, I (s.otten)
+      -- have no idea why, but for some reason, the section below provides
+      -- relief.
+      escape
+        if backend.name == 'CPUMT' then
+          emit quote
+            tp.initThreads()
+            tp.joinThreads()
+          end
+        end
+      end
+
         var domain : &I.__itt_domain  = I.__itt_domain_create("Main.Domain");
         var name : &I.__itt_string_handle  = I.__itt_string_handle_create("init()")
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
@@ -1828,6 +1845,21 @@ return function(problemSpec)
               pd.timer:startEvent(stepName, &stepEvent)
           end
 
+        -- KEEP THIS FOR DEBUGGING PURPOSES!!!
+        -- this section exits the first iteration early and cleans up
+        -- event-stuff, etc.
+        -- With an early exit at this point, calls to "applyAToVector()" are
+        -- "slow" during the first Newton-Iteration, see also the comment above
+        -- the extra initThreads/joinThreads pair in init()
+        -- if pd.solverparameters.nIter == 0 then
+        --   pd.solverparameters.nIter = pd.solverparameters.nIter + 1
+        --             if true then
+        --                 pd.timer:endEvent(&stepEvent, 0)
+        --             end
+        --             I.__itt_task_end(domain)
+        --   return 1
+        -- end
+
 
     escape
       if backend.name == 'CPUMT' then
@@ -1839,6 +1871,28 @@ return function(problemSpec)
     -- C.sleep(2)
 
         -- [backend.threadcreation_counter] = 0
+
+        -- KEEP THIS FOR DEBUGGING PURPOSES!!!
+        -- this section exits the first iteration early and cleans up
+        -- event-stuff, etc.
+        -- With an early exit at this point, calls to "applyAToVector()" are
+        -- "Fast" during the first Newton-Iteration, see also the comment above
+        -- the extra initThreads/joinThreads pair in init()
+        -- if pd.solverparameters.nIter == 0 then
+        --   pd.solverparameters.nIter = pd.solverparameters.nIter + 1
+        --             escape
+        --               if backend.name == 'CPUMT' then
+        --                 emit quote
+        --                   tp.joinThreads()
+        --                 end
+        --               end
+        --             end
+        --             if true then
+        --                 pd.timer:endEvent(&stepEvent, 0)
+        --             end
+        --             I.__itt_task_end(domain)
+        --   return 1
+        -- end
 
         var residual_reset_period : int         = pd.solverparameters.residual_reset_period
         var min_relative_decrease : opt_float   = pd.solverparameters.min_relative_decrease
