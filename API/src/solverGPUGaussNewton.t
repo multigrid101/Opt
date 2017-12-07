@@ -1512,20 +1512,29 @@ return function(problemSpec)
                 var numBytesForJTJRowPtr = numrows*sizeof(int)
                 cd( backend.allocateDevice(&pd.JTJ_csrRowPtrA, numBytesForJTJRowPtr, int) )
 
-                var endJTJalloc : backend.Event
-                pd.timer:startEvent("J^TJ alloc",&endJTJalloc)
 
-                -- NOTE: This function must at least *compute* rowPtrJTJ and
-                -- *allocate* colIndJTJ
-                backend.computeNnzPatternATA(pd.handle, pd.desc,
-                                             nUnknowns, [nResidualsExp],
-                                             [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
-                                             pd.JTJ_csrRowPtrA, &pd.JTJ_csrColIndA, &pd.JTJ_nnz)
+                if [initialization_parameters.use_fused_jtj] then
+                  var endJTJalloc : backend.Event
 
-                backend.computeBoundsA(&(pd.JTJ_bounds[0]), pd.JTJ_csrRowPtrA,
-                                      pd.JTJ_nnz, nUnknowns)
+                  pd.timer:startEvent("J^TJ alloc",&endJTJalloc)
 
+                  -- NOTE: This function must at least *compute* rowPtrJTJ and
+                  -- *allocate* colIndJTJ
+                  backend.computeNnzPatternATA(pd.handle, pd.desc,
+                                               nUnknowns, [nResidualsExp],
+                                               [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
+                                               pd.JTJ_csrRowPtrA, &pd.JTJ_csrColIndA, &pd.JTJ_nnz)
 
+                  backend.computeBoundsA(&(pd.JTJ_bounds[0]), pd.JTJ_csrRowPtrA,
+                                        pd.JTJ_nnz, nUnknowns)
+                  pd.timer:endEvent(&endJTJalloc, 0)
+
+                  var numBytesForJTJVal = pd.JTJ_nnz*sizeof(float) -- TODO why not opt_float here?
+                  cd( backend.allocateDevice(&pd.JTJ_csrValA, numBytesForJTJVal, float) )
+                end
+
+                var endJTalloc : backend.Event
+                pd.timer:startEvent("JT alloc",&endJTalloc)
                 backend.computeNnzPatternAT(pd.handle, pd.desc,
                                              nUnknowns, [nResidualsExp],
                                              [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
@@ -1535,10 +1544,8 @@ return function(problemSpec)
                 backend.computeBoundsA(&(pd.JT_bounds[0]), pd.JT_csrRowPtrA,
                                       [nnzExp], nUnknowns)
 
-                pd.timer:endEvent(&endJTJalloc, 0)
+                pd.timer:endEvent(&endJTalloc, 0)
                 
-                var numBytesForJTJVal = pd.JTJ_nnz*sizeof(float) -- TODO why not opt_float here?
-                cd( backend.allocateDevice(&pd.JTJ_csrValA, numBytesForJTJVal, float) )
 
 
                 -- TODO refactor this a bit better, there shouldn't be any cuda
@@ -1561,17 +1568,19 @@ return function(problemSpec)
 
             pd.timer:endEvent(&endJtranspose, 0)
 
-            -- Do the multiplication JT*J
-            var endJTJmm : backend.Event
-            pd.timer:startEvent("JTJ multiply",&endJTJmm)
+            if [initialization_parameters.use_fused_jtj] then
+              -- Do the multiplication JT*J
+              var endJTJmm : backend.Event
+              pd.timer:startEvent("JTJ multiply",&endJTJmm)
 
-            backend.computeATA(pd.handle, pd.desc,
-                               nUnknowns, [nResidualsExp], [nnzExp], pd.JTJ_nnz,
-                               pd.J_csrValA, pd.J_csrRowPtrA, pd.J_csrColIndA,
-                               pd.JT_csrValA, pd.JT_csrRowPtrA, pd.JT_csrColIndA,
-                               pd.JTJ_csrValA, pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA)
+              backend.computeATA(pd.handle, pd.desc,
+                                 nUnknowns, [nResidualsExp], [nnzExp], pd.JTJ_nnz,
+                                 pd.J_csrValA, pd.J_csrRowPtrA, pd.J_csrColIndA,
+                                 pd.JT_csrValA, pd.JT_csrRowPtrA, pd.JT_csrColIndA,
+                                 pd.JTJ_csrValA, pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA)
 
-            pd.timer:endEvent(&endJTJmm, 0)
+              pd.timer:endEvent(&endJTJmm, 0)
+            end
             -- end Section 2)
         end
 
