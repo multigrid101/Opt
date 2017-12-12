@@ -1,5 +1,6 @@
 local b = {}
 local S = require("std")
+local s = require("simplestring")
 local c = require('config')
 local C = terralib.includecstring [[
 #include <stdio.h>
@@ -124,7 +125,9 @@ function Array(T,debug)
         end
         return v
     end
-    if not T:isstruct() then
+
+    -- see backend_cpu for explanation of the if-statement below
+    if not T:isstruct() or T == s.String then
         terra Array:indexof(v : T) : int32
             for i = 0LL,self._size do
                 if (v == self._data[i]) then
@@ -145,13 +148,20 @@ local Array = S.memoize(Array)
 
 
 -- TODO what is this? its only used in the next few lines? can we make this local to the Timer "class"?
+local MAXNAMELENGTH = 100
 local struct Event {
 	startEvent : C.cudaEvent_t
 	endEvent : C.cudaEvent_t
 	duration : float
-	eventName : rawstring
+	eventName : int8[MAXNAMELENGTH]
 }
+Event_MAXNAMELENGTH = MAXNAMELENGTH
 b.Event = Event
+terra Event:getName()
+-- MUST return a &int8 pointer to the first char in the name, regardless of the
+-- implementation.
+  return &(self.eventName[0])
+end
 
 local TimerEvent = C.cudaEvent_t
 
@@ -184,7 +194,7 @@ end
 
 -- terra Timer:startEvent(name : rawstring,  stream : C.cudaStream_t, endEvent : &C.cudaEvent_t)
 terra Timer:startEvent(name : rawstring,  eventptr : &Event)
-    (@eventptr).eventName = name
+    C.memcpy(eventptr:getName(), name, Event_MAXNAMELENGTH*sizeof(int8))
 
     C.cudaEventCreate(&(@eventptr).startEvent)
     C.cudaEventCreate(&(@eventptr).endEvent)
@@ -221,16 +231,17 @@ terra Timer:evaluate()
             -- C.printf("asdfasdf\n")
 	if ([c._opt_verbosity > 0]) then
           var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
-          var aggregateTimingNames = [Array(rawstring)].salloc():init()
+          var aggregateTimingNames = [Array(s.String)].salloc():init()
 
             C.printf("asdf %d\n", self.eventList:size())
           for i = 0,self.eventList:size() do
             var eventInfo = self.eventList(i);
+            var eventName : s.String = eventInfo:getName()
             C.cudaEventSynchronize(eventInfo.endEvent)
             C.cudaEventElapsedTime(&eventInfo.duration, eventInfo.startEvent, eventInfo.endEvent);
-            var index =  aggregateTimingNames:indexof(eventInfo.eventName)
+            var index =  aggregateTimingNames:indexof(eventName)
             if index < 0 then
-              aggregateTimingNames:insert(eventInfo.eventName)
+              aggregateTimingNames:insert(eventName)
               aggregateTimingInfo:insert({eventInfo.duration, 1})
             else
               aggregateTimingInfo(index)._0 = aggregateTimingInfo(index)._0 + eventInfo.duration
@@ -243,7 +254,7 @@ terra Timer:evaluate()
           C.printf(		"----------------------+----------+-----------+----------\n")
           for i = 0, aggregateTimingNames:size() do
               C.printf(	"----------------------+----------+-----------+----------\n")
-              C.printf(" %-20s |   %4d   | %8.3fms| %7.4fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
+              C.printf(" %-20s |   %4d   | %8.3fms| %7.4fms\n", [rawstring](aggregateTimingNames(i)), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
           end
 
           C.printf(		"--------------------------------------------------------\n")

@@ -1,5 +1,6 @@
 local b = {}
 local S = require("std")
+local s = require("simplestring")
 local c = require('config')
 local tp = require('threadpool')
 local C = terralib.includecstring [[
@@ -152,18 +153,16 @@ function Array(T,debug)
         end
         return v
     end
-    if not T:isstruct() then
+
+    -- see backend_cpu for explanation of the if-statement below
+    if not T:isstruct() or T == s.String then
         terra Array:indexof(v : T) : int32
-          escape
-            emit quote
               for i = 0LL,self._size do
-                  if C.strcmp(v,self._data[i])==0 then
+                  if v == self._data[i] then
                       return i
                   end
               end
               return -1
-            end
-          end
         end
         terra Array:contains(v : T) : bool
             return self:indexof(v) >= 0
@@ -177,12 +176,14 @@ local Array = S.memoize(Array)
 
 
 -- TODO what is this? its only used in the next few lines? can we make this local to the Timer "class"?
+local MAXNAMELENGTH = 100
 local struct Event {
 	starttime : C.timespec
 	endtime : C.timespec
 	duration : double -- unit: ms
-	eventName : rawstring
+	eventName : int8[MAXNAMELENGTH]
 }
+Event_MAXNAMELENGTH = MAXNAMELENGTH
 b.Event = Event
 terra Event:getStartTime()
   var elapsed : double
@@ -208,6 +209,11 @@ terra Event:calcElapsedTime()
   elapsed = elapsed + [double](self.endtime.tv_nsec - self.starttime.tv_nsec)/([double](1e6))
 
   self.duration = elapsed
+end
+terra Event:getName()
+-- MUST return a &int8 pointer to the first char in the name, regardless of the
+-- implementation.
+  return &(self.eventName[0])
 end
 
 
@@ -236,8 +242,8 @@ end
 
 
 terra Timer:startEvent(name : rawstring, eventptr : &Event)
-    (@eventptr).eventName = name
-    -- C.gettimeofday(&((@eventptr).starttime), nil)
+    C.memcpy(eventptr:getName(), name, Event_MAXNAMELENGTH*sizeof(int8))
+
     C.clock_gettime(C.CLOCK_MONOTONIC, &((@eventptr).starttime))
 end
 
@@ -245,6 +251,7 @@ end
 terra Timer:endEvent(eventptr : &Event, [b.threadarg])
     -- C.gettimeofday(&((@eventptr).endtime), nil)
     C.clock_gettime(C.CLOCK_MONOTONIC, &((@eventptr).endtime))
+
     self.eventList[ [b.threadarg] ]:insert(@eventptr)
 end
 
@@ -269,19 +276,20 @@ terra Timer:evaluate()
           -- _2 holds start
           -- _2 holds end
           var aggregateTimingInfo = [Array(tuple(float,int,float,float))].salloc():init()
-          var aggregateTimingNames = [Array(rawstring)].salloc():init()
+          var aggregateTimingNames = [Array(s.String)].salloc():init()
 
           for i = 0,self.eventList[0]:size() do
             var event = self.eventList[0](i);
+            var eventName : s.String = event:getName()
             -- C.printf("%s\n", event.eventName)
             event:calcElapsedTime()
 
             -- if the event is not in the list, we insert it. if it is already in the list, we
             -- update the aggregate times and counts, but keep the start and end-time of the first
             -- recorded event
-            var index =  aggregateTimingNames:indexof(event.eventName)
+            var index =  aggregateTimingNames:indexof(eventName)
             if index < 0 then
-              aggregateTimingNames:insert(event.eventName)
+              aggregateTimingNames:insert(eventName)
               aggregateTimingInfo:insert({event.duration, 1, event:getStartTime(), event:getEndTime()})
             else
               aggregateTimingInfo(index)._0 = aggregateTimingInfo(index)._0 + event.duration
@@ -295,7 +303,7 @@ terra Timer:evaluate()
           for i = 0, aggregateTimingNames:size() do
               C.printf(	"--------------------------------+----------+---------------+---------------\n")
               -- C.printf(" %-30s |   %4d   | %12.5fms| %12.5fms| %12.5fms| %12.5fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._2, aggregateTimingInfo(i)._3)
-              C.printf(" %-30s |   %4d   | %12.5fms| %12.5fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
+              C.printf(" %-30s |   %4d   | %12.5fms| %12.5fms\n", [rawstring](aggregateTimingNames(i)), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
           end
 
           C.printf(		"---------------------------------------------------------------------------\n")
@@ -844,6 +852,7 @@ local function makeGPULauncher(PlanData,kernelName,ft,compiledKernel, ispace)
           if ([_opt_collect_kernel_timing]) then
               pd.timer:startEvent(eventKernelName, &kernelEvent)
           end
+          C.free(eventKernelName)
 
           -- set helper arrays to zero
           I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name2)
@@ -994,6 +1003,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
         if ([_opt_collect_kernel_timing]) then
             [pd_sym].timer:startEvent( (loopEventName) ,&loopEvent)
         end
+        C.free(loopEventName)
 
         [wrappedquote]
 

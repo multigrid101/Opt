@@ -1862,6 +1862,7 @@ return function(problemSpec)
           if true then
               pd.timer:startEvent(stepName, &stepEvent)
           end
+          C.free(stepName)
 
         -- KEEP THIS FOR DEBUGGING PURPOSES!!!
         -- this section exits the first iteration early and cleans up

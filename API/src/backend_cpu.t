@@ -2,6 +2,7 @@ local b = {}
 local S = require("std")
 local c = require('config')
 local la = require('linalg_cpu')
+local s = require("simplestring")
 
 local C = terralib.includecstring [[
 #include <stdio.h>
@@ -141,7 +142,11 @@ function Array(T,debug)
         end
         return v
     end
-    if not T:isstruct() then
+
+    -- We need to check if T is a struct because if it is (e.g. Event from below)
+    -- and no __eq method is defined for it, then we get a compiler error from
+    -- the equality check.
+    if not T:isstruct() or T == s.String then
         terra Array:indexof(v : T) : int32
             for i = 0LL,self._size do
                 if (v == self._data[i]) then
@@ -162,18 +167,26 @@ local Array = S.memoize(Array)
 
 
 -- TODO what is this? its only used in the next few lines? can we make this local to the Timer "class"?
+-- TODO need to refactor parts of event stuff that are common with other backends
+local MAXNAMELENGTH = 100
 local struct Event {
 	starttime : C.timeval
 	endtime : C.timeval
 	duration : double -- unit: ms
-	eventName : rawstring
+	eventName : int8[MAXNAMELENGTH]
 }
+Event_MAXNAMELENGTH = MAXNAMELENGTH
 b.Event = Event
 terra Event:calcElapsedTime()
   var elapsed : double
   elapsed = 1000*(self.endtime.tv_sec - self.starttime.tv_sec)
   elapsed = elapsed + [double](self.endtime.tv_usec - self.starttime.tv_usec)/([double](1e3))
   self.duration = elapsed
+end
+terra Event:getName()
+-- MUST return a &int8 pointer to the first char in the name, regardless of the
+-- implementation.
+  return &(self.eventName[0])
 end
 
 
@@ -195,7 +208,8 @@ end
 
 
 terra Timer:startEvent(name : rawstring, eventptr : &Event)
-    (@eventptr).eventName = name
+    C.memcpy(eventptr:getName(), name, Event_MAXNAMELENGTH*sizeof(int8))
+
     C.gettimeofday(&((@eventptr).starttime), nil)
 end
 
@@ -203,6 +217,7 @@ end
 terra Timer:endEvent(eventptr : &Event, dummy : int)
 -- dummy arg is required in mt backend
     C.gettimeofday(&((@eventptr).endtime), nil)
+
     self.eventList:insert(@eventptr)
 end
 
@@ -212,18 +227,22 @@ terra isprefix(pre : rawstring, str : rawstring) : bool
     if @str ~= @pre then return false end
     return isprefix(pre+1,str+1)
 end
+
+for k,v in pairs(s) do print(k,v) end
 terra Timer:evaluate()
-C.printf("backend_cpu(): bla1\n")
 	if ([c._opt_verbosity > 0]) then
           var aggregateTimingInfo = [Array(tuple(float,int))].salloc():init()
-          var aggregateTimingNames = [Array(rawstring)].salloc():init()
+          var aggregateTimingNames = [Array(s.String)].salloc():init()
 
           for i = 0,self.eventList:size() do
             var event = self.eventList(i);
+            var eventName : s.String = event:getName()
+
             event:calcElapsedTime()
-            var index =  aggregateTimingNames:indexof(event.eventName)
+
+            var index =  aggregateTimingNames:indexof(eventName)
             if index < 0 then
-              aggregateTimingNames:insert(event.eventName)
+              aggregateTimingNames:insert(eventName)
               aggregateTimingInfo:insert({event.duration, 1})
             else
               aggregateTimingInfo(index)._0 = aggregateTimingInfo(index)._0 + event.duration
@@ -231,12 +250,14 @@ C.printf("backend_cpu(): bla1\n")
             end
           end
 
+
+            C.printf("asdfasdfasdfasdfasdf %d\n", aggregateTimingNames:size())
           C.printf(		"--------------------------------------------------------\n")
           C.printf(		"        Kernel        |   Count  |   Total   | Average \n")
           C.printf(		"----------------------+----------+-----------+----------\n")
           for i = 0, aggregateTimingNames:size() do
               C.printf(	"----------------------+----------+-----------+----------\n")
-              C.printf(" %-20s |   %4d   | %8.3fms| %7.4fms\n", aggregateTimingNames(i), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
+              C.printf(" %-20s |   %4d   | %8.3fms| %7.4fms\n", [rawstring](aggregateTimingNames(i)), aggregateTimingInfo(i)._1, aggregateTimingInfo(i)._0, aggregateTimingInfo(i)._0/aggregateTimingInfo(i)._1)
           end
 
           C.printf(		"--------------------------------------------------------\n")
