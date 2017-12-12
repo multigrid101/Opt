@@ -166,12 +166,18 @@ public:
         {
             std::vector<float2> h_urshape(m_dims[0] * m_dims[1]);
             std::vector<float>  h_mask(m_dims[0] * m_dims[1]);
+            std::vector<float>  h_angles(m_dims[0] * m_dims[1]);
+
             for (unsigned int y = 0; y < m_image.getHeight(); y++)
             {
                 for (unsigned int x = 0; x < m_image.getWidth(); x++)
                 {
                     h_urshape[y*m_image.getWidth() + x] = { (float)x, (float)y };
+                    /* h_urshape[y*m_image.getWidth() + x] = { 0.0, 0.0 }; */
+
                     h_mask[y*m_image.getWidth() + x] = (float)m_imageMask(x, y);
+
+                    h_angles[y*m_image.getWidth() + x] = 1e-5;
                 }
                     
             }
@@ -187,6 +193,7 @@ public:
             else {
               memset(m_warpAngles->data(), 0, sizeof(float)*m_image.getWidth()*m_image.getHeight());
             }
+            /* m_warpAngles->update(h_angles); */
 	}
 
 	void setConstraintImage(float alpha)
