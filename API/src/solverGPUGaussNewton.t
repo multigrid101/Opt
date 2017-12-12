@@ -271,6 +271,9 @@ return function(problemSpec)
         Jp : &float
     }
 
+    -- see comment in step(), where memset() is applied to this variable
+    local useless = global(&float, nil, "useless")
+
     -- insert 'handle' and 'desc' field into PlanData-type.
     if initialization_parameters.use_materialized_jacobian then
     -- if true then
@@ -1689,6 +1692,9 @@ return function(problemSpec)
     local terra init(data_ : &opaque, params_ : &&opaque)
       C.printf('starting init\n')
 
+      -- TODO see comment in step(), where memset is applied to this.
+      useless = [&float](C.malloc(65*sizeof(float)))
+
       -- TODO This is a quickfix for a performance issue. Without it, all calls
       -- to the
       -- MatVec Multiplication inside step() are slower during the first Newton-
@@ -1842,6 +1848,15 @@ return function(problemSpec)
           var stepName = [&int8](C.malloc(20 * sizeof(int8)))
           C.sprintf(stepName, 'step_%d', pd.solverparameters.nIter)
           C.printf('performing step %d, stepname is %s\n', pd.solverparameters.nIter, stepName)
+
+          -- TODO This is another weird quickfix. For some reason, the timings
+          -- for e.g. image_warping/PCGStep1 are about 30% lower when this line
+          -- is present. (24ms vs. 33 ms. after a few hundred iterations). If
+          -- the "65" below is changed to "64", then the timings are also slow.
+          --
+          -- Also, the timings of cpu and mt(1) backend are much closer together
+          -- with this line than without it.
+          C.memset(useless, 0, 65*sizeof(float))
 
           -- if ([_opt_collect_kernel_timing]) then
           if true then
