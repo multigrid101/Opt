@@ -351,6 +351,13 @@ b.ReduceVarHost.reduceAllThreads2 = b.ReduceVar.reduceAllThreads
 -- end
 -- b.ReduceVarHost.allocate2 = b.ReduceVar.allocate
 
+-- b.ReduceVar.free = function(variable)
+--   return quote
+--             C.free([variable])
+--          end
+-- end
+-- b.ReduceVarHost.free = b.ReduceVar.free
+
 -- b.ReduceVar.getDataPtr = function(varquote, k)
 --   return `[varquote]
 -- end
@@ -695,19 +702,20 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
       end
 
       local wrappedquote = launchquote
-      for k = 1,numdims do
 
-          local l = numdims-(k-1)
+
+      for k = 1,numdims do
+      -- for k = numdims,1,-1 do -- reverse loop order
+
         wrappedquote = quote
 
           for [dimargs[k]] = 0, [dimsizes[k]] do
-          -- for [dimargs[l]] = 0, [dimsizes[l]] do
             [wrappedquote]
           end
 
         end
       end
-      -- print(wrappedquote)
+      print(wrappedquote)
 
       local wrappedfunc = terra([pd_sym])
         var name = I.__itt_string_handle_create('run_task_loop')
@@ -760,6 +768,7 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
         if problemfunction.typ.kind == "CenteredFunction" then
            local ispace = problemfunction.typ.ispace
            local dimcount = #ispace.dims
+               -- TODO this assert shouldn't be necessary for cpu backends.
 	       assert(dimcount <= 3, "cannot launch over images with more than 3 dims")
            local ks = delegate.CenterFunctions(ispace,problemfunction.functionmap) -- ks are the kernelfunctions as shown in gaussNewtonGPU.t
            for name,func in pairs(ks) do

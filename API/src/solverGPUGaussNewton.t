@@ -552,6 +552,9 @@ return function(problemSpec)
         kernels.PCGInit1_Finish.listOfAtomicAddVars = {}
         kernels.PCGInit1_Finish.compileForMultiThread = true
 
+        -- unknownElement:printpretty()
+        -- error()
+
         terra kernels.PCGStep1(pd : PlanData, [kernelArglist], [backend.threadarg])
         -- writes: Ap_X (0.3 GiB)
         -- reads: CtC, X (in applyJTJ approx 0.3 GB (maybe times 5)), p (0.3 GiB), all known Arrays (approx. 0.53 GiB (maybe times 5))
@@ -2003,6 +2006,7 @@ return function(problemSpec)
                     if not initialization_parameters.use_materialized_jacobian then
 
                         util.texec("step(): PCGStep1", true,
+                        -- util.texec("step(): PCGStep1", false,
                           gpu.PCGStep1(pd)
                         )
 
@@ -2059,7 +2063,8 @@ return function(problemSpec)
 
                         -- TEST END
 
-                        util.texec("step(): PCGStep2", true,
+                        util.texec("step(): PCGStep2", false,
+                        -- util.texec("step(): PCGStep2", true,
                           gpu.PCGStep2(pd)
                         )
                     end
@@ -2084,7 +2089,12 @@ return function(problemSpec)
 
                 -- [unroll(rDotzOld, `pd.scanAlphaNumerator, backend.numthreads+1)]
                 -- TEST END
-                    gpu.PCGStep3(pd)
+
+                    util.texec("step(): PCGStep3", false,
+                    -- util.texec("step(): PCGStep3", true,
+                      gpu.PCGStep3(pd)
+                    )
+                    -- C.printf("numZerosStep3 = %d\n", numZerosStep3)
 
                     -- save new rDotz for next iteration
                     -- C.cudaMemcpy(pd.scanAlphaNumerator, pd.scanBetaNumerator, sizeof(opt_float), C.cudaMemcpyDeviceToDevice)	
