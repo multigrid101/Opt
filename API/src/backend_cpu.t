@@ -37,16 +37,16 @@ local texec = function(msg, ptrintOutput, stmt)
 -- var a = 1
 -- end
 return quote
-  var start : C.timeval
-  var stop : C.timeval
+  var start : C.timespec
+  var stop : C.timespec
 
-  C.gettimeofday(&start, nil)
+  C.clock_gettime(C.CLOCK_MONOTONIC, &start)
   [stmt]
-  C.gettimeofday(&stop, nil)
+  C.clock_gettime(C.CLOCK_MONOTONIC, &stop)
 
   var elapsed : double
   elapsed = 1000*(stop.tv_sec - start.tv_sec)
-  elapsed = elapsed + (stop.tv_usec - start.tv_usec)/[double](1e3)
+  elapsed = elapsed + (stop.tv_nsec - start.tv_nsec)/[double](1e6)
 
   if [ptrintOutput] then
     C.printf("TEXEC: %s t = %f ms\n", [msg], elapsed)
