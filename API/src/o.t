@@ -1497,6 +1497,13 @@ local function problemPlan(id, dimensions, pplan)
         assert(ProblemSpec:isclassof(tbl))
         local result = compilePlan(tbl,problemmetadata.kind)
 
+        -- we need to do this here to make sure that the compile-time 
+        -- of makePlan (solverGPUGaussNewton.t) is included in overall compile
+        -- time. Without this line, it would be jit-compiled before it is
+        -- first called, i.e. **after** the measurment of end-time
+        -- in
+        result:compile()
+
         print('\n')
         print('START The result of compilePlan() inside problemPlan()')
         -- printt(result)
