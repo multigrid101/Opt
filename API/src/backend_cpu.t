@@ -6,7 +6,7 @@ local s = require("simplestring")
 
 local C = terralib.includecstring [[
 #include <stdio.h>
-#include <sys/time.h>
+#include <time.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
@@ -170,8 +170,8 @@ local Array = S.memoize(Array)
 -- TODO need to refactor parts of event stuff that are common with other backends
 local MAXNAMELENGTH = 100
 local struct Event {
-	starttime : C.timeval
-	endtime : C.timeval
+	starttime : C.timespec
+	endtime : C.timespec
 	duration : double -- unit: ms
 	eventName : int8[MAXNAMELENGTH]
 }
@@ -180,7 +180,7 @@ b.Event = Event
 terra Event:calcElapsedTime()
   var elapsed : double
   elapsed = 1000*(self.endtime.tv_sec - self.starttime.tv_sec)
-  elapsed = elapsed + [double](self.endtime.tv_usec - self.starttime.tv_usec)/([double](1e3))
+  elapsed = elapsed + [double](self.endtime.tv_nsec - self.starttime.tv_nsec)/([double](1e6))
   self.duration = elapsed
 end
 terra Event:getName()
@@ -210,13 +210,13 @@ end
 terra Timer:startEvent(name : rawstring, eventptr : &Event)
     C.memcpy(eventptr:getName(), name, Event_MAXNAMELENGTH*sizeof(int8))
 
-    C.gettimeofday(&((@eventptr).starttime), nil)
+    C.clock_gettime(C.CLOCK_MONOTONIC, &((@eventptr).starttime))
 end
 
 
 terra Timer:endEvent(eventptr : &Event, dummy : int)
 -- dummy arg is required in mt backend
-    C.gettimeofday(&((@eventptr).endtime), nil)
+    C.clock_gettime(C.CLOCK_MONOTONIC, &((@eventptr).endtime))
 
     self.eventList:insert(@eventptr)
 end
