@@ -67,6 +67,9 @@ int main(int argc, const char * argv[])
     params.useOptLM = argparser.get<bool>("useOptLM");
     params.useCeres = argparser.get<bool>("useCeres"); // makes no sense here
 
+    params.useMaterializedJTJ = argparser.get<bool>("useMaterializedJTJ");
+    params.useFusedJTJ = argparser.get<bool>("useMaterializedJTJ");
+
     /* params.numIter = 31; // original */
     params.numIter = argparser.get<int>("oIterations");
 

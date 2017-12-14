@@ -49,6 +49,9 @@ int main(int argc, const char * argv[])
     params.useOptLM = argparser.get<bool>("useOptLM");
     params.useCeres = argparser.get<bool>("useCeres"); // makes no sense here
 
+    params.useMaterializedJTJ = argparser.get<bool>("useMaterializedJTJ");
+    params.useFusedJTJ = argparser.get<bool>("useMaterializedJTJ");
+
     /* params.nonLinearIter = 5; //original */
     params.nonLinearIter = argparser.get<int>("nIterations");
 

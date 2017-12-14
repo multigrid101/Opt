@@ -15,6 +15,7 @@ extern "C" {
 #include <string.h>
 
 /**
+ * asdfasdfasdf
  */
 static NamedParameters copyParametersAndConvertUnknownsToDouble(const NamedParameters& original) {
     NamedParameters newParams(original);
@@ -42,7 +43,7 @@ static void copyUnknownsFromDoubleToFloat(const NamedParameters& floatParams, co
 class OptSolver : public SolverBase {
 
 public:
-    OptSolver(const std::vector<unsigned int>& dimensions, const std::string& terraFile, const std::string& optName, bool doublePrecision = false, std::string backend = "backend_cpu", int numthreads = 1) : m_optimizerState(nullptr), m_problem(nullptr), m_plan(nullptr), m_doublePrecision(doublePrecision)
+    OptSolver(const std::vector<unsigned int>& dimensions, const std::string& terraFile, const std::string& optName, CombinedSolverParameters params, bool doublePrecision = false, std::string backend = "backend_cpu", int numthreads = 1) : m_optimizerState(nullptr), m_problem(nullptr), m_plan(nullptr), m_doublePrecision(doublePrecision)
 	{
         Opt_InitializationParameters initParams;
         memset(&initParams, 0, sizeof(Opt_InitializationParameters));
@@ -55,6 +56,10 @@ public:
 
 
         initParams.numthreads = numthreads;
+        initParams.useMaterializedJTJ = params.useMaterializedJTJ;
+        initParams.useFusedJTJ = params.useFusedJTJ;
+
+
         m_optimizerState = Opt_NewState(initParams);
 		m_problem = Opt_ProblemDefine(m_optimizerState, terraFile.c_str(), optName.c_str());
         m_plan = Opt_ProblemPlan(m_optimizerState, m_problem, (unsigned int*)dimensions.data());

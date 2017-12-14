@@ -28,6 +28,10 @@ struct Opt_InitializationParameters {
 
         // only has effect for backend_cpu_mt, is set to 1 otherwise
         int numthreads;
+
+        // see comments in terra src for the options below.
+        int useMaterializedJTJ;
+        int useFusedJTJ;
 };
 
 typedef struct Opt_InitializationParameters 	Opt_InitializationParameters;

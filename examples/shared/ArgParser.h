@@ -36,6 +36,9 @@ class ArgParser {
         ("numvertices", po::value<int>()->default_value(-1), "number of vertices in the graph, ignored for image examples")
         ("stride", po::value<int>()->default_value(1), "stride in both x and y direction")
         ("numSubdivides", po::value<int>()->default_value(0), "number of subdivision in the mesh")
+
+        ("useMaterializedJTJ", po::value<bool>()->implicit_value(true)->default_value(false), "if true, then JTJ is assembled explicitly.")
+        ("useFusedJTJ", po::value<bool>()->implicit_value(true)->default_value(false), "if true, then the product JT*J is computed explicitly. Has no effect if useMaterializedJTJ==false")
       ;
 
 

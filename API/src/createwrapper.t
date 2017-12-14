@@ -94,7 +94,7 @@ local wrappers = {}
 
 struct LibraryState { L : &C.lua_State }
 
--- Must match Opt.h
+-- IMPORTANT: Must match Opt.h
 struct Opt_InitializationParameters {
 -- this struct collects all NON-PROBLEM-SPECIFIC information that is required by o.t at compile-time,
 -- i.e. at the time when o.t is parsed (and all terra-functions within it are instantiated
@@ -116,6 +116,21 @@ struct Opt_InitializationParameters {
 
     -- only has effect for backend_cuda_mt, is set to 1 otherwise
     numthreads : int
+
+    -- The opt-solver requires Multiplication of a vector with a linear operator
+    -- "JTJ". We can either perform this multiplication with matrix-free code
+    -- (default, if below option is false) or we can explicitly assemble the
+    -- matrix for the linear operator (below option is true). (...cont. below)
+    useMaterializedJTJ : int
+
+    -- (... cont. from above). The multiplication (JTJ*p) can either be performed
+    -- as (JT*(J*p)) (default) or (JT*J)*p. Set useFusedJTJ=true to use the latter
+    -- variant. This will introduce a once-per-newton-solve to compute the nnz
+    -- pattern of JT*J, and once-per-newton-step overhead to compute the values
+    -- of JT*J. In return, the multiplication JTJ*p will (often) be cheaper than
+    -- calculating (JT*(J*p)).
+    -- This option has no effect if useMaterializedJTJ==false.
+    useFusedJTJ : int
 }
 
 for name,type in pairs(apifunctions) do
@@ -182,6 +197,15 @@ local terra NewState(params : Opt_InitializationParameters) : &LibraryState
 
     C.lua_pushnumber(L,params.numthreads);
     C.lua_setfield(L,LUA_GLOBALSINDEX,"_opt_numthreads")
+
+    C.lua_pushboolean(L,params.useMaterializedJTJ);
+    C.lua_setfield(L,LUA_GLOBALSINDEX,"_opt_use_materialized_jacobian")
+
+    C.lua_pushboolean(L,params.useFusedJTJ);
+    C.lua_setfield(L,LUA_GLOBALSINDEX,"_opt_use_fusedjtj")
+
+    C.printf("NUMTHREADS=%d, jtj=%d\n", params.numthreads, params.useMaterializedJTJ)
+    -- C.exit(0)
     -- stack is now empty
 
     -- push 'package()' onto stack -- package

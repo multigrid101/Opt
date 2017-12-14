@@ -42,7 +42,7 @@ public:
         m_dims = { (unsigned int)m_result->width(), (unsigned int)m_result->height() };
 
         addSolver(std::make_shared<CUDAImageSolver>(m_dims), "CUDA", m_combinedSolverParameters.useCUDA);
-        addOptSolvers(m_dims, "shape_from_shading.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
+        addOptSolvers(m_dims, "shape_from_shading.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
         addSolver(std::make_shared<CeresImageSolver>(m_dims), "Ceres", m_combinedSolverParameters.useCeres);
 	}
 

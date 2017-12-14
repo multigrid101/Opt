@@ -26,7 +26,7 @@ class CombinedSolver : public CombinedSolverBase
             m_imageFloatIllumination = createEmptyOptImage(dims, OptImage::Type::FLOAT, 1, location, true);
 		
 			resetGPUMemory();
-            addOptSolvers(dims, "intrinsic_image_decomposition.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
+            addOptSolvers(dims, "intrinsic_image_decomposition.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		}
 
         virtual void combinedSolveInit() override { 

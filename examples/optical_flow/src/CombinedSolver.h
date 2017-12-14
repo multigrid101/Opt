@@ -36,7 +36,7 @@ public:
 			m_levels[i].init(sourceFiltered, targetFiltered, m_location);
 		}		
 		resetGPU();
-        addOptSolvers(m_levels[0].m_dims, "optical_flow.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
+        addOptSolvers(m_levels[0].m_dims, "optical_flow.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 	}
 
 

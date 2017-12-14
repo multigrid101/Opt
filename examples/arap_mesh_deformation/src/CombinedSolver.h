@@ -46,7 +46,7 @@ class CombinedSolver : public CombinedSolverBase
             
             addSolver(std::make_shared<CUDAWarpingSolver>(N, d_numNeighbours, d_neighbourIdx, d_neighbourOffset), "CUDA", m_combinedSolverParameters.useCUDA);
             addSolver(std::make_shared<CeresSolver>(m_dims, &m_initial), "Ceres", m_combinedSolverParameters.useCeres);
-            addOptSolvers(m_dims, "arap_mesh_deformation.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
+            addOptSolvers(m_dims, "arap_mesh_deformation.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		} 
 
         virtual void combinedSolveInit() override {

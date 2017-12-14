@@ -33,7 +33,7 @@ public:
         m_target = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
 
         std::cout << "compiling... ";
-        addOptSolvers(dims, "cotangent_mesh_smoothing.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
+        addOptSolvers(dims, "cotangent_mesh_smoothing.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
         std::cout << " done!" << std::endl;
     }
 

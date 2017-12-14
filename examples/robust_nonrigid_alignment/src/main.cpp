@@ -85,6 +85,9 @@ int main(int argc, const char * argv[])
     params.useOptLM = argparser.get<bool>("useOptLM");
     params.useCeres = argparser.get<bool>("useCeres");
 
+    params.useMaterializedJTJ = argparser.get<bool>("useMaterializedJTJ");
+    params.useFusedJTJ = argparser.get<bool>("useMaterializedJTJ");
+
     int numthreads = argparser.get<int>("numthreads");
     std::string backend = argparser.get<std::string>("backend");
 

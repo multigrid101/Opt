@@ -28,6 +28,9 @@ c.use_contiguous_allocation = true
 -- c.use_bindless_texture = true
 c.use_bindless_texture = false
 
+c.use_materialized_jacobian = _opt_use_materialized_jacobian
+c.use_fused_jtj = _opt_use_fusedjtj
+
 c.GRID_SIZES = { {256,1,1}, {16,16,1}, {8,8,4} } -- only relevant for CUDA
 
 

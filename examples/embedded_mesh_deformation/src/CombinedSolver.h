@@ -28,7 +28,7 @@ class CombinedSolver : public CombinedSolverBase
             m_vertexPositions = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
             m_vertexTargets = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
             m_urshape = createEmptyOptImage({dims[0]}, OptImage::Type::FLOAT, 3, location, true);
-            addOptSolvers(dims, "embedded_mesh_deformation.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
+            addOptSolvers(dims, "embedded_mesh_deformation.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		} 
 
         virtual void combinedSolveInit() override {

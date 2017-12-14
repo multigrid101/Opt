@@ -84,6 +84,10 @@ backends = ["backend_cuda", "backend_cpu", "backend_cpu_mt"]
 numthreads = ["1", "2", "4", "8"]
 # numthreads = ["1", "2", "4", "8", "16", "32"]
 # numthreads = ["4", "8"]
+matargs = [["--useMaterializedJTJ", "false", "useFusedJTJ", "false"],
+           ["--useMaterializedJTJ", "true", "useFusedJTJ", "false"],
+           ["--useMaterializedJTJ", "true", "useFusedJTJ", "true"]]
+            
 
 
 #------------------------------------------------------------------------------
@@ -109,7 +113,7 @@ class Test:
         self._error = abs(self._expected - self._actual)/self._expected
         # all examples should pass with tol=1e-6 except if mentioned otherwise
         # in the comments at the top.
-        self._isOk = abs(self._error) < 2e-6
+        self._isOk = abs(self._error) < 1e-5
 
     def printInfo(self):
         if self._hasFinished:
@@ -134,39 +138,43 @@ for homedir in folders:
     print 'begin ' + homedir
     for backend in backends:
         for num in numthreads:
-            # only do simulation if combination of parameters makes sense.
-            if (backend == "backend_cuda" or backend == "backend_cpu") and int(num) > 1:
-                break
+            for matarg  in matargs:
+                # only do simulation if combination of parameters makes sense.
+                if (backend == "backend_cuda" or backend == "backend_cpu") and int(num) > 1:
+                    break
 
-            #-----------------------------------------------
-            # create, define and run the example
-            t = ExampleRun(homedir)
-            t._printOutput = False
-            t._execCommand = "./" + homedir
-            t._args = ["--backend", backend,
-                "--numthreads", num]
+                #-----------------------------------------------
+                # create, define and run the example
+                t = ExampleRun(homedir)
+                t._printOutput = False
+                t._execCommand = "./" + homedir
+                t._args = ["--backend", backend,
+                    "--numthreads", num]
 
-            # append stride flag if necessary
-            stride = strides[homedir]
-            if stride > 0:
-                t._args += ['--stride', str(stride)]
+                # append stride flag if necessary
+                stride = strides[homedir]
+                if stride > 0:
+                    t._args += ['--stride', str(stride)]
+
+                # append flags to run with materializedJTJ, etc.
+                t._args += matarg
 
 
-            t.run()
-            #-----------------------------------------------
+                t.run()
+                #-----------------------------------------------
 
 
-            # get final cost from raw text output
-            finalCost = float(getFinalCostFromRawOutput(t._output))
-            print(finalCost)
+                # get final cost from raw text output
+                finalCost = float(getFinalCostFromRawOutput(t._output))
+                print(finalCost)
 
-            # compare against reference cost and throw error if necessary
-            test = Test()
-            test._expected = referenceCosts[homedir]
-            test._actual = finalCost
-            test._infoString = str(t.getCallCommand())
-            test.compare()
-            tests.append(test)
+                # compare against reference cost and throw error if necessary
+                test = Test()
+                test._expected = referenceCosts[homedir]
+                test._actual = finalCost
+                test._infoString = str(t.getCallCommand())
+                test.compare()
+                tests.append(test)
 
     print 'end ' + homedir
     print ""

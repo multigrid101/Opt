@@ -133,7 +133,7 @@ class CombinedSolver : public CombinedSolverBase
             int failure = OpenMesh::IO::write_mesh(m_result, "out_noisetemplate.ply", options);
             assert(failure);
 
-            addOptSolvers(dims, "robust_nonrigid_alignment.t", m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
+            addOptSolvers(dims, "robust_nonrigid_alignment.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		} 
 
 

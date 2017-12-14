@@ -15,4 +15,6 @@ struct CombinedSolverParameters {
     unsigned int patchIter = 32;
     bool profileSolve = true;
     bool optDoublePrecision = false;
+    bool useMaterializedJTJ = false;
+    bool useFusedJTJ = false;
 };
