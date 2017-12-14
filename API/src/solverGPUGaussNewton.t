@@ -1862,6 +1862,8 @@ return function(problemSpec)
           if true then
               pd.timer:startEvent(stepName, &stepEvent)
           end
+          -- TODO use 'defer' (see terra/tests/defer.t) to perform the cleanup,
+          -- it seems like a really cool idea.
           C.free(stepName)
 
         -- KEEP THIS FOR DEBUGGING PURPOSES!!!
@@ -2328,6 +2330,7 @@ return function(problemSpec)
 
 
     local terra makePlan() : &opt.Plan
+    C.printf('starting makeplan\n')
             C.__itt_null.d1 = 0
             C.__itt_null.d2 = 0
             C.__itt_null.d3 = 0
@@ -2336,7 +2339,6 @@ return function(problemSpec)
             var name : &I.__itt_string_handle  = I.__itt_string_handle_create("makePlan")
         I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
-    C.printf('starting makeplan\n')
             var pd = PlanData.alloc() -- this seems to be sort-of like a constructor call of the "PlanData" class
             pd.plan.data = pd
             pd.plan.init = init

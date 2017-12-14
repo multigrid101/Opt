@@ -170,6 +170,8 @@ local Array = S.memoize(Array)
 
 -- TODO what is this? its only used in the next few lines? can we make this local to the Timer "class"?
 -- TODO need to refactor parts of event stuff that are common with other backends
+-- TODO refactor all the timer class to be independent of Opt, it could be a simple
+-- and independent terra helper library instead!
 local MAXNAMELENGTH = 100
 local struct Event {
 	starttime : C.timespec
