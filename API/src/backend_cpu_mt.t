@@ -181,7 +181,7 @@ local struct Event {
 	starttime : C.timespec
 	endtime : C.timespec
 	duration : double -- unit: ms
-	eventName : int8[MAXNAMELENGTH]
+	eventName : &int8
 }
 Event_MAXNAMELENGTH = MAXNAMELENGTH
 b.Event = Event
@@ -209,6 +209,7 @@ terra Event:calcElapsedTime()
   elapsed = elapsed + [double](self.endtime.tv_nsec - self.starttime.tv_nsec)/([double](1e6))
 
   self.duration = elapsed
+
 end
 terra Event:getName()
 -- MUST return a &int8 pointer to the first char in the name, regardless of the
@@ -220,12 +221,12 @@ end
 -- one array for the main thread and one for each worker thread.
 -- main thread uses index 0
 -- worker thread with e.g. id=2 uses index 3
+
 local struct Timer {
 	eventList : (&Array(Event))[numthreads+1]
 }
+
 b.Timer = Timer
-
-
 
 
 terra Timer:init() 
@@ -242,6 +243,7 @@ end
 
 
 terra Timer:startEvent(name : rawstring, eventptr : &Event)
+    eventptr.eventName = [&int8](C.malloc( Event_MAXNAMELENGTH ))
     C.memcpy(eventptr:getName(), name, Event_MAXNAMELENGTH*sizeof(int8))
 
     C.clock_gettime(C.CLOCK_MONOTONIC, &((@eventptr).starttime))
@@ -249,7 +251,6 @@ end
 
 
 terra Timer:endEvent(eventptr : &Event, [b.threadarg])
-    -- C.gettimeofday(&((@eventptr).endtime), nil)
     C.clock_gettime(C.CLOCK_MONOTONIC, &((@eventptr).endtime))
 
     self.eventList[ [b.threadarg] ]:insert(@eventptr)

@@ -153,7 +153,7 @@ local struct Event {
 	startEvent : C.cudaEvent_t
 	endEvent : C.cudaEvent_t
 	duration : float
-	eventName : int8[MAXNAMELENGTH]
+	eventName : &int8
 }
 Event_MAXNAMELENGTH = MAXNAMELENGTH
 b.Event = Event
@@ -194,6 +194,7 @@ end
 
 -- terra Timer:startEvent(name : rawstring,  stream : C.cudaStream_t, endEvent : &C.cudaEvent_t)
 terra Timer:startEvent(name : rawstring,  eventptr : &Event)
+    eventptr.eventName = [&int8](C.malloc( Event_MAXNAMELENGTH ))
     C.memcpy(eventptr:getName(), name, Event_MAXNAMELENGTH*sizeof(int8))
 
     C.cudaEventCreate(&(@eventptr).startEvent)

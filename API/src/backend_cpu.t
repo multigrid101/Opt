@@ -61,8 +61,7 @@ end
 
 
 --------------------------- Timing stuff start
--- TODO put in separate file
--- TODO what is this? (seems to be a lua "class" definition)
+-- TODO Array should be a separate helper class
 -- TODO only used in some timer-related stuff below, so make local there and put in appropriate file
 function Array(T,debug)
     local struct Array(S.Object) {
@@ -176,10 +175,15 @@ local struct Event {
 	starttime : C.timespec
 	endtime : C.timespec
 	duration : double -- unit: ms
-	eventName : int8[MAXNAMELENGTH]
+        -- IMPOERTANT: The value of MAXNAMELENGTH had significant impact on overall
+        -- program performance, if 'eventName' was declared as 'int[MAXNAMELENGTH]',
+        -- with the current implementation (&int8) the performance issues are gone
+        -- but we have to live live with a (small) memory leak for the moment.
+	eventName : &int8
 }
 Event_MAXNAMELENGTH = MAXNAMELENGTH
 b.Event = Event
+
 terra Event:calcElapsedTime()
   var elapsed : double
   elapsed = 1000*(self.endtime.tv_sec - self.starttime.tv_sec)
@@ -211,6 +215,10 @@ end
 
 
 terra Timer:startEvent(name : rawstring, eventptr : &Event)
+    -- TODO fix memory leak
+    -- TODO this is stupid! We shouldn't set an events name  when the timer
+    -- started, but instead when the Event is declared/created.
+    eventptr.eventName = [&int8](C.malloc( Event_MAXNAMELENGTH ))
     C.memcpy(eventptr:getName(), name, Event_MAXNAMELENGTH*sizeof(int8))
 
     C.clock_gettime(C.CLOCK_MONOTONIC, &((@eventptr).starttime))
