@@ -139,7 +139,12 @@ class CombinedSolver : public CombinedSolverBase
 			std::vector<ml::mat3f> h_rots(N);
 			for (unsigned int i = 0; i < N; i++)
 			{
-				h_rots[i].setIdentity();
+                                // set to identity matrix
+				/* h_rots[i].setIdentity(); */
+
+                                // set off-diagonal to something slightly non-zero
+                                float angle = 1e-3;
+                                h_rots[i].setRotation(angle, angle, angle);
 			}
             m_rotationMatrices->update(h_rots);
             m_vertexPositions->update(h_vertexPosFloat3);

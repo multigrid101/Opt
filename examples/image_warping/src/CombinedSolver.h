@@ -193,7 +193,7 @@ public:
             else {
               memset(m_warpAngles->data(), 0, sizeof(float)*m_image.getWidth()*m_image.getHeight());
             }
-            /* m_warpAngles->update(h_angles); */
+            m_warpAngles->update(h_angles);
 	}
 
 	void setConstraintImage(float alpha)

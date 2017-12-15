@@ -54,7 +54,7 @@ folders.append("volumetric_mesh_deformation")
 referenceCosts = {}
 referenceCosts['arap_mesh_deformation'] = 7183.464843 # CUDA
 referenceCosts['cotangent_mesh_smoothing'] = 2091.86303 # CUDA
-referenceCosts['embedded_mesh_deformation'] = 0.36712926 # CUDA
+referenceCosts['embedded_mesh_deformation'] = 0.367129057645 # CUDA
 referenceCosts['image_warping'] = 1774.3405 # CUDA
 referenceCosts['intrinsic_image_decomposition'] = 3.3105300000e6 #CUDA, stride=12 (53x30 px)
 referenceCosts['poisson_image_editing'] = 1530364.25 # CUDA, stride=4 (112x80 px)
