@@ -162,7 +162,8 @@ class CombinedSolver : public CombinedSolverBase
 			std::vector<float3> h_angles(N);
 			for (unsigned int i = 0; i < N; i++)
 			{
-				h_angles[i] = make_float3(0.0f, 0.0f, 0.0f);
+				/* h_angles[i] = make_float3(0.0f, 0.0f, 0.0f); // original */
+				h_angles[i] = make_float3(1e-1, 1e-1, 1e-1);
 			}
             
             m_anglesFloat3->update(h_angles);

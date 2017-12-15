@@ -52,7 +52,7 @@ folders.append("volumetric_mesh_deformation")
 # reference costs for small problem size and (nIter, nNonlinIter, nLinIter) = (1,1,1)
 # reference cost should always be taken from CUDA!!!
 referenceCosts = {}
-referenceCosts['arap_mesh_deformation'] = 6686.83203 # CUDA
+referenceCosts['arap_mesh_deformation'] = 7183.464843 # CUDA
 referenceCosts['cotangent_mesh_smoothing'] = 2091.86303 # CUDA
 referenceCosts['embedded_mesh_deformation'] = 0.36712926 # CUDA
 referenceCosts['image_warping'] = 1774.3405 # CUDA

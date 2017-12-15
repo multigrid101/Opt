@@ -103,8 +103,11 @@ viewCommand['volumetric_mesh_deformation'] =   ["meshlab", "out.ply"]
 # doing 1 outer iteration) or else the
 # constraints (e.g. in image_warping) will be different in reference and here.
 # Constraints are always moved 1/n-th of the final contraint value.
+#
+# We need to take the cost of the first outer iteration because it can
+# be more easily parsed by regex (see below)
 referenceCosts = {}
-referenceCosts['arap_mesh_deformation'] = 3.929506
+referenceCosts['arap_mesh_deformation'] = 3.929534
 referenceCosts['cotangent_mesh_smoothing'] = 1712.155151 # CUDA
 referenceCosts['embedded_mesh_deformation'] = 0.0001246272 # CUDA
 referenceCosts['image_warping'] = 0.078505
