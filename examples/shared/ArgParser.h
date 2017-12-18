@@ -43,6 +43,8 @@ class ArgParser {
         ("useFusedJTJ", po::value<bool>()->implicit_value(true)->default_value(false), "if true, then the product JT*J is computed explicitly. Has no effect if useMaterializedJTJ==false")
 
         ("noOutput", po::value<bool>()->implicit_value(true)->default_value(false), "if noOutput==true, then results are not post-processed or saved.")
+
+        ("file", po::value<int>()->default_value(1), "integer identifier to choose between different input files")
       ;
 
 

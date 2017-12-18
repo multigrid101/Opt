@@ -65,7 +65,26 @@ int main(int argc, const char * argv[]) {
 
 
   
-    std::string filename = "../data/cat512.png";
+    // 1) 512x512 input file, this was the original code and is used for reference costs
+    // 2) 4096x4096,
+    auto file_id = argparser.get<int>("file");
+
+    std::string filename;
+    std::string maskFilename;
+    std::string constraintsFilename;
+
+    if (file_id == 1) {
+      filename = "../data/cat512.png";
+      // Must have a mask and constraints file in the same directory as the input image
+      maskFilename = filename.substr(0, filename.size() - 4) + "_mask.png";
+      constraintsFilename = "../data/cat512.constraints";
+    }
+    else if (file_id == 2) {
+      filename = "../data/cat4096.png";
+      // Must have a mask and constraints file in the same directory as the input image
+      maskFilename = filename.substr(0, filename.size() - 4) + "_mask.png";
+      constraintsFilename = "../data/cat4096.constraints";
+    }
 
     /* int downsampleFactor = 1; */
     int downsampleFactor = argparser.get<int>("stride");
