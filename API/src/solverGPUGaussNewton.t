@@ -283,9 +283,9 @@ return function(problemSpec)
 
     terra PlanData:printAllocationInfo()
       C.printf('Layout of PlanData:\n')
-      C.printf("parameters uses %d bytes\n", self.parameters:totalbytes())
-      C.printf("12 tmp vars of TUnknownType use %d bytes each\n", self.delta:totalbytes())
-      C.printf("total usage of PlanData: %d bytes\n", self.parameters:totalbytes() + 12*self.delta:totalbytes())
+      C.printf("parameters uses %lu bytes\n", self.parameters:totalbytes())
+      C.printf("12 tmp vars of TUnknownType use %lu bytes each\n", self.delta:totalbytes())
+      C.printf("total usage of PlanData: %lu bytes\n", self.parameters:totalbytes() + 12*self.delta:totalbytes())
     end
 
     -- for k,v in pairs(CUsp) do print(k,v) end
