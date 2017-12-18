@@ -220,6 +220,10 @@ int main(int argc, const char * argv[]) {
     solver.solveAll();
     /* solver_cpu.solveAll(); */
 
+    auto noOutput = argparser.get<bool>("noOutput");
+
+    if (!noOutput) {
+
     ColorImageR32G32B32* res = solver.result();
 	ColorImageR8G8B8A8 out(res->getWidth(), res->getHeight());
 	for (unsigned int y = 0; y < res->getHeight(); y++) {
@@ -251,7 +255,8 @@ int main(int argc, const char * argv[]) {
 	}
 	LodePNG::save(out, "output.png");
 	LodePNG::save(image, "inputMark.png");
-    printf("Saved\n");
+        printf("Saved\n");
+    }
 
 	return 0;
 }

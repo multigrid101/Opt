@@ -5,6 +5,8 @@
 #include <stdio.h>
 
 // TODO clean me up, some args are not neded.
+// TODO separate stuff that is specific to master-thesis (e.g. stride) from
+// stuff that is a general Opt option.
 
 namespace po = boost::program_options;
 class ArgParser {
@@ -39,6 +41,8 @@ class ArgParser {
 
         ("useMaterializedJTJ", po::value<bool>()->implicit_value(true)->default_value(false), "if true, then JTJ is assembled explicitly.")
         ("useFusedJTJ", po::value<bool>()->implicit_value(true)->default_value(false), "if true, then the product JT*J is computed explicitly. Has no effect if useMaterializedJTJ==false")
+
+        ("noOutput", po::value<bool>()->implicit_value(true)->default_value(false), "if noOutput==true, then results are not post-processed or saved.")
       ;
 
 
