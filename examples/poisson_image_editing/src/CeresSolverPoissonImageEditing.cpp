@@ -167,6 +167,7 @@ double CeresSolverPoissonImageEditing::solve(const NamedParameters& solverParame
     unique_ptr<Solver::Options> options = initializeOptions(solverParameters);
     options->function_tolerance = 0.01;
     options->gradient_tolerance = 1e-4 * options->function_tolerance;
+    /* options->linear_solver_type = ceres::LinearSolverType::CGNR; */
 
     double cost = launchProfiledSolveAndSummary(options, &problem, profileSolve, iters);
     m_finalCost = cost;

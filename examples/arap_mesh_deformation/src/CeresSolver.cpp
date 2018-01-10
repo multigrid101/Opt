@@ -248,19 +248,19 @@ double CeresSolver::solve(const NamedParameters& solverParameters, const NamedPa
 
     cout << "Solving..." << endl;
 
-    Solver::Options options;
+    unique_ptr<Solver::Options> options = initializeOptions(solverParameters);
     Solver::Summary summary;
 
-    options.minimizer_progress_to_stdout = !performanceTest;
+    options->minimizer_progress_to_stdout = !performanceTest;
 
     //faster methods
-    options.num_threads = 8;
-    options.num_linear_solver_threads = 8;
+    options->num_threads = 1;
+    options->num_linear_solver_threads = 1;
 
 #if USE_CERES_PCG
-	options.linear_solver_type = ceres::LinearSolverType::CGNR;
+	options->linear_solver_type = ceres::LinearSolverType::CGNR;
 #else
-	options.linear_solver_type = ceres::LinearSolverType::SPARSE_NORMAL_CHOLESKY; 
+	options->linear_solver_type = ceres::LinearSolverType::SPARSE_NORMAL_CHOLESKY; 
 #endif
 	//options.trust_region_strategy_type = ceres::TrustRegionStrategyType::DOGLEG;
     //options.linear_solver_type = ceres::LinearSolverType::SPARSE_SCHUR; //10.0s
@@ -270,9 +270,11 @@ double CeresSolver::solve(const NamedParameters& solverParameters, const NamedPa
     //options.linear_solver_type = ceres::LinearSolverType::CGNR; //46.9s
 
     //options.min_linear_solver_iterations = linearIterationMin;
-    options.max_num_iterations = 10000;
-    options.function_tolerance = 0.05;
-    options.gradient_tolerance = 1e-4 * options.function_tolerance;
+    /* options.max_num_iterations = 10000; //original */
+    /* options.max_num_iterations = 1; */ 
+    /* options.max_linear_solver_iterations = 1000; //SEB, original uses default */
+    options->function_tolerance = 0.05;
+    options->gradient_tolerance = 1e-4 * options->function_tolerance;
 
     //options.min_lm_diagonal = 1.0f;
     //options.min_lm_diagonal = options.max_lm_diagonal;
@@ -281,10 +283,11 @@ double CeresSolver::solve(const NamedParameters& solverParameters, const NamedPa
     //problem.Evaluate(Problem::EvaluateOptions(), &cost, nullptr, nullptr, nullptr);
     //cout << "Cost*2 start: " << cost << endl;
 
+
     double elapsedTime;
     {
         ml::Timer timer;
-        Solve(options, &problem, &summary);
+        Solve(*options, &problem, &summary);
         elapsedTime = timer.getElapsedTimeMS();
     }
 

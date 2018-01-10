@@ -3,10 +3,11 @@
 #include <vector>
 #include "../../shared/SolverIteration.h"
 #include "../../shared/CeresSolverBase.h"
+#include "../../shared/CombinedSolverParameters.h"
 
 class CeresSolver : public CeresSolverBase {
 public:
-    CeresSolver(const std::vector<unsigned int>& dims, SimpleMesh* _mesh) : CeresSolverBase(dims), m_mesh(_mesh){}
+    CeresSolver(const std::vector<unsigned int>& dims, SimpleMesh* _mesh, CombinedSolverParameters params) : CeresSolverBase(dims, params), m_mesh(_mesh){}
 
     virtual double solve(const NamedParameters& solverParameters, const NamedParameters& problemParameters, bool profileSolve, std::vector<SolverIteration>& iter) override;
 

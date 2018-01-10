@@ -470,7 +470,9 @@ double CeresImageSolver::solve(const NamedParameters& solverParameters, const Na
 
     // The linear approximation is bad for SFS, so solving exactly actually *hurts* convergence.
     options->linear_solver_type = ceres::LinearSolverType::CGNR;
-    options->max_linear_solver_iterations = 10;
+    /* options->max_linear_solver_iterations = 10; //original */
+    /* options->max_linear_solver_iterations = 1000; //SEB */
+    /* options->max_num_iterations = 1; //SEB */
 
     double cost = launchProfiledSolveAndSummary(options, &problem, profileSolve, iters);
     m_finalCost = cost;

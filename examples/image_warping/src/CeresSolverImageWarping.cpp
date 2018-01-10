@@ -233,6 +233,7 @@ double CeresSolverWarping::solve(const NamedParameters& solverParameters, const 
     
     cout << "Solving..." << endl;
 
+    // TODO summary is not used
     Solver::Summary summary;
     unique_ptr<Solver::Options> options = initializeOptions(solverParameters);
 

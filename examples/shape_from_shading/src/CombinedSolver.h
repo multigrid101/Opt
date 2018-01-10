@@ -43,7 +43,7 @@ public:
 
         addSolver(std::make_shared<CUDAImageSolver>(m_dims), "CUDA", m_combinedSolverParameters.useCUDA);
         addOptSolvers(m_dims, "shape_from_shading.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
-        addSolver(std::make_shared<CeresImageSolver>(m_dims), "Ceres", m_combinedSolverParameters.useCeres);
+        addSolver(std::make_shared<CeresImageSolver>(m_dims, m_combinedSolverParameters), "Ceres", m_combinedSolverParameters.useCeres);
 	}
 
     virtual void combinedSolveInit() override {

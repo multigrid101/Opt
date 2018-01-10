@@ -3,16 +3,17 @@
 #include <core-util/timer.h>
 using namespace std;
 #if USE_CERES
+// TODO input parameter of this function is not used!!!
 std::unique_ptr<ceres::Solver::Options> CeresSolverBase::initializeOptions(const NamedParameters& solverParameters) const {
     std::unique_ptr<ceres::Solver::Options> options = std::unique_ptr<ceres::Solver::Options>(new ceres::Solver::Options());
-    options->num_threads = 4;
-    options->num_linear_solver_threads = 3;
-    options->linear_solver_type = ceres::LinearSolverType::SPARSE_NORMAL_CHOLESKY;
-    options->max_num_iterations = 10000; //original
+    options->num_threads = 1;
+    options->num_linear_solver_threads = 1;
+    /* options->linear_solver_type = ceres::LinearSolverType::SPARSE_NORMAL_CHOLESKY; */
+    options->linear_solver_type = ceres::LinearSolverType::CGNR;
+    options->max_num_iterations = m_params.nonLinearIter; //original
     /* options->max_linear_solver_iterations = 10; // SEB */
-    options->max_linear_solver_iterations = 1000; // SEB
+    options->max_linear_solver_iterations = m_params.linearIter; // SEB
     /* options->max_linear_solver_iterations = 10; // SEB */
-    options->max_num_iterations = 1;
     options->function_tolerance = 1e-3;
     options->gradient_tolerance = 1e-4 * options->function_tolerance;
     return options;

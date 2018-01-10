@@ -9,6 +9,7 @@
 #include "../../shared/SolverIteration.h"
 #include "../../shared/CeresSolverBase.h"
 #include "../../shared/Config.h"
+#include "../../shared/CombinedSolverParameters.h"
 #if USE_CERES
 #define GLOG_NO_ABBREVIATED_SEVERITIES
 #include "ceres/ceres.h"
@@ -23,7 +24,7 @@ using ceres::Solver;
 class CeresSolver : public CeresSolverBase
 {
 	public:
-        CeresSolver(const std::vector<unsigned int>& dims) : CeresSolverBase(dims) {}
+        CeresSolver(const std::vector<unsigned int>& dims, CombinedSolverParameters params) : CeresSolverBase(dims, params) {}
         virtual double solve(const NamedParameters& solverParameters, const NamedParameters& problemParameters, bool profileSolve, std::vector<SolverIteration>& iter) override;
 };
 #if !USE_CERES

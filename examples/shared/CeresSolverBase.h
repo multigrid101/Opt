@@ -2,6 +2,7 @@
 
 #include "SolverBase.h"
 #include "Config.h"
+#include "CombinedSolverParameters.h"
 
 #if USE_CERES
 #define GLOG_NO_ABBREVIATED_SEVERITIES
@@ -17,7 +18,7 @@ using ceres::Solver;
 #include <memory>
 class CeresSolverBase : public SolverBase {
 public:
-    CeresSolverBase(const std::vector<unsigned int>& dims) : m_dims(dims) {}
+    CeresSolverBase(const std::vector<unsigned int>& dims, CombinedSolverParameters params) : m_dims(dims), m_params(params) {}
 
     virtual double solve(const NamedParameters& solverParameters, const NamedParameters& problemParameters, bool profileSolve, std::vector<SolverIteration>& iter) override {
         fprintf(stderr, "No Ceres solve implemented\n");
@@ -30,4 +31,5 @@ protected:
     std::unique_ptr<Solver::Options> initializeOptions(const NamedParameters& solverParameters) const;
 #endif
     std::vector<unsigned int> m_dims;
+    CombinedSolverParameters m_params;
 };

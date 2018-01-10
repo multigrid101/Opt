@@ -35,7 +35,7 @@ public:
 
 
         addSolver(std::make_shared<CUDAWarpingSolver>(m_dims), "CUDA", m_combinedSolverParameters.useCUDA);
-        addSolver(std::make_shared<CeresSolverPoissonImageEditing>(m_dims), "Ceres", m_combinedSolverParameters.useCeres);
+        addSolver(std::make_shared<CeresSolverPoissonImageEditing>(m_dims, m_combinedSolverParameters), "Ceres", m_combinedSolverParameters.useCeres);
         addSolver(std::make_shared<EigenSolverPoissonImageEditing>(m_dims), "Eigen", m_useEigen);
         addSolver(std::make_shared<CUDAPatchSolverWarping>(m_dims), "CUDA Patch", m_useCUDAPatch);
         addOptSolvers(m_dims, "poisson_image_editing.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);

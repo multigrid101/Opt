@@ -39,7 +39,7 @@ class CombinedSolver : public CombinedSolverBase
 			resetGPUMemory();
             
             addSolver(std::make_shared<CUDAWarpingSolver>(dims), "CUDA", m_combinedSolverParameters.useCUDA);
-            addSolver(std::make_shared<CeresSolver>(dims), "Ceres", m_combinedSolverParameters.useCeres);
+            addSolver(std::make_shared<CeresSolver>(dims, m_combinedSolverParameters), "Ceres", m_combinedSolverParameters.useCeres);
             addOptSolvers(dims, "volumetric_mesh_deformation.t", m_combinedSolverParameters, m_combinedSolverParameters.optDoublePrecision, backend, numthreads);
 		}
 
