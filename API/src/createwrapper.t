@@ -169,6 +169,13 @@ local terra NewState(params : Opt_InitializationParameters) : &LibraryState
 -- end
 
 
+    -- We need this here to force the linker to put itt stuff into the executable.
+    var name = I.__itt_string_handle_create("Opt_NewState()")
+    var domain = I.__itt_domain_create("Main.Domain")
+    I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+    I.__itt_task_end(domain)
+
+
     var S = [&LibraryState](C.malloc(sizeof(LibraryState)))
     var L = C.luaL_newstate();
     S.L = L
