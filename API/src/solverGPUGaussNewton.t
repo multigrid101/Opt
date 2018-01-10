@@ -1524,6 +1524,9 @@ return function(problemSpec)
 
                 if [initialization_parameters.use_fused_jtj] then
                   var endJTJalloc : backend.Event
+                  var name = I.__itt_string_handle_create("JTJ nnz")
+                  var domain = I.__itt_domain_create("Main.Domain")
+                  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
                   pd.timer:startEvent("J^TJ alloc",&endJTJalloc)
 
@@ -1537,6 +1540,7 @@ return function(problemSpec)
                   backend.computeBoundsA(&(pd.JTJ_bounds[0]), pd.JTJ_csrRowPtrA,
                                         pd.JTJ_nnz, nUnknowns)
                   pd.timer:endEvent(&endJTJalloc, 0)
+                  I.__itt_task_end(domain)
 
                   var numBytesForJTJVal = pd.JTJ_nnz*sizeof(float) -- TODO why not opt_float here?
                   cd( backend.allocateDevice(&pd.JTJ_csrValA, numBytesForJTJVal, float) )
@@ -1544,6 +1548,10 @@ return function(problemSpec)
 
                 var endJTalloc : backend.Event
                 pd.timer:startEvent("JT alloc",&endJTalloc)
+                var name = I.__itt_string_handle_create("JT nnz")
+                var domain = I.__itt_domain_create("Main.Domain")
+                I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
                 backend.computeNnzPatternAT(pd.handle, pd.desc,
                                              nUnknowns, [nResidualsExp],
                                              [nnzExp] , pd.J_csrRowPtrA, pd.J_csrColIndA,
@@ -1554,6 +1562,7 @@ return function(problemSpec)
                                       [nnzExp], nUnknowns)
 
                 pd.timer:endEvent(&endJTalloc, 0)
+                I.__itt_task_end(domain)
                 
 
 
@@ -1569,6 +1578,9 @@ return function(problemSpec)
             -- calculate JT.
             var endJtranspose : backend.Event
             pd.timer:startEvent("J_transpose",&endJtranspose)
+            var name = I.__itt_string_handle_create("JT values")
+            var domain = I.__itt_domain_create("Main.Domain")
+            I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
             backend.computeAT(pd.handle, pd.desc,
                               nUnknowns, [nResidualsExp], [nnzExp],
@@ -1576,11 +1588,15 @@ return function(problemSpec)
                               pd.JT_csrValA, pd.JT_csrRowPtrA, pd.JT_csrColIndA)
 
             pd.timer:endEvent(&endJtranspose, 0)
+            I.__itt_task_end(domain)
 
             if [initialization_parameters.use_fused_jtj] then
               -- Do the multiplication JT*J
               var endJTJmm : backend.Event
               pd.timer:startEvent("JTJ multiply",&endJTJmm)
+              var name = I.__itt_string_handle_create("JTJ values")
+              var domain = I.__itt_domain_create("Main.Domain")
+              I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
               backend.computeATA(pd.handle, pd.desc,
                                  nUnknowns, [nResidualsExp], [nnzExp], pd.JTJ_nnz,
@@ -1589,6 +1605,7 @@ return function(problemSpec)
                                  pd.JTJ_csrValA, pd.JTJ_csrRowPtrA, pd.JTJ_csrColIndA)
 
               pd.timer:endEvent(&endJTJmm, 0)
+              I.__itt_task_end(domain)
             end
             -- end Section 2)
         end
@@ -1647,6 +1664,9 @@ return function(problemSpec)
             if initialization_parameters.use_fused_jtj then
                 var endJTJp : backend.Event
                 pd.timer:startEvent("J^TJp",&endJTJp)
+                var name = I.__itt_string_handle_create("JTJp")
+                var domain = I.__itt_domain_create("Main.Domain")
+                I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
                 backend.applyAtoVector(pd.handle, pd.desc,
                                 nUnknowns, nUnknowns, pd.JTJ_nnz,
@@ -1656,9 +1676,13 @@ return function(problemSpec)
                                 pd.JTJ_bounds)
 
                 pd.timer:endEvent(&endJTJp, 0)
+                I.__itt_task_end(domain)
             else
                 var endJp : backend.Event
                 pd.timer:startEvent("Jp",&endJp)
+                var name1 = I.__itt_string_handle_create("Jp")
+                var domain = I.__itt_domain_create("Main.Domain")
+                I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name1)
 
                 backend.applyAtoVector(pd.handle, pd.desc,
                                 nUnknowns, [nResidualsExp], [nnzExp],
@@ -1667,10 +1691,13 @@ return function(problemSpec)
                                 pd.J_bounds)
 
                 pd.timer:endEvent(&endJp, 0)
+                I.__itt_task_end(domain)
 
 
                 var endJT : backend.Event
                 pd.timer:startEvent("J^T",&endJT)
+                var name2 = I.__itt_string_handle_create("JTp")
+                I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name2)
 
                 backend.applyAtoVector(pd.handle, pd.desc,
                                 [nResidualsExp], nUnknowns, [nnzExp],
@@ -1679,6 +1706,7 @@ return function(problemSpec)
                                 pd.JT_bounds)
 
                 pd.timer:endEvent(&endJT, 0)
+                I.__itt_task_end(domain)
             end
         end
     else

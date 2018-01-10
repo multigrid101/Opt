@@ -4,6 +4,7 @@ local C = terralib.includecstring [[
 #include <stdlib.h>
 #include <sys/time.h>
 ]]
+local I = require('ittnotify')
 local la = {} -- this module
 
 -- IntList  helper needed below START
@@ -219,12 +220,27 @@ local terra computeNnzPatternAT(handle : &opaque, -- needed by cusparse lib TODO
   var nnzAT = nnzA
   var nnzATA = 0
 
+  var name_malloc = I.__itt_string_handle_create("malloc/memset")
+  var domain = I.__itt_domain_create("Main.Domain")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_malloc)
+
   var numNnzEntriesPerRowAT = [&int](C.malloc( nRowsAT*sizeof(int) ))
 
   C.memset([&opaque](numNnzEntriesPerRowAT), 0, nRowsAT*sizeof(int))
   C.memset([&opaque](rowPtrAT), 0, (nRowsAT+1)*sizeof(int))
 
-  -- a) traverse A and if A[i,j] != 0, we increment numNnzEntriesPerRowAT[j]
+  -- we need a helper array that tells us the next free space for each row
+  -- in colIndAT (needed in section c)
+  var nextFreeSpace = [&int](C.malloc( nnzAT*sizeof(int) ))
+  C.memset([&opaque](nextFreeSpace), 0, nRowsAT*sizeof(int))
+
+  I.__itt_task_end(domain)
+
+
+  -- a) traverse A and if A[i,j] != 0, we increment numNnzEntriesPerRowAT[j],
+  -- i.e. count nnz per row of AT
+  var name_count = I.__itt_string_handle_create("count nnz")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_count)
   for riA = 0,nRowsA do
     var nnzThisRowA = rowPtrA[riA+1] - rowPtrA[riA]
     var ptrTo_ThisRowInColIndA = &(colIndA[rowPtrA[riA]])
@@ -234,6 +250,7 @@ local terra computeNnzPatternAT(handle : &opaque, -- needed by cusparse lib TODO
       numNnzEntriesPerRowAT[riAT] = numNnzEntriesPerRowAT[riAT] + 1
     end
   end
+  I.__itt_task_end(domain)
 
   -- b) Now we know how many entries each row in AT has, we use this to construct
   --     rowPtrAT
@@ -252,12 +269,8 @@ local terra computeNnzPatternAT(handle : &opaque, -- needed by cusparse lib TODO
   -- As a nice side-effect, the traversal through A also ensures that the colinds
   -- of AT are sorted for each row, because we first insert riA=0 into the colinds
   -- of AT whereever they are present, then riA=1 and so on...
-
-  -- we need a helper array that tells us the next free space for each row
-  -- in colIndAT
-  var nextFreeSpace = [&int](C.malloc( nnzAT*sizeof(int) ))
-  C.memset([&opaque](nextFreeSpace), 0, nRowsAT*sizeof(int))
-
+  var name_colind = I.__itt_string_handle_create("colIndAT")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_colind)
   for riA = 0,nRowsA do
     var nnzThisRowA = rowPtrA[riA+1] - rowPtrA[riA]
     var ptrTo_ThisRowInColIndA = &(colIndA[rowPtrA[riA]])
@@ -268,6 +281,7 @@ local terra computeNnzPatternAT(handle : &opaque, -- needed by cusparse lib TODO
       nextFreeSpace[riAT] = nextFreeSpace[riAT] + 1
     end
   end
+  I.__itt_task_end(domain)
 
   C.free( numNnzEntriesPerRowAT )
   C.free( nextFreeSpace )
@@ -304,9 +318,15 @@ local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TOD
   var rowPtrAT = [&int](C.malloc( (nRowsAT+1)*sizeof(int) ))
   var colIndAT = [&int](C.malloc( nnzAT*sizeof(int) ))
 
+  var name_AT_helper = I.__itt_string_handle_create("AT helper")
+  var domain = I.__itt_domain_create("Main.Domain")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_AT_helper)
+
   computeNnzPatternAT(nil, nil, nColsA, nRowsA, nnzA,
                       rowPtrA, colIndA,
                       rowPtrAT, colIndAT)
+
+  I.__itt_task_end(domain)
   
 
 
@@ -325,6 +345,9 @@ local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TOD
    uniquelist:init()
 
   -- 2a) first traversal to compute rowPtrATA and get nnzATA
+  var name_rowPtrATA = I.__itt_string_handle_create("rowPtrATA")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_rowPtrATA)
+
   rowPtrATA[0] = 0
   for riATA = 0,nRowsATA do -- compute a row of ATA
     var riAT = riATA
@@ -360,6 +383,8 @@ local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TOD
     uniquelist:reset()
   end
 
+  I.__itt_task_end(domain)
+
   -- 2b) allocate colIndATA
   -- Note that this memory isn't freed here because it's actually a return arg
   -- of this function
@@ -367,6 +392,9 @@ local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TOD
   C.memset([&opaque](colIndATA), -1, nnzATA * sizeof(int))
 
   -- 2c) second traversal to compute colIndATA
+  var name_colIndATA = I.__itt_string_handle_create("colIndATA")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_colIndATA)
+
   for riATA = 0,nRowsATA do -- compute a row of ATA
     var riAT = riATA
     var ptrTo_ThisRowInColIndAT = &(colIndAT[rowPtrAT[riAT]]) -- colinds in this row in AT
@@ -406,6 +434,8 @@ local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TOD
     for k = 0,nnzThisRowATA do seen[uniquelist:getElement(k)] = false end
     uniquelist:reset()
   end
+
+  I.__itt_task_end(domain)
   
   @ptrTo_colIndATA = colIndATA
   @nnzATAptr = nnzATA
@@ -440,7 +470,17 @@ local terra computeATA(handle : &opaque, -- needed by cusparse lib TODO refactor
 
   var nRowsATA = nUnknowns
 
+  var name_zeroing = I.__itt_string_handle_create("memset 0")
+  var domain = I.__itt_domain_create("Main.Domain")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_zeroing)
+
   C.memset([&opaque](valATA), 0, nnzATA * sizeof(float))
+
+  I.__itt_task_end(domain)
+
+
+  var name_compute = I.__itt_string_handle_create("compute values")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_compute)
   
   for riATA = 0,nRowsATA do -- compute each row of ATA separately
     -- C.printf('doing row %d of ATA:\n', riATA)
@@ -474,6 +514,8 @@ local terra computeATA(handle : &opaque, -- needed by cusparse lib TODO refactor
       end
     end
   end
+
+  I.__itt_task_end(domain)
 end
 la.computeATA = computeATA
 
@@ -496,8 +538,17 @@ local terra computeAT(handle : &opaque, -- needed by cusparse lib TODO refactor
   -- TODO see if alternative implementation (iterate through A) is cheaper for
   -- single-threaded version.
   var numRowsAT = nUnknowns
+
+  var name_zeroing = I.__itt_string_handle_create("memset 0")
+  var domain = I.__itt_domain_create("Main.Domain")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_zeroing)
   
   C.memset( [&opaque](valAT), 0, nnzA * sizeof(float) )
+
+  I.__itt_task_end(domain)
+
+  var name_compute = I.__itt_string_handle_create("compute values")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_compute)
 
   for riAT = 0,numRowsAT do
     var offsetThisRow = rowPtrAT[riAT]
@@ -511,6 +562,8 @@ local terra computeAT(handle : &opaque, -- needed by cusparse lib TODO refactor
       valAT[offsetThisRow+k] = valA
     end
   end
+
+  I.__itt_task_end(domain)
 end
 la.computeAT = computeAT
 
@@ -527,13 +580,22 @@ local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refa
 -- bounds arg is ignored in this backend
 
   -- reset outVec
+  var name_malloc = I.__itt_string_handle_create("malloc/memset")
+  var domain = I.__itt_domain_create("Main.Domain")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_malloc)
+
   C.memset([&opaque](valOutVec), 0, nRowsA * sizeof(float))
+
+  I.__itt_task_end(domain)
 
 -- TODO investigate optimizations due to symmetric A
         var start : C.timeval
         var stop : C.timeval
         var elapsed : double
         C.gettimeofday(&start, nil)
+
+  var name_compute = I.__itt_string_handle_create("compute vals")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_compute)
 
   for k = 0,nRowsA do
     var offsetThisRowA = rowPtrA[k]
@@ -545,6 +607,8 @@ local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refa
     end
     valOutVec[k] = tmp
   end
+
+  I.__itt_task_end(domain)
 
         C.gettimeofday(&stop, nil)
         elapsed = 1000*(stop.tv_sec - start.tv_sec)
