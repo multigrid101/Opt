@@ -54,7 +54,7 @@ int main(int argc, const char * argv[])
     params.useCeres = argparser.get<bool>("useCeres");
 
     params.useMaterializedJTJ = argparser.get<bool>("useMaterializedJTJ");
-    params.useFusedJTJ = argparser.get<bool>("useMaterializedJTJ");
+    params.useFusedJTJ = argparser.get<bool>("useFusedJTJ");
 
     if (performanceRun) {
         params.useCUDA  = false;

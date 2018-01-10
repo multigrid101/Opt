@@ -46,7 +46,7 @@ int main(int argc, const char * argv[])
     params.useCeres = argparser.get<bool>("useCeres"); // makes no sense here
 
     params.useMaterializedJTJ = argparser.get<bool>("useMaterializedJTJ");
-    params.useFusedJTJ = argparser.get<bool>("useMaterializedJTJ");
+    params.useFusedJTJ = argparser.get<bool>("useFusedJTJ");
 
     OptImage::Location location;
     if (backend == "backend_cuda") {
