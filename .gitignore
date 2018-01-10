@@ -8,6 +8,7 @@ API/release/lib/*
 */*/*/*.o
 
 *.swp
+*.swo
 
 
 /API/common/Opt.dll
@@ -18,6 +19,45 @@ API/release/lib/*
 /API/Opt.exp
 /API/Opt.lib
 
-/examples/*
+# SECTION WITH EXAMPLE STUFF
+
+# external libraries
+examples/external/*
+
+# timing data
+examples/**/*.pdf
+examples/**/*.timing
+
+# not sure what these are (s.otten)
+examples/.settings
+examples/.project
+examples/.cproject
+
+# output, logging, etc.
+examples/**/*.log
+examples/**/*.ply
+examples/**/*.png
+examples/**/*.pyc
+examples/**/*.txt
+examples/**/*.off
+examples/**/*.imagedump
+
+# if there are terra files, they are just playground
+examples/**/*.t
+
+# build data
+examples/**/build/*
+
+# executables
+examples/arap_mesh_deformation/arap_mesh_deformation
+examples/cotangent_mesh_smoothing/cotangent_mesh_smoothing
+examples/embedded_mesh_deformation/embedded_mesh_deformation
+examples/image_warping/image_warping
+examples/intrinsic_image_decomposition/intrinsic_image_decomposition
+examples/optical_flow/optical_flow
+examples/poisson_image_editing/poisson_image_editing
+examples/robust_nonrigid_alignment/robust_nonrigid_alignment
+examples/shape_from_shading/shape_from_shading
+examples/volumetric_mesh_deformation/volumetric_mesh_deformation
 
 tags
