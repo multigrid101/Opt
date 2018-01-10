@@ -13,19 +13,11 @@ plt.style.use('ggplot')
 folders = []
 folders.append("arap_mesh_deformation")
 
-folders.append("cotangent_mesh_smoothing")
-
-folders.append("embedded_mesh_deformation")
-
 folders.append("image_warping")
-
-folders.append("intrinsic_image_decomposition")
-
-folders.append("optical_flow")
 
 folders.append("poisson_image_editing")
 
-folders.append("robust_nonrigid_alignment")
+folders.append("shape_from_shading")
 
 folders.append("volumetric_mesh_deformation")
 
@@ -107,8 +99,6 @@ def doTimingsCeresVsOptCpu(homedir):
     pk.dump(costs, open(filename, "wb"))
 
 
-doTimingsCeresVsOptCpu('arap_mesh_deformation')
-# for homedir in folders:
-#     doTimingsCeresVsOptCpu(homedir)
+# doTimingsCeresVsOptCpu('arap_mesh_deformation')
 
 

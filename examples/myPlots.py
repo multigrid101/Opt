@@ -11,8 +11,11 @@ plt.style.use('ggplot')
 
 # plots per-solve times, per-newton timings and per-linearIter timings
 # for a single example (e.g. for image_warping)
-def ceresVsOptCpuBar(data):
-# 'data' is a dictionary with a pre-defined format.
+def ceresVsOptCpuBar(homedir):
+    # 'data' is a dictionary with a pre-defined format.
+
+    data = pk.load(open("{0}/timings/ceresVsOptCpu.timing".format(homedir)))
+    
     width = 0.1
     def myinds(center, lr):
         # if lr == -1, plot left bars
@@ -51,17 +54,21 @@ def ceresVsOptCpuBar(data):
     addExamplePerfOpt(ax, t_opt, 1)
     addExamplePerfCeres(ax, t_ceres, 1)
 
-    return (fig, ax)
+
+    # save plot to file
+    plt.savefig(open("{0}/timings/ceresVsOptCpu.pdf".format(homedir), "wb"))
+
+    # return (fig, ax)
     
 
 
 
 # this is how to load a pickle file and use it to create a plot
 def test():
-    theData = pk.load(open("./ceresVsOptCpu_image_warping.timing"))
+    theData = pk.load(open("{0}/timings/ceresVsOptCpu.timing".format(homedir)))
     fig, ax = ceresVsOptCpuBar(theData)
 
     # save plot to file
-    plt.savefig('./image_warping/timings/ceresVsOptCpu.pdf')
+    plt.savefig(open("{0}/timings/ceresVsOptCpu.timing".format(homedir)))
 
 
