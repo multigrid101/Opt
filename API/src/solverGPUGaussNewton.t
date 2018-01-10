@@ -1863,7 +1863,8 @@ return function(problemSpec)
               pd.timer:startEvent(stepName, &stepEvent)
           end
           -- TODO use 'defer' (see terra/tests/defer.t) to perform the cleanup,
-          -- it seems like a really cool idea.
+          -- it seems like a really cool idea. We need to check how stable
+          -- this feature is though.
           C.free(stepName)
 
         -- KEEP THIS FOR DEBUGGING PURPOSES!!!

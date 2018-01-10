@@ -1106,7 +1106,10 @@ function b.makeWrappedFunctions(problemSpec, PlanData, delegate, names) -- same 
     -- for k,v in pairs(problemSpec.functions[1].typ.ispace.dims) do print(k,v) end
     -- for k,v in pairs(problemSpec.functions[1].typ.ispace.dims[1]) do print(k,v) end
 
-    -- step 1: compile the actual cuda kernels
+    -- step 1: compile the actual cuda kernels. The current loop will compile
+    -- PCGStep1 etc., but there may be different versions for different index-spaces.
+    -- The next step will collect all indexspace-level functions and put a wrapper
+    -- around them
     local kernelFunctions = {}
     local key = tostring(os.time())
     local function getkname(name,ft)

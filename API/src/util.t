@@ -852,6 +852,7 @@ util.makeGPUFunctions = backend.makeWrappedFunctions
 -- TODO turn functions into locals after finishing
 
 
+-- TODO this stuff can be deleted afaik
 function util.makeCPUFunctions(problemSpec, PlanData, delegate, names)
 
     local function cpucompile(kernelFunctions)

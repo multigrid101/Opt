@@ -1131,6 +1131,8 @@ function UnknownType:terratype()
         local Index = ispace:indextype()
         local ispaceimages = self.ispacetoimages[ispace]
         local VT = self:VectorTypeForIndexSpace(ispace)
+        -- TODO BUGFIX: the meta-method gets overwritten here for each
+        -- index-space, see Issue #112 on github
         terra T.metamethods.__apply(self : &T, idx : Index) : VT
             var r : VT
             escape
@@ -1151,6 +1153,8 @@ function UnknownType:terratype()
         -- error()
 
 
+        -- TODO BUGFIX: the meta-method gets overwritten here for each
+        -- index-space, see Issue #112 on github
         terra T.metamethods.__update(self : &T, idx : Index, v : VT)
             escape
                 local off = 0
@@ -1910,8 +1914,11 @@ function Condition:Union(rhs)
 end
 ------------------------------------------- Condition end
 
--- really long (~ 700 l.o.c.) function, that turns a FunctionSpec into a terra-function that can be used later (e.g. evalJTF)
+-- really long (~ 700 l.o.c.) function, that turns a FunctionSpec into a terra-function that can be used later (e.g. evalJTF). In other words, it takes the output of the create*** functions and
+-- turn that **symbolic** representation of e.g. evalJTF into a **terra-function**.
 -- TODO put this in extra file
+-- 
+-- evalJTF, etc.
 local function createfunction(problemspec,name,Index,arguments,results,scatters) 
     results = removeboundaries(results)
     
@@ -2723,6 +2730,15 @@ end
 
 
 -- CREATE STUFF START
+-- These functions seems to turn a **symbolic** representation of the energy nad
+-- the problem into a **symbolic** representation of e.g. evalJTF
+-- TODO names are confusing: we have different evalJTF for centered and graph-version,
+-- one has side-effects (changes input arguments) and one doesn't. This makes
+-- code hard to understand.
+-- TODO other name-problem: functions often seem to do more, than their name suggests:
+-- e.g. evalJTF for centeredfunctions also computes the preconditioner. This is
+-- confusing. We need to somehow add information on what all these functions
+-- actually do (maybe with reference to some solver implementation).
 local EMPTY = List()
 local function createjtjcentered(PS,ES)
     local UnknownType = PS.P:UnknownType()
@@ -3283,16 +3299,21 @@ terra opt.PlanFree(plan : &opt.Plan)
 end
 
 terra opt.ProblemInit(plan : &opt.Plan, params : &&opaque) 
-    C.printf('doing init\n')
+    C.printf('Opt_problemInit(): doing init\n')
     return plan.init(plan.data, params)
 end
 terra opt.ProblemStep(plan : &opt.Plan, params : &&opaque) : int
-    -- C.printf('doing a step\n')
+    C.printf('Opt_problemStep(): doing step\n')
     return plan.step(plan.data, params) -- this seems to be the 'step' function defined in solverGPUGaussNewton.t
 end
 terra opt.ProblemSolve(plan : &opt.Plan, params : &&opaque)
+   C.printf("Opt_problemSolve(): going to do init\n")
    opt.ProblemInit(plan, params)
+   C.printf("Opt_problemSolve(): finished doing init\n")
+
+   C.printf("Opt_problemSolve(): entering step loop\n")
    while opt.ProblemStep(plan, params) ~= 0 do end
+   C.printf("Opt_problemSolve(): finished step loop\n")
 end
 terra opt.ProblemCurrentCost(plan : &opt.Plan) : double
     return plan.cost(plan.data)

@@ -162,16 +162,20 @@ int main(int argc, const char * argv[]) {
     }
 
     for (unsigned int y = 0; y < imageColor.getHeight(); y++)
-	{
-        for (unsigned int x = 0; x < imageColor.getWidth(); x++)
-		{
-            if (y == 0 || x == 0 || y == (imageColor.getHeight() - 1) || x == (imageColor.getWidth() - 1))
-			{
-				std::vector<int> v; v.push_back(x); v.push_back(y); v.push_back(x); v.push_back(y);
-				constraints.push_back(v);
-			}
-		}
-	}
+    {
+      for (unsigned int x = 0; x < imageColor.getWidth(); x++)
+      {
+        if (y == 0 || x == 0 || y == (imageColor.getHeight() - 1) || x == (imageColor.getWidth() - 1))
+        {
+          std::vector<int> v;
+          v.push_back(x);
+          v.push_back(y);
+          v.push_back(x);
+          v.push_back(y);
+          constraints.push_back(v);
+        }
+      }
+    }
 
     CombinedSolverParameters params;
 
