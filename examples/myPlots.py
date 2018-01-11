@@ -56,9 +56,59 @@ def ceresVsOptCpuBar(homedir):
 
 
     # save plot to file
-    plt.savefig(open("{0}/timings/ceresVsOptCpu.pdf".format(homedir), "wb"))
+    plt.savefig(open("{0}/timings/ceresVsOptCpu.pdf".format(homedir), "wb"),
+            format='pdf')
 
     # return (fig, ax)
+
+
+def makePlotExp000234(homedir, materialization):
+    # timingData = {
+    #         "problemSizes" : problemSizes,
+    #         "optPerSolveTimes" : perSolveTimes,
+    #         "optPerNewtonTimes" : perNewtonTimes,
+    #         "optPerLinIterTimes" : perLinIterTimes
+    #         }
+
+    expNumber = -1 # 'init'
+    if materialization == "matfree":
+        expNumber = 2
+    elif materialization == "JTJ":
+        expNumber = 3
+    elif materialization == "fusedJTJ":
+        expNumber = 4
+    else:
+        errMsg = """
+        doTimingsExp000234(): invalid materialization:
+
+        {0}
+
+        valid string-options are 'matfree', 'JTJ', 'fusedJTJ'
+        """
+        sys.exit(errMsg)
+
+    data = pk.load(open("{0}/timings/exp000{1}.timing".format(homedir,expNumber)))
+
+    sizes = data['problemSizes']
+    t_sol = data['optPerSolveTimes']
+    t_nwt = data['optPerNewtonTimes']
+    t_lin = data['optPerLinIterTimes']
+
+
+    fig, ax = plt.subplots()
+
+    ax.plot(sizes, t_sol, 'o-', label="per solve")
+    ax.plot(sizes, t_nwt, 'o-', label="per newton")
+    ax.plot(sizes, t_lin, 'o-', label="per linear")
+
+    ax.legend()
+
+    plt.savefig(open("{0}/timings/exp000{1}.pdf".format(homedir,expNumber), "wb"),
+            format='pdf')
+
+    # return fig, ax
+
+    # plt.show()
     
 
 

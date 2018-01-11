@@ -5,6 +5,7 @@ import pickle as pk
 from Test import ExampleRun
 import outParse as prs
 import myPlots as mp
+import myInfos as info
 import pdb
 
 # make plots pretty
@@ -66,18 +67,10 @@ def doTimingsCeresVsOptCpu(homedir):
     t_cerLin.run()
     t_cerNew.run()
 
-    # get final cost from raw text output
-    # print(t_opt._output)
-    # print(t_cerLin._output)
-    # PCGStep1AvgCost = float(prs.getNamedAverageTimeFromOutput('PCGStep1', t_opt._output))
-    # PCGStep2AvgCost = float(prs.getNamedAverageTimeFromOutput('PCGStep2', t_opt._output))
-    # PCGStep3AvgCost = float(prs.getNamedAverageTimeFromOutput('PCGStep3', t_opt._output))
-
     PCGInit1AvgCost = float(prs.getNamedAverageTimeFromOutput('PCGInit1', t_opt._output))
     PCGLinearUpdateAvgCost = float(prs.getNamedAverageTimeFromOutput('PCGLinearUpdate', t_opt._output))
     computeCostAvgCost = float(prs.getNamedAverageTimeFromOutput('computeCost', t_opt._output))
 
-    # OptCostLinIter = PCGStep1AvgCost + PCGStep2AvgCost + PCGStep3AvgCost
     OptCostLinIter = prs.getNamedAverageTimeFromOutput('linear iteration', t_opt._output)
 
 
@@ -99,6 +92,109 @@ def doTimingsCeresVsOptCpu(homedir):
     pk.dump(costs, open(filename, "wb"))
 
 
-# doTimingsCeresVsOptCpu('arap_mesh_deformation')
 
+# time opt for different example-sizes, for graph-stuff, this
+# corresponds to numSubdivides, for pixelstuff it corresponds to the stride.
+# materialization = [matfree|JTJ|fusedJTJ]
+exp0002Sizes = {}
+exp0002Sizes['arap_mesh_deformation'] = [1, 2, 3, 4]
+exp0002Sizes['cotangent_mesh_smoothing'] = [1, 2, 3, 4]
+exp0002Sizes['embedded_mesh_deformation'] = [1, 2, 3, 4]
+exp0002Sizes['image_warping'] = [1, 2, 3, 4]
+exp0002Sizes['intrinsic_image_decomposition'] = [1, 2, 3, 4]
+exp0002Sizes['optical_flow'] = [1, 2, 3, 4]
+exp0002Sizes['poisson_image_editing'] = [1, 2, 3, 4]
+exp0002Sizes['robust_nonrigid_alignment'] = [1, 2, 3, 4]
+exp0002Sizes['shape_from_shading'] = [1, 2, 3, 4]
+exp0002Sizes['volumetric_mesh_deformation'] = [1, 2, 3, 4]
+def doTimingsExp000234(homedir, materialization):
+    sizes = exp0002Sizes[homedir]
+
+    expNumber = -1 # 'init'
+    if materialization == "matfree":
+        expNumber = 2
+    elif materialization == "JTJ":
+        expNumber = 3
+    elif materialization =="fusedJTJ":
+        expNumber = 4
+    else:
+        errMsg = """
+        doTimingsExp000234(): invalid materialization:
+
+        {0}
+
+        valid string-options are 'matfree', 'JTJ', 'fusedJTJ'
+        """
+        sys.exit(errMsg)
+
+
+    tests = []
+
+    # collect the size of the UnknownVector here
+    # problemSizes = sizes
+    problemSizes = []
+
+    perSolveTimes = []
+    perNewtonTimes = []
+    perLinIterTimes = []
+
+    for size in sizes:
+        # create, define the example runs
+        t_opt = ExampleRun(homedir)
+        t_opt._printOutput = False
+        t_opt._execCommand = "./" + homedir
+        t_opt._args = ["--nIterations", "10", "--lIterations", "10"]
+
+        if materialization == "matfree":
+            pass # this is default
+        elif materialization == "JTJ":
+            t_opt._args.append("--useMaterializedJTJ")
+        elif materialization =="fusedJTJ":
+            t_opt._args.append("--useMaterializedJTJ")
+            t_opt._args.append("--useFusedJTJ")
+        else:
+            pass # error checking is done at top of file
+
+
+        t_opt._args += [info.strideFlags[homedir], str(size)]
+
+        # run them
+        t_opt.run()
+
+        # get final cost from raw text output
+        print(t_opt._output)
+
+        optPerSolveTime = prs.getAvgCategoryTimeOpt(t_opt._output, 1, materialization, homedir)
+        optPerNewtonTime = prs.getAvgCategoryTimeOpt(t_opt._output, 2, materialization, homedir)
+        optPerLinIterTime = prs.getAvgCategoryTimeOpt(t_opt._output, 3, materialization, homedir)
+
+        perSolveTimes.append(optPerSolveTime)
+        perNewtonTimes.append(optPerNewtonTime)
+        perLinIterTimes.append(optPerLinIterTime)
+
+        unknownSize = prs.getUnknownSizeFromOutput(t_opt._output)
+        problemSizes.append(unknownSize)
+
+
+
+    # TODO properly parse the number of unknowns or whatever
+
+    timingData = {
+            "problemSizes" : problemSizes,
+            "optPerSolveTimes" : perSolveTimes,
+            "optPerNewtonTimes" : perNewtonTimes,
+            "optPerLinIterTimes" : perLinIterTimes
+            }
+    print(timingData)
+
+    # write the costs to a file so they can be read by the plotting
+    # module
+    filename = "./" + homedir + "/timings/exp000{0}".format(expNumber) + ".timing"
+
+
+
+    pk.dump(timingData, open(filename, "wb"))
+
+# doTimingsExp0002('arap_mesh_deformation')
+# doTimingsExp0002('image_warping')
 
