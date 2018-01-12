@@ -1,6 +1,7 @@
 from myPlots import ceresVsOptCpuBar
 from myTimings import doTimingsCeresVsOptCpu
 from myArgParsers import experimentParser
+from PyPDF2 import PdfFileMerger
 import sys
 
 
@@ -31,11 +32,23 @@ if exParser._doPlotAll:
         print("exp0001.py: creating plot for {0}".format(homedir))
         ceresVsOptCpuBar(homedir)
 
+    merger = PdfFileMerger()
+    for homedir in folders:
+        # then append it to the Merger
+        merger.append(open("{0}/timings/ceresVsOptCpu.pdf".format(homedir), "rb"))
+    merger.write("./timings/exp0001.pdf")
+
 if exParser._exampleName is not None:
-        homedir = exParser._exampleName
+    homedir = exParser._exampleName
 
-        print("exp0001.py: performing simulations for {0}".format(homedir))
-        doTimingsCeresVsOptCpu(exParser._exampleName)
+    print("exp0001.py: performing simulations for {0}".format(homedir))
+    doTimingsCeresVsOptCpu(exParser._exampleName)
 
-        print("exp0001.py: creating plot for {0}".format(homedir))
-        ceresVsOptCpuBar(exParser._exampleName)
+    print("exp0001.py: creating plot for {0}".format(homedir))
+    ceresVsOptCpuBar(exParser._exampleName)
+
+    # re-do the file with the collected plots
+    merger = PdfFileMerger()
+    for homedir in folders:
+        merger.append(open("{0}/timings/ceresVsOptCpu.pdf".format(homedir), "rb"))
+    merger.write("./timings/exp0001.pdf")

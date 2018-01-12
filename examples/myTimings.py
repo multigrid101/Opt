@@ -28,6 +28,8 @@ folders.append("volumetric_mesh_deformation")
 # saves output in e.g. 'image_warping/timings/ceresVsOptCpu.timings'
 # see below for definition of output format
 def doTimingsCeresVsOptCpu(homedir):
+    #TODO do timings only for whatever backend works best in opt.
+    #TODO need to define arglists for each example and materialization-strategy and problem-size
     iterArgsOpt = {}
     iterArgsCeres = {}
 
@@ -35,8 +37,8 @@ def doTimingsCeresVsOptCpu(homedir):
 
     # iterArgsCeresLin =                 ["--oIterations", "1", "--nIterations", "1", "--lIterations", "500", "--useCeres", "--useOpt", "false"]
     # iterArgsCeresNew =                 ["--oIterations", "1", "--nIterations", "100", "--lIterations", "2", "--useCeres", "--useOpt", "false"]
-    iterArgsCeresLin =                 ["--oIterations", "1", "--nIterations", "1", "--lIterations", "50", "--useCeres", "--useOpt", "false"]
-    iterArgsCeresNew =                 ["--oIterations", "1", "--nIterations", "10", "--lIterations", "2", "--useCeres", "--useOpt", "false"]
+    iterArgsCeresLin =                 ["--oIterations", "1", "--nIterations", "1", "--lIterations", "500", "--useCeres", "--useOpt", "false"]
+    iterArgsCeresNew =                 ["--oIterations", "1", "--nIterations", "100", "--lIterations", "2", "--useCeres", "--useOpt", "false"]
 
 
 
@@ -107,17 +109,19 @@ exp0002Sizes['poisson_image_editing'] = [1, 2, 3, 4]
 exp0002Sizes['robust_nonrigid_alignment'] = [1, 2, 3, 4]
 exp0002Sizes['shape_from_shading'] = [1, 2, 3, 4]
 exp0002Sizes['volumetric_mesh_deformation'] = [1, 2, 3, 4]
-def doTimingsExp000234(homedir, materialization):
+
+expNumbers = {'matfree' : {}, 'JTJ' : {}, 'fusedJTJ' : {}}
+expNumbers['matfree']['backend_cpu'] = 2
+expNumbers['JTJ']['backend_cpu'] = 3
+expNumbers['fusedJTJ']['backend_cpu'] = 4
+
+expNumbers['matfree']['backend_cpu_mt'] = 6
+expNumbers['JTJ']['backend_cpu_mt'] = 7
+expNumbers['fusedJTJ']['backend_cpu_mt'] = 8
+def doTimingsExp000234(homedir, materialization, backend, numthreads):
     sizes = exp0002Sizes[homedir]
 
-    expNumber = -1 # 'init'
-    if materialization == "matfree":
-        expNumber = 2
-    elif materialization == "JTJ":
-        expNumber = 3
-    elif materialization =="fusedJTJ":
-        expNumber = 4
-    else:
+    if materialization not in ['matfree', 'JTJ', 'fusedJTJ']:
         errMsg = """
         doTimingsExp000234(): invalid materialization:
 
@@ -127,6 +131,19 @@ def doTimingsExp000234(homedir, materialization):
         """
         sys.exit(errMsg)
 
+    if backend not in ['backend_cpu', 'backend_cpu_mt', 'backend_cuda']:
+        errMsg = """
+        doTimingsExp000234(): invalid backend:
+
+        {0}
+
+        valid string-options are 'backend_cpu', 'backend_cpu_mt', 'backend_cuda'
+        """
+
+    # turn 'numthreads' into a string for later usage
+    numthreads = str(numthreads)
+
+    expNumber = expNumbers[materialization][backend]
 
     tests = []
 
@@ -144,6 +161,7 @@ def doTimingsExp000234(homedir, materialization):
         t_opt._printOutput = False
         t_opt._execCommand = "./" + homedir
         t_opt._args = ["--nIterations", "10", "--lIterations", "10"]
+        t_opt._args += ["--backend", backend, "--numthreads", numthreads]
 
         if materialization == "matfree":
             pass # this is default

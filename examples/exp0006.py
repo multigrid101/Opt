@@ -37,34 +37,34 @@ exParser.parse_args(len(sys.argv), sys.argv)
 
 if exParser._doTimeAll:
     for homedir in folders:
-        print("exp0002.py: performing simulations for {0}".format(homedir))
-        doTimingsExp000234(homedir, 'matfree', 'backend_cpu', 1)
+        print("exp0006.py: performing simulations for {0}".format(homedir))
+        doTimingsExp000234(homedir, 'matfree', 'backend_cpu_mt', 1)
 
 if exParser._doPlotAll:
     for homedir in folders:
-        print("exp0002.py: creating plot for {0}".format(homedir))
+        print("exp0006.py: creating plot for {0}".format(homedir))
 
         # first save the individual pdfplot
-        makePlotExp000234(homedir, 'matfree', 'backend_cpu')
+        makePlotExp000234(homedir, 'matfree', 'backend_cpu_mt')
 
     merger = PdfFileMerger()
     for homedir in folders:
         # then append it to the Merger
-        merger.append(open("{0}/timings/exp0002.pdf".format(homedir), "rb"))
-    merger.write("./timings/exp0002.pdf")
+        merger.append(open("{0}/timings/exp0006.pdf".format(homedir), "rb"))
+    merger.write("./timings/exp0006.pdf")
 
 
 if exParser._exampleName is not None:
     homedir = exParser._exampleName
 
-    print("exp0002.py: performing simulations for {0}".format(homedir))
-    doTimingsExp000234(exParser._exampleName, 'matfree', 'backend_cpu', 1)
+    print("exp0006.py: performing simulations for {0}".format(homedir))
+    doTimingsExp000234(exParser._exampleName, 'matfree', 'backend_cpu_mt', 1)
 
-    print("exp0002.py: creating plot for {0}".format(homedir))
-    makePlotExp000234(exParser._exampleName, 'matfree', 'backend_cpu')
+    print("exp0006.py: creating plot for {0}".format(homedir))
+    makePlotExp000234(exParser._exampleName, 'matfree', 'backend_cpu_mt')
 
     # re-do the file with the collected plots
     merger = PdfFileMerger()
     for homedir in folders:
-        merger.append(open("{0}/timings/exp0002.pdf".format(homedir), "rb"))
-    merger.write("./timings/exp0002.pdf")
+        merger.append(open("{0}/timings/exp0006.pdf".format(homedir), "rb"))
+    merger.write("./timings/exp0006.pdf")

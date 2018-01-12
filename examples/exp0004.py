@@ -2,6 +2,7 @@
 from myPlots import makePlotExp000234
 from myTimings import doTimingsExp000234
 from myArgParsers import experimentParser
+from PyPDF2 import PdfFileMerger
 import sys
 
 
@@ -37,18 +38,30 @@ exParser.parse_args(len(sys.argv), sys.argv)
 if exParser._doTimeAll:
     for homedir in folders:
         print("exp0004.py: performing simulations for {0}".format(homedir))
-        doTimingsExp000234(homedir, 'fusedJTJ')
+        doTimingsExp000234(homedir, 'fusedJTJ', 'backend_cpu', 1)
 
 if exParser._doPlotAll:
     for homedir in folders:
         print("exp0004.py: creating plot for {0}".format(homedir))
-        makePlotExp000234(homedir, 'fusedJTJ')
+        makePlotExp000234(homedir, 'fusedJTJ', 'backend_cpu')
+
+    merger = PdfFileMerger()
+    for homedir in folders:
+        # then append it to the Merger
+        merger.append(open("{0}/timings/exp0004.pdf".format(homedir), "rb"))
+    merger.write("./timings/exp0004.pdf")
 
 if exParser._exampleName is not None:
-        homedir = exParser._exampleName
+    homedir = exParser._exampleName
 
-        print("exp0004.py: performing simulations for {0}".format(homedir))
-        doTimingsExp000234(exParser._exampleName, 'fusedJTJ')
+    print("exp0004.py: performing simulations for {0}".format(homedir))
+    doTimingsExp000234(exParser._exampleName, 'fusedJTJ', 'backend_cpu', 1)
 
-        print("exp0004.py: creating plot for {0}".format(homedir))
-        makePlotExp000234(exParser._exampleName, 'fusedJTJ')
+    print("exp0004.py: creating plot for {0}".format(homedir))
+    makePlotExp000234(exParser._exampleName, 'fusedJTJ', 'backend_cpu')
+
+    # re-do the file with the collected plots
+    merger = PdfFileMerger()
+    for homedir in folders:
+        merger.append(open("{0}/timings/exp0004.pdf".format(homedir), "rb"))
+    merger.write("./timings/exp0004.pdf")
