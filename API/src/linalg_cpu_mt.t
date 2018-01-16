@@ -497,7 +497,228 @@ local terra computeAT(handle : &opaque, -- needed by cusparse lib TODO refactor
     end
   end
 end
-la.computeAT = computeAT
+
+
+
+-- multi-threaded version START
+-- TODO it should be possible (although difficult) to develop code-transformations
+-- similar to openmp to transform the serial implementation of this function
+-- into the parallel one
+local terra computeATMultiThread(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valAT : &float, rowPtrAT : &int, colIndAT : &int) -- valATA(out), rowATA(int), colATA(out)
+  -- the bounds arg provides the loop bounds for each thread s.th. thread k
+  -- loops from bounds[k] to bounds[k+1]
+  escape
+    -- 1) Define loop bounds
+    local function lowerbound(limitQuote, tid)
+      if tid <= numthreads-1 then
+        return `[tid] * ([limitQuote] / [numthreads])
+      else
+        error('\n\nERROR: lowerbound(): tid higher than number of threads\n\n')
+      end
+    end
+    local function upperbound(limitQuote, tid)
+      if tid < numthreads-1 then
+        return `([tid]+1) * ([limitQuote] / [numthreads])
+      elseif tid == numthreads-1 then
+        return `limitQuote
+      else
+        error('\n\nERROR: upperbound(): tid higher than number of threads\n\n')
+      end
+    end
+
+    -- 2) Define tasks (a task is a tuple ('void f(void* arg)', void* arg))
+    -- 2a) Define threadData (the struct that is passed to the worker-thread function)
+    local struct WorkerThreadData {
+      valA : &float,
+      rowPtrA : &int,
+      colIndA : &int,
+      valAT : &float,
+      rowPtrAT : &int,
+      colIndAT : &int,
+      nRowsA : int
+      nColsA : int
+      nRowsAT : int
+      nColsAT : int
+      nnzA : int
+      bounds : &int
+    }
+
+    -- 2b) define threadfunc()'s, i.e. the functions that are executed by each
+    --     worker-thread
+    local taskfuncs = {}
+    for tid = 0,numthreads-1 do
+      taskfuncs[tid] = terra(arg : &opaque)
+        -- unpack arg
+        var data = [&WorkerThreadData](arg)
+
+        var valA = data.valA
+        var rowPtrA = data.rowPtrA
+        var colIndA = data.colIndA
+
+        var valAT = data.valAT
+        var rowPtrAT = data.rowPtrAT
+        var colIndAT = data.colIndAT
+
+        var nRowsA = data.nRowsA
+        var nColsA = data.nColsA
+
+        var nRowsAT = data.nRowsAT
+        var nColsAT = data.nColsAT
+
+        var nnzA = data.nnzA
+
+        var bounds = data.bounds
+
+
+        -- TODO do some sanity-checking on bounds and use default if bounds
+        -- is nil or infeasible
+        var low : int, upp : int
+        if bounds == nil then
+          C.printf('WARNING: no bounds provided to computeAT(), switching to default bounds.\n')
+          low= [ lowerbound(`nRowsAT,tid) ]
+          upp= [ upperbound(`nRowsAT,tid) ]
+        else
+          low= bounds[ [tid] ]
+          upp= bounds[ [tid+1] ]
+        end
+
+        var nnzThisThread = 0
+
+        var start : C.timeval
+        var stop : C.timeval
+        var elapsed : double
+        C.gettimeofday(&start, nil)
+
+        var name = I.__itt_string_handle_create("loop")
+        var domain = I.__itt_domain_create("Main.Domain")
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
+
+        for riAT = low,upp do
+          var offsetThisRow = rowPtrAT[riAT]
+          var nnzThisRowAT = rowPtrAT[riAT+1] - rowPtrAT[riAT]
+
+          for k = 0,nnzThisRowAT do
+            var ciAT = colIndAT[offsetThisRow + k]
+
+            var valA = getEntry(ciAT, riAT, rowPtrA, colIndA, valA)
+
+            valAT[offsetThisRow+k] = valA
+          end
+        end
+
+        I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
+
+        -- VORLAGE VON MatVecProduct TODO remove this as soon as the function works
+        -- var offsetThisRowA = 0
+        -- for k = low, upp do
+        --   var offsetThisRowA = rowPtrA[k]
+        --   var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
+
+        --   var tmp : float = 0.0f
+        --   for l = 0,nnzThisRowA do
+        --     tmp = tmp + valInVec[colIndA[offsetThisRowA+l]] * valA[offsetThisRowA+l]
+        --     nnzThisThread = nnzThisThread + 1
+        --   end
+        --   valOutVec[k] = tmp
+        -- end
+
+        C.gettimeofday(&stop, nil)
+        elapsed = 1000*(stop.tv_sec - start.tv_sec)
+        elapsed = elapsed + (stop.tv_usec - start.tv_usec)/(double)(1e3)
+        -- C.printf("loop time %d was %f for %d nnz\n", tid, elapsed, nnzThisThread)
+
+        -- barrier worker-side
+        tp.theKernelFinishedByAllThreadsBarrier:signal()
+
+        -- return to infinit loop with the message that more work will follow,
+        -- i.e. that we wish to remain in the infinite loop
+        var moreWorkWillCome = true
+        return moreWorkWillCome
+      end
+      taskfuncs[tid]:setname('taskfunc_computeAT_' .. tostring(tid))
+      print(taskfuncs[tid])
+    end
+
+    -- 3) define the launcher-function that is run by the main-thread.
+    -- NOTE: This quote contains the whole body of the actual 'MatVecMult' function,
+    -- everything else is just metaprogramming
+    emit quote
+
+      -- reset outVec
+      C.memset( [&opaque](valAT), 0, nnzA * sizeof(float) )
+
+      -- C.printf('bla1\n')
+      -- a) ensure that all threads are alive
+      -- tp.ThreadsAliveBarrier:wait()
+      --> this is not done by GPULauncher, so we probably don't have to do it
+      --  here
+
+      -- a) prepare WorkerThreadData (i.e. load with stuff)
+      var theData : WorkerThreadData
+
+      theData.valA = valA
+      theData.rowPtrA = rowPtrA
+      theData.colIndA = colIndA
+
+      theData.valAT = valAT
+      theData.rowPtrAT = rowPtrAT
+      theData.colIndAT = colIndAT
+
+      theData.nRowsA = nResiduals
+      theData.nColsA = nUnknowns
+
+      theData.nRowsAT = nUnknowns
+      theData.nColsAT = nResiduals
+
+      theData.nnzA = nnzA
+
+      -- TODO introduce better load-balancing
+      theData.bounds = nil
+
+
+      -- b) define Tasks
+      var tasks : tp.Task_t[ numthreads ]
+      escape
+        for tid = 0,numthreads-1 do
+          emit quote
+            tasks[tid].taskfunction = [ taskfuncs[tid] ]
+            tasks[tid].arg = &theData
+          end
+        end
+      end
+
+      -- call initial lock on barrier
+      tp.theKernelFinishedByAllThreadsBarrier:initialLock()
+
+
+      -- c) put Tasks into taskQueue.
+      for tid = 0,[numthreads] do
+        tp.theTaskQueue:set(tid, tasks[tid])
+      end
+
+      -- d) barrier main-side
+      var name = I.__itt_string_handle_create("Launcher: wait for tasks to finish")
+      var domain = I.__itt_domain_create("Main.Domain")
+
+      I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
+      tp.theKernelFinishedByAllThreadsBarrier:wait()
+      tp.theKernelFinishedByAllThreadsBarrier:finalUnlock()
+
+      I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
+    end
+  end
+end
+-- print(computeATMultiThread)
+la.computeAT = computeATMultiThread
+-- la.computeAT = computeAT
 
 
 -- multi-threaded version START
@@ -507,6 +728,7 @@ la.computeAT = computeAT
 local function lowerbound(limitQuote, tid)
   return `[tid] * ([limitQuote] / [numthreads])
 end
+-- TODO can these two function be deleted?
 local function upperbound(limitQuote, tid)
   return `([tid]+1) * ([limitQuote] / [numthreads])
 end
@@ -586,6 +808,9 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
         var elapsed : double
         C.gettimeofday(&start, nil)
 
+        var name = I.__itt_string_handle_create("loop")
+        var domain = I.__itt_domain_create("Main.Domain")
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
 
         var offsetThisRowA = 0
         for k = low, upp do
@@ -600,6 +825,8 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
           valOutVec[k] = tmp
         end
         -- C.printf(['Thread ' .. tostring(tid) .. ' did %d nnz\n'], nnzThisThread)
+
+        I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
 
         C.gettimeofday(&stop, nil)
         elapsed = 1000*(stop.tv_sec - start.tv_sec)
@@ -662,9 +889,16 @@ local terra applyAtoVectorMultiThread(handle : &opaque, -- needed by cusparse li
         tp.theTaskQueue:set(tid, tasks[tid])
       end
 
+      var name = I.__itt_string_handle_create("Launcher: wait for tasks to finish")
+      var domain = I.__itt_domain_create("Main.Domain")
+
+      I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
       -- d) barrier main-side
       tp.theKernelFinishedByAllThreadsBarrier:wait()
       tp.theKernelFinishedByAllThreadsBarrier:finalUnlock()
+
+      I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
     end
   end
 end
