@@ -184,6 +184,9 @@ end
 la.printNnzPatternA = printNnzPatternA
 
 
+-- TODO multi-threading of the nnz-function is more difficult because
+-- of the race-conditions, we need to change the algorithm before we can
+-- do multi-threading.
 local terra computeNnzPatternAT(handle : &opaque, -- needed by cusparse lib TODO refactor
                                 descr : &opaque, -- needed by cusparse lib TODO refactor
                                 nColsA : int, -- if A is nxm, then this is m
@@ -210,6 +213,7 @@ local terra computeNnzPatternAT(handle : &opaque, -- needed by cusparse lib TODO
   C.memset([&opaque](rowPtrAT), 0, (nRowsAT+1)*sizeof(int))
 
   -- a) traverse A and if A[i,j] != 0, we increment numNnzEntriesPerRowAT[j]
+  --> Race-condition, can't be multithreaded
   for riA = 0,nRowsA do
     var nnzThisRowA = rowPtrA[riA+1] - rowPtrA[riA]
     var ptrTo_ThisRowInColIndA = &(colIndA[rowPtrA[riA]])
@@ -222,6 +226,7 @@ local terra computeNnzPatternAT(handle : &opaque, -- needed by cusparse lib TODO
 
   -- b) Now we know how many entries each row in AT has, we use this to construct
   --     rowPtrAT
+  --> Cheap, don't multithread
   rowPtrAT[0] = 0
   for riAT = 0,nRowsAT do
     var nextOffset : int -- offset of next row
@@ -240,6 +245,7 @@ local terra computeNnzPatternAT(handle : &opaque, -- needed by cusparse lib TODO
 
   -- we need a helper array that tells us the next free space for each row
   -- in colIndAT
+  --> race-condition, can't multithread
   var nextFreeSpace = [&int](C.malloc( nnzAT*sizeof(int) ))
   C.memset([&opaque](nextFreeSpace), 0, nRowsAT*sizeof(int))
 
@@ -289,6 +295,8 @@ local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TOD
   var rowPtrAT = [&int](C.malloc( (nRowsAT+1)*sizeof(int) ))
   var colIndAT = [&int](C.malloc( nnzAT*sizeof(int) ))
 
+  -- Use serial version because threadpool doesn't support nested multi-threading
+  -- yet. Shouldn't matter compared to overall cost anyway.
   computeNnzPatternAT(nil, nil, nColsA, nRowsA, nnzA,
                       rowPtrA, colIndA,
                       rowPtrAT, colIndAT)
@@ -304,12 +312,14 @@ local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TOD
    -- track of which column inds we have already seen while merging the colinds
    -- of rows of A.
 
+   -- TODO each thread needs its own copy of "seen" due to possible race-conditions
    var seen = [&bool](C.malloc( nRowsATA*sizeof(uint8) ))
    C.memset([&opaque](seen), 0, nRowsATA*sizeof(bool))
    var uniquelist : IntList
    uniquelist:init()
 
   -- 2a) first traversal to compute rowPtrATA and get nnzATA
+  -- TODO This loop is inherently sequential, see update of rowPtrATA at end.
   rowPtrATA[0] = 0
   for riATA = 0,nRowsATA do -- compute a row of ATA
     var riAT = riATA
@@ -348,6 +358,8 @@ local terra computeNnzPatternATA(handle : &opaque, -- needed by cusparse lib TOD
   -- 2b) allocate colIndATA
   -- Note that this memory isn't freed here because it's actually a return arg
   -- of this function
+  -- TODO make sure that each thread has its own copy of "seen".
+  -- TODO it should be possible to parallize this loop.
   var colIndATA = [&int](C.malloc( nnzATA * sizeof(int) ))
   C.memset([&opaque](colIndATA), -1, nnzATA * sizeof(int))
 
@@ -402,7 +414,7 @@ end
 la.computeNnzPatternATA = computeNnzPatternATA
 
 
-local terra computeATA(handle : &opaque, -- needed by cusparse lib TODO refactor
+local terra computeATASerial(handle : &opaque, -- needed by cusparse lib TODO refactor
                                 descr : &opaque, -- needed by cusparse lib TODO refactor
                                 nUnknowns : int, -- if A is nxm, then this is m
                                 nResiduals : int, -- if A is nxm, then this is n
@@ -460,10 +472,264 @@ local terra computeATA(handle : &opaque, -- needed by cusparse lib TODO refactor
     end
   end
 end
-la.computeATA = computeATA
+
+-- TODO all the multi-threaded functions are more-or-less the same,
+-- apart from loop-body and the arguments list (and a few details), so
+-- it should easily be possible to meta-program the creation of a multi-threaded
+-- function from its single-threaded version.
+
+-- multi-threaded version START
+-- TODO it should be possible (although difficult) to develop code-transformations
+-- similar to openmp to transform the serial implementation of this function
+-- into the parallel one
+local terra computeATAMultiThread(handle : &opaque, -- needed by cusparse lib TODO refactor
+                                descr : &opaque, -- needed by cusparse lib TODO refactor
+                                nUnknowns : int, -- if A is nxm, then this is m
+                                nResiduals : int, -- if A is nxm, then this is n
+                                nnzA : int,
+                                nnzATA : int,
+                                valA : &float, rowPtrA : &int, colIndA : &int,
+                                valAT : &float, rowPtrAT : &int, colIndAT : &int,
+                                valATA : &float, rowPtrATA : &int, colIndATA : &int) -- valATA(out)
+  -- the bounds arg provides the loop bounds for each thread s.th. thread k
+  -- loops from bounds[k] to bounds[k+1]
+  escape
+    -- 1) Define loop bounds
+    local function lowerbound(limitQuote, tid)
+      if tid <= numthreads-1 then
+        return `[tid] * ([limitQuote] / [numthreads])
+      else
+        error('\n\nERROR: lowerbound(): tid higher than number of threads\n\n')
+      end
+    end
+    local function upperbound(limitQuote, tid)
+      if tid < numthreads-1 then
+        return `([tid]+1) * ([limitQuote] / [numthreads])
+      elseif tid == numthreads-1 then
+        return `limitQuote
+      else
+        error('\n\nERROR: upperbound(): tid higher than number of threads\n\n')
+      end
+    end
+
+    -- 2) Define tasks (a task is a tuple ('void f(void* arg)', void* arg))
+    -- 2a) Define threadData (the struct that is passed to the worker-thread function)
+    local struct WorkerThreadData {
+      valA : &float,
+      rowPtrA : &int,
+      colIndA : &int,
+      valAT : &float,
+      rowPtrAT : &int,
+      colIndAT : &int,
+      valATA : &float,
+      rowPtrATA : &int,
+      colIndATA : &int,
+      nRowsA : int
+      nColsA : int
+      nnzA : int
+      nnzATA : int
+      bounds : &int
+    }
+
+    -- 2b) define threadfunc()'s, i.e. the functions that are executed by each
+    --     worker-thread
+    local taskfuncs = {}
+    for tid = 0,numthreads-1 do
+      taskfuncs[tid] = terra(arg : &opaque)
+        -- unpack arg
+        var data = [&WorkerThreadData](arg)
+
+        var valA = data.valA
+        var rowPtrA = data.rowPtrA
+        var colIndA = data.colIndA
+
+        var valAT = data.valAT
+        var rowPtrAT = data.rowPtrAT
+        var colIndAT = data.colIndAT
+
+        var valATA = data.valATA
+        var rowPtrATA = data.rowPtrATA
+        var colIndATA = data.colIndATA
+
+        var nRowsA = data.nRowsA
+        var nColsA = data.nColsA
+
+        var nRowsATA = data.nColsA
+        var nColsATA = data.nColsA
+
+        var nnzA = data.nnzA
+        var nnzATA = data.nnzATA
+
+        var bounds = data.bounds
 
 
-local terra computeAT(handle : &opaque, -- needed by cusparse lib TODO refactor
+        -- TODO do some sanity-checking on bounds and use default if bounds
+        -- is nil or infeasible
+        var low : int, upp : int
+        if bounds == nil then
+          C.printf('WARNING: no bounds provided to computeATA(), switching to default bounds.\n')
+          low= [ lowerbound(`nRowsATA,tid) ]
+          upp= [ upperbound(`nRowsATA,tid) ]
+        else
+          low= bounds[ [tid] ]
+          upp= bounds[ [tid+1] ]
+        end
+
+        var nnzThisThread = 0
+
+        var start : C.timeval
+        var stop : C.timeval
+        var elapsed : double
+        C.gettimeofday(&start, nil)
+
+        var name = I.__itt_string_handle_create("loop")
+        var domain = I.__itt_domain_create("Main.Domain")
+        I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
+
+        for riATA = low,upp do -- compute each row of ATA separately
+          -- C.printf('doing row %d of ATA:\n', riATA)
+          var riAT = riATA
+          var offsetThisRowAT = rowPtrAT[riATA]
+          var offsetThisRowATA = rowPtrATA[riATA]
+          var nnzThisRowAT = rowPtrAT[riAT+1] - rowPtrAT[riAT]
+          var nnzThisRowATA = rowPtrATA[riATA+1] - rowPtrATA[riATA]
+
+          -- loop through all nnz entries in current row of AT
+          for k = 0,nnzThisRowAT do
+            var tmpval = valAT[offsetThisRowAT + k]
+            var ciAT = colIndAT[offsetThisRowAT + k]
+            var offsetThisRowA = rowPtrA[ciAT]
+            var ciA = 0
+            var nnzThisRowA = rowPtrA[ciAT+1] - rowPtrA[ciAT]
+            var nnzFoundInA = 0
+
+            -- do sparse (TODO try dense) axpy for each row in A that corresponds to
+            -- a nnz in th current row of AT
+            for l = 0,nnzThisRowATA do
+              if nnzFoundInA < nnzThisRowA then -- check to avoid segfault in next line
+                -- C.printf('offsetThisRATA: %d/%d and offsetThisRowA %d/%d\n', offsetThisRowATA, l, offsetThisRowA,ciA)
+                if colIndATA[offsetThisRowATA + l] == colIndA[offsetThisRowA + ciA] then
+                  valATA[offsetThisRowATA + l] = valATA[offsetThisRowATA + l] 
+                                               + tmpval*valA[offsetThisRowA + ciA]
+                  ciA = ciA + 1
+                  nnzFoundInA = nnzFoundInA + 1
+                end
+              end
+            end
+          end
+        end
+
+        I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
+
+        -- VORLAGE VON MatVecProduct TODO remove this as soon as the function works
+        -- var offsetThisRowA = 0
+        -- for k = low, upp do
+        --   var offsetThisRowA = rowPtrA[k]
+        --   var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
+
+        --   var tmp : float = 0.0f
+        --   for l = 0,nnzThisRowA do
+        --     tmp = tmp + valInVec[colIndA[offsetThisRowA+l]] * valA[offsetThisRowA+l]
+        --     nnzThisThread = nnzThisThread + 1
+        --   end
+        --   valOutVec[k] = tmp
+        -- end
+
+        C.gettimeofday(&stop, nil)
+        elapsed = 1000*(stop.tv_sec - start.tv_sec)
+        elapsed = elapsed + (stop.tv_usec - start.tv_usec)/(double)(1e3)
+        -- C.printf("loop time %d was %f for %d nnz\n", tid, elapsed, nnzThisThread)
+
+        -- barrier worker-side
+        tp.theKernelFinishedByAllThreadsBarrier:signal()
+
+        -- return to infinit loop with the message that more work will follow,
+        -- i.e. that we wish to remain in the infinite loop
+        var moreWorkWillCome = true
+        return moreWorkWillCome
+      end
+      taskfuncs[tid]:setname('taskfunc_computeATA_' .. tostring(tid))
+      print(taskfuncs[tid])
+    end
+
+    -- 3) define the launcher-function that is run by the main-thread.
+    -- NOTE: This quote contains the whole body of the actual 'MatVecMult' function,
+    -- everything else is just metaprogramming
+    emit quote
+
+      -- reset outVec
+      C.memset( [&opaque](valATA), 0, nnzATA * sizeof(float) )
+
+      -- C.printf('bla1\n')
+      -- a) ensure that all threads are alive
+      -- tp.ThreadsAliveBarrier:wait()
+      --> this is not done by GPULauncher, so we probably don't have to do it
+      --  here
+
+      -- a) prepare WorkerThreadData (i.e. load with stuff)
+      var theData : WorkerThreadData
+
+      theData.valA = valA
+      theData.rowPtrA = rowPtrA
+      theData.colIndA = colIndA
+
+      theData.valAT = valAT
+      theData.rowPtrAT = rowPtrAT
+      theData.colIndAT = colIndAT
+
+      theData.valATA = valATA
+      theData.rowPtrATA = rowPtrATA
+      theData.colIndATA = colIndATA
+
+      theData.nRowsA = nResiduals
+      theData.nColsA = nUnknowns
+
+      theData.nnzA = nnzA
+      theData.nnzATA = nnzATA
+
+      -- TODO introduce better load-balancing
+      theData.bounds = nil
+
+
+      -- b) define Tasks
+      var tasks : tp.Task_t[ numthreads ]
+      escape
+        for tid = 0,numthreads-1 do
+          emit quote
+            tasks[tid].taskfunction = [ taskfuncs[tid] ]
+            tasks[tid].arg = &theData
+          end
+        end
+      end
+
+      -- call initial lock on barrier
+      tp.theKernelFinishedByAllThreadsBarrier:initialLock()
+
+
+      -- c) put Tasks into taskQueue.
+      for tid = 0,[numthreads] do
+        tp.theTaskQueue:set(tid, tasks[tid])
+      end
+
+      -- d) barrier main-side
+      var name = I.__itt_string_handle_create("Launcher: wait for tasks to finish")
+      var domain = I.__itt_domain_create("Main.Domain")
+
+      I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name)
+
+      tp.theKernelFinishedByAllThreadsBarrier:wait()
+      tp.theKernelFinishedByAllThreadsBarrier:finalUnlock()
+
+      I.__itt_task_end(domain, I.__itt_null, I.__itt_null, name)
+    end
+  end
+end
+-- la.computeATA = computeATASerial
+la.computeATA = computeATAMultiThread
+
+
+local terra computeATSerial(handle : &opaque, -- needed by cusparse lib TODO refactor
                                 descr : &opaque, -- needed by cusparse lib TODO refactor
                                 nUnknowns : int, -- if A is nxm, then this is m
                                 nResiduals : int, -- if A is nxm, then this is n
@@ -718,7 +984,7 @@ local terra computeATMultiThread(handle : &opaque, -- needed by cusparse lib TOD
 end
 -- print(computeATMultiThread)
 la.computeAT = computeATMultiThread
--- la.computeAT = computeAT
+-- la.computeAT = computeATSerial
 
 
 -- multi-threaded version START
@@ -931,6 +1197,7 @@ end
 -- la.applyAtoVector = applyAtoVectorSerial
 la.applyAtoVector = applyAtoVectorMultiThread
 
+-- computes bounds for use in 'applyAtoVectorMultiThread'
 local terra computeBoundsA(bounds : &int, rowPtrA : &int,
                            nnzA : int, numRowsA : int)
 -- TODO need to cover all corner-cases in this function
