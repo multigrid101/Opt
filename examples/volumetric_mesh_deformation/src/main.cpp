@@ -66,15 +66,18 @@ int main(int argc, const char * argv[])
     solver.solveAll();
     /* solver_cpu.solveAll(); */
 
-    SimpleMesh* res = solver.result();
-    solver.saveGraphResults();
+    auto noOutput = argparser.get<bool>("noOutput");
+    if (!noOutput) {
+      SimpleMesh* res = solver.result();
+      solver.saveGraphResults();
 
-	if (!OpenMesh::IO::write_mesh(*res, "out.ply"))
-	{
-	        std::cerr << "Error -> File: " << __FILE__ << " Line: " << __LINE__ << " Function: " << __FUNCTION__ << std::endl;
-		std::cout << "out.off" << std::endl;
-		exit(1);
-	}
+          if (!OpenMesh::IO::write_mesh(*res, "out.ply"))
+          {
+                  std::cerr << "Error -> File: " << __FILE__ << " Line: " << __LINE__ << " Function: " << __FUNCTION__ << std::endl;
+                  std::cout << "out.off" << std::endl;
+                  exit(1);
+          }
+    }
 
 	return 0;
 }
