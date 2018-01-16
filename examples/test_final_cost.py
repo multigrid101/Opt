@@ -1,6 +1,8 @@
 from Test import ExampleRun
 import re
 import pdb
+import time
+from joblib import Parallel, delayed
 
 # Runs all examples to see if their costs are correct. For this purpose, we
 # use very small problem sizes and a very small number of iterations (usually just 1).
@@ -80,13 +82,16 @@ strides['volumetric_mesh_deformation'] = -1
 # -----------------------------------------------------------------------------
 
 backends = ["backend_cuda", "backend_cpu", "backend_cpu_mt"]
+# backends = ["backend_cpu"]
 # backends = ["backend_cpu", "backend_cpu_mt"]
 numthreads = ["1", "2", "4", "8"]
+# numthreads = ["1"]
 # numthreads = ["1", "2", "4", "8", "16", "32"]
 # numthreads = ["4", "8"]
 matargs = [["--useMaterializedJTJ", "false", "useFusedJTJ", "false"],
            ["--useMaterializedJTJ", "true", "useFusedJTJ", "false"],
            ["--useMaterializedJTJ", "true", "useFusedJTJ", "true"]]
+# matargs = [["--useMaterializedJTJ", "false", "useFusedJTJ", "false"]]
             
 
 
@@ -98,6 +103,7 @@ def getFinalCostFromRawOutput(output):
     return finalCost
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
+# TODO do multithreading for this file, the tests can be run independently of each other
 # TEST CLASS
 class Test:
     def __init__(self):
@@ -132,8 +138,14 @@ class Test:
 
 #------------------------------------------------------------------------------
 # RUN EVERYTHING
-tests = []
-for homedir in folders:
+# tests = []
+print "STARTING TEST-RUNS"
+starttime = time.time()
+
+
+# for homedir in folders:
+def run_example(homedir):
+    tests = []
     print ""
     print 'begin ' + homedir
     for backend in backends:
@@ -166,7 +178,7 @@ for homedir in folders:
 
                 # get final cost from raw text output
                 finalCost = float(getFinalCostFromRawOutput(t._output))
-                print(finalCost)
+                print("FINAL COST IS {0}".format(finalCost))
 
                 # compare against reference cost and throw error if necessary
                 test = Test()
@@ -174,15 +186,35 @@ for homedir in folders:
                 test._actual = finalCost
                 test._infoString = str(t.getCallCommand())
                 test.compare()
+
                 tests.append(test)
+
+    return tests
 
     print 'end ' + homedir
     print ""
 
+# run them in serial
+# [run_example(homedir) for homedir in folders]
+
+# run them in parallel
+# TIMINGS:
+# 1 thread: 520 s
+# 4 thread: 180 s (speedup 2.8)
+# 8 thread: 160 s (speedup 3.2)
+listOfTestLists = Parallel(n_jobs=8)(delayed(run_example)(homedir) for homedir in folders)
+# listOfTestLists = Parallel(n_jobs=1)(delayed(run_example)(homedir) for homedir in folders)
+
+stoptime = time.time()
+elapsed = stoptime-starttime
 
 # print summary
-for t in tests:
-    t.printInfo()
+for theList in listOfTestLists:
+    for t in theList:
+        t.printInfo()
+
+
+print "TOTAL TEST-TIME: {0} seconds".format(elapsed)
 
 
 
