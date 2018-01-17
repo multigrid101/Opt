@@ -282,10 +282,56 @@ return function(problemSpec)
 
 
     terra PlanData:printAllocationInfo()
+    -- TODO this calculates requirements for the single-threaded version, but
+    -- this isn't really a big deal at the moment because for the multi-threaded
+    -- version memory-space is not a bottleneck.
       C.printf('Layout of PlanData:\n')
       C.printf("parameters uses %lu bytes\n", self.parameters:totalbytes())
       C.printf("12 tmp vars of TUnknownType use %lu bytes each\n", self.delta:totalbytes())
-      C.printf("total usage of PlanData: %lu bytes\n", self.parameters:totalbytes() + 12*self.delta:totalbytes())
+
+      --- calculate memory requirements of the matrices:
+      -- TODO adjust data-type (e.g. douple instead of float) if necessary
+      var valJSize : int64 = 0
+      var rowJSize : int64 = 0
+      var colJSize : int64 = 0
+
+      var valJTJSize : int64 = 0
+      var rowJTJSize : int64 = 0
+      var colJTJSize : int64 = 0
+
+      if initialization_parameters.use_materialized_jacobian == true then
+        valJSize = ([nnzExp])*sizeof(float)
+        rowJSize = ([nResidualsExp])*sizeof(int)
+        colJSize = ([nnzExp])*sizeof(int)
+
+        if initialization_parameters.use_fused_jtj == true then
+          valJTJSize = self.JTJ_nnz*sizeof(float)
+          rowJTJSize = ([nUnknowns])*sizeof(int)
+          colJTJSize = self.JTJ_nnz*sizeof(int)
+        end
+
+      end
+
+
+      C.printf("valJ      needs %d bytes\n", valJSize)
+      C.printf("rowPtrJ   needs %d bytes\n", rowJSize)
+      C.printf("colIndJ   needs %d bytes\n", colJSize)
+
+      C.printf("valJT     needs %d bytes\n", valJSize)
+      C.printf("rowPtrJT  needs %d bytes\n", rowJSize)
+      C.printf("colIndJT  needs %d bytes\n", colJSize)
+
+      C.printf("valJTJ    needs %d bytes\n", valJTJSize)
+      C.printf("rowPtrJTJ needs %d bytes\n", rowJTJSize)
+      C.printf("colIndJTJ needs %d bytes\n", colJTJSize)
+
+      var total = self.parameters:totalbytes() +
+                 12* self.delta:totalbytes() +
+                 valJSize + rowJSize + colJSize +
+                 valJSize + rowJSize + colJSize + -- for JT
+                 valJTJSize + rowJTJSize + colJTJSize
+
+      C.printf("total usage of PlanData: %lu bytes\n", total)
     end
 
     -- for k,v in pairs(CUsp) do print(k,v) end
@@ -2020,6 +2066,8 @@ return function(problemSpec)
                     end
 
                 cusparseOuter(pd) -- does nothing if use_materialized_jacobian == false
+                pd:printAllocationInfo() -- need to do this here because otherwise, JTJ_nnz is not known
+                C.exit(0)
 
                 for lIter = 0, pd.solverparameters.lIterations do				
                     -- C.printf("\ndoing a linear iteration %d\n", lIter)
@@ -2391,8 +2439,6 @@ return function(problemSpec)
 
             C.printf("allocating %d bytes for each TUnknownType variable\n", pd.p:totalbytes())
             C.printf("allocating %d bytes for the Parameters variable\n", pd.parameters:totalbytes())
-            pd.parameters:printAllocationInfo()
-            pd:printAllocationInfo()
 
             initializeSolverParameters(&pd.solverparameters)
             
