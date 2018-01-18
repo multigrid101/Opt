@@ -3,9 +3,6 @@
 #include "../../shared/ArgParser.h"
 
 int main(int argc, const char * argv[]) {
-	std::string inputImage0 = "../data/poisson0.png";
-	std::string inputImage1 = "../data/poisson1.png";
-	std::string inputImageMask = "../data/poisson_mask.png";
     /* if (argc > 1) { */
     /*     assert(argc > 3); */
     /*     inputImage0 = argv[1]; */
@@ -14,6 +11,24 @@ int main(int argc, const char * argv[]) {
     /* } */
         ArgParser argparser;
         argparser.parse(argc, argv);
+
+        int filenum = argparser.get<int>("file");
+
+	std::string inputImage0;
+	std::string inputImage1;
+	std::string inputImageMask;
+
+        if (filenum == 1) {
+          inputImage0 = "../data/poisson0.png";
+          inputImage1 = "../data/poisson1.png";
+          inputImageMask = "../data/poisson_mask.png";
+        }
+        else if (filenum == 2) {
+          inputImage0 = "../data/poisson0_large.png";
+          inputImage1 = "../data/poisson1_large.png";
+          inputImageMask = "../data/poisson_mask_large.png";
+        }
+
 
 
 	const unsigned int offsetX = 0;

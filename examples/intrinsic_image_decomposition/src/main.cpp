@@ -6,12 +6,20 @@
 
 int main(int argc, const char * argv[])
 {
-    std::string filename = "../data/ye_high2.png"; //original
     /* if (argc > 1) { */
     /*     filename = argv[1]; */
     /* } */
     ArgParser argparser;
     argparser.parse(argc, argv);
+
+
+    int filenum = argparser.get<int>("file");
+    std::string filename;
+    if (filenum == 1) {
+      filename = "../data/ye_high2.png"; //original
+    } else if (filenum == 2) {
+      filename = "../data/ye_high2_large.png";
+    }
 
     int stride = argparser.get<int>("stride");
     printf("stride is %d\n", stride);

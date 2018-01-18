@@ -110,9 +110,8 @@ int main(int argc, const char * argv[]) {
     /*     } */
     /* } */
 
-    // Must have a mask and constraints file in the same directory as the input image
-    std::string maskFilename = filename.substr(0, filename.size() - 4) + "_mask.png";
-    std::string constraintsFilename = filename.substr(0, filename.size() - 3) + "constraints";
+
+
     std::vector<std::vector<int>> constraints;
     loadConstraints(constraints, constraintsFilename);
 

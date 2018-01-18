@@ -25,9 +25,6 @@ void renderFlowVecotors(ColorImageR8G8B8A8& image, const BaseImage<float2>& flow
 
 int main(int argc, const char * argv[]) {
 
-    std::string srcFile = "../data/dogdance0.png";
-    std::string tarFile = "../data/dogdance1.png";
-
     ArgParser argparser;
     argparser.parse(argc, argv);
 
@@ -36,6 +33,20 @@ int main(int argc, const char * argv[]) {
     /*     srcFile = argv[1]; */
     /*     tarFile = argv[2]; */
     /* } */
+
+
+    std::string srcFile;
+    std::string tarFile;
+    int filenum = argparser.get<int>("file");
+
+    if (filenum == 1) {
+      srcFile = "../data/dogdance0.png";
+      tarFile = "../data/dogdance1.png";
+    }
+    else if (filenum == 2) {
+      srcFile = "../data/dogdance0_large.png";
+      tarFile = "../data/dogdance1_large.png";
+    }
 
 	ColorImageR8G8B8A8 imageSrc_ = LodePNG::load(srcFile);
 	ColorImageR8G8B8A8 imageTar = LodePNG::load(tarFile);
