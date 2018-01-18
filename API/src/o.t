@@ -1226,6 +1226,7 @@ end
 
 -- TODO move to ProblemSpec stuff
 -- TODO who is using this??? grep doesn't find anything --> used e.g. in ProblemSpecAD:Image(...)
+-- and ProblemSpec:Image()
 function ProblemSpec:ImageType(typ,ispace)
     local scalartype,channelcount = tovalidimagetype(typ,"expected a number or an array of numbers")
     assert(scalartype,"expected a number or an array of numbers")
@@ -1592,13 +1593,39 @@ function ProblemSpecAD:Image(name,typ,dims,idx,isunknown)
     print("START Inside ProblemSpecAD:Image(...)")
     print('\nisunknown:')
     print(isunknown)
+
+    -- It looks like this line applies when the call signature is
+    -- e.g. Image("X", {W,H}, 0, true), i.e. if the scalar-type is left out.
+    -- In that case we need to move e.g. {W,H} to the 'dims' variable and
+    -- 'typ' is set to a default-value (opt_float)
     if not terralib.types.istype(typ) then
         typ, dims, idx, isunknown = opt_float, typ, dims, idx --shift arguments left
     end
+
+    -- This line basically "casts" the last argument to a boolean e.g. in case
+    -- it is not provided
     isunknown = isunknown and true or false
+
+    -- turn list of dimensions into a lua-variable of type IndexSpace
     local ispace = toispace(dims)
+
+    -- validate 'idx' argument
     assert( (type(idx) == "number" and idx >= 0) or idx == "alloc", "expected an index number") -- alloc indicates that the solver should allocate the image as an intermediate
+
+    -- register image with self.P.parameters
+    -- TODO it seems that this line saves an ImageParam (= ImageType plus isUnknown-info)
+    -- in self.P.parameters. The return value below is an Image (which also contains
+    -- the ImageType as info. This is really confusing right now, it should be refactored
+    -- to something like:
+    --   self.P:registerImageParam(...) <-- name tells us what is being done.
+    --   r = Image(name, ...)
+    --   return r
+    -- TODO Also, the self.P:ImageType call below seems unecessary and confusing.
+    -- We should construct ImageType here and then pass it along to
+    -- whoever needs it.
     self.P:Image(name,typ,ispace,idx,isunknown)
+
+    -- prepare return-value to opt-file and save it in globally accessible dict.
     local r = Image(name,self.P:ImageType(typ,ispace),not util.isvectortype(typ),isunknown and A.UnknownLocation or A.StateLocation)
     self.nametoimage[name] = r
     print("END Inside ProblemSpecAD:Image(...)")
