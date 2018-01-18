@@ -615,7 +615,72 @@ local terra applyAtoVector(handle : &opaque, -- needed by cusparse lib TODO refa
         elapsed = elapsed + (stop.tv_usec - start.tv_usec)/(double)(1e3)
         C.printf("loop time was %f\n", elapsed)
 end
-la.applyAtoVector = applyAtoVector
+
+-- optimized to exploit symmetry. Naive optimizations does not seems to work
+-- In theory, we avoid loadint Aji if we already loaded Aij but in practice,
+-- there are only few nnz per row so due to cachelines, we end up loading
+-- everything anyway and furthermore have to do extra computations (if-stmts)
+-- It seems that the matrix-format needs to be changed for symmetric matrices,
+-- i.e. the extra values have to be "squeezed out".
+local terra applyAtoVectorSym(handle : &opaque, -- needed by cusparse lib TODO refactor
+                           descr : &opaque, -- needed by cusparse lib TODO refactor
+                           nColsA : int, -- if A is nxm, then this is m
+                           nRowsA : int, -- if A is nxm, then this is n
+                           nnzA : int,
+                           valA : &float, rowPtrA : &int, colIndA : &int,
+                           valInVec : &float, valOutVec : &float,
+                           bounds : &int) -- valInVec(in), valOutVec(out)
+-- performs 'valOutVec <- A*valInVec'
+-- bounds arg is ignored in this backend
+
+  -- reset outVec
+  var name_malloc = I.__itt_string_handle_create("malloc/memset")
+  var domain = I.__itt_domain_create("Main.Domain")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_malloc)
+
+  C.memset([&opaque](valOutVec), 0, nRowsA * sizeof(float))
+
+  I.__itt_task_end(domain)
+
+        var start : C.timeval
+        var stop : C.timeval
+        var elapsed : double
+        C.gettimeofday(&start, nil)
+
+  var name_compute = I.__itt_string_handle_create("compute vals")
+  I.__itt_task_begin(domain, I.__itt_null, I.__itt_null, name_compute)
+
+  for k = 0,nRowsA do
+    var offsetThisRowA = rowPtrA[k]
+    var nnzThisRowA = rowPtrA[k+1] - rowPtrA[k]
+
+    var tmp : float = 0.0f
+    for l = 0,nnzThisRowA do
+      -- only update if we are in the upper-right half of the matrix (col>row)
+      -- also update for lower-half via scatter.
+      var colIndA = colIndA[offsetThisRowA+l]
+      if colIndA > k then
+        var valA = valA[offsetThisRowA+l]
+        tmp = tmp + valInVec[colIndA] * valA
+        valOutVec[colIndA] = valOutVec[colIndA] + valInVec[k]*valA
+      else if colIndA == k then -- diagonal
+        var valA = valA[offsetThisRowA+l]
+        tmp = tmp + valInVec[colIndA] * valA
+      end
+      end
+    end
+    valOutVec[k] = tmp
+  end
+
+  I.__itt_task_end(domain)
+
+        C.gettimeofday(&stop, nil)
+        elapsed = 1000*(stop.tv_sec - start.tv_sec)
+        elapsed = elapsed + (stop.tv_usec - start.tv_usec)/(double)(1e3)
+        C.printf("loop time was %f\n", elapsed)
+end
+-- la.applyAtoVector = applyAtoVector
+la.applyAtoVector = applyAtoVectorSym
 
 
 local terra initMatrixStuff(handlePtr : &opaque, descrPtr : &opaque)
