@@ -41,6 +41,7 @@ examples/**/*.pyc
 examples/**/*.txt
 examples/**/*.off
 examples/**/*.imagedump
+examples/**/*.plot
 
 # if there are terra files, they are just playground
 examples/**/*.t
