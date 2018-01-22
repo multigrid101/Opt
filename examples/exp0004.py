@@ -2,7 +2,9 @@
 from myPlots import makePlotExp000234
 from myTimings import doTimingsExp000234
 from myArgParsers import experimentParser
+import myHelpers as hlp
 from PyPDF2 import PdfFileMerger
+import matplotlib.pyplot as plt
 import sys
 
 
@@ -41,9 +43,25 @@ if exParser._doTimeAll:
         doTimingsExp000234(homedir, 'fusedJTJ', 'backend_cpu', 1)
 
 if exParser._doPlotAll:
+    finalfig, axarr = plt.subplots(4,2)
+    finalfig.set_size_inches(*hlp.paperSizes['A4'])
+    axarr = axarr.reshape(-1)
+    counter=0
     for homedir in folders:
         print("exp0004.py: creating plot for {0}".format(homedir))
+
+        # first save the individual pdfplot
         makePlotExp000234(homedir, 'fusedJTJ', 'backend_cpu')
+
+        makePlotExp000234(homedir, 'fusedJTJ', 'backend_cpu', axarr=axarr, index=counter)
+        counter += 1
+
+    finalfig.legend(ncol=5, loc='lower center',
+            fontsize=7, bbox_to_anchor=(0.5,0.02))
+    finalfig.suptitle('Opt-cpu fusedjtj', fontsize=15, y=0.92)
+    finalfig.savefig(open("./timings/exp0004_singlepage.pdf", "wb"),
+            bbox_inches='tight',
+            format='pdf')
 
     merger = PdfFileMerger()
     for homedir in folders:

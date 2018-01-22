@@ -9,12 +9,12 @@ validExampleNames = ["arap_mesh_deformation",
         "cotangent_mesh_smoothing",
         "embedded_mesh_deformation",
         "image_warping",
-        "intrincsic_image_decomposition",
+        "intrinsic_image_decomposition",
         "optical_flow",
         "poisson_image_editing",
         "robust_nonrigid_alignment",
         "shape_from_shading",
-        "volumentric_mesh_deformation"]
+        "volumetric_mesh_deformation"]
 
 class experimentParser:
     def __init__(self):

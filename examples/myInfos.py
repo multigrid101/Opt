@@ -216,4 +216,5 @@ strideFlags['intrinsic_image_decomposition'] = "--stride"
 strideFlags['optical_flow'] = "--stride"
 strideFlags['poisson_image_editing'] = "--stride"
 strideFlags['robust_nonrigid_alignment'] = "--numSubdivides"
+strideFlags['shape_from_shading'] = "--numSubdivides" # TODO
 strideFlags['volumetric_mesh_deformation'] = "--numSubdivides"

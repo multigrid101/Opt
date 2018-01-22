@@ -1,11 +1,12 @@
 # test 3-category scalability of opt-matfree w.r.t. problem-size
-from myPlots import makePlotExp000234
-from myTimings import doTimingsExp000234
+from myPlots import makePlotExp0013
+from myTimings import doTimingsExp0013
 from myArgParsers import experimentParser
-import myHelpers as hlp
 from PyPDF2 import PdfFileMerger
-import matplotlib.pyplot as plt
 import sys
+import matplotlib.pyplot as plt
+import myHelpers as hlp
+# import pickle as pk
 
 
 folders = []
@@ -37,10 +38,11 @@ exParser.parse_args(len(sys.argv), sys.argv)
 
 
 
+
 if exParser._doTimeAll:
     for homedir in folders:
-        print("exp0006.py: performing simulations for {0}".format(homedir))
-        doTimingsExp000234(homedir, 'matfree', 'backend_cpu_mt', 1)
+        print("exp0013.py: performing simulations for {0}".format(homedir))
+        doTimingsExp0013(homedir, 0)
 
 if exParser._doPlotAll:
     finalfig, axarr = plt.subplots(4,2, sharex=True)
@@ -48,36 +50,47 @@ if exParser._doPlotAll:
     axarr = axarr.reshape(-1)
     counter=0
     for homedir in folders:
-        print("exp0006.py: creating plot for {0}".format(homedir))
+        print("exp0013.py: creating plot for {0}".format(homedir))
 
         # first save the individual pdfplot
-        makePlotExp000234(homedir, 'matfree', 'backend_cpu')
+        makePlotExp0013(homedir, 13)
 
-        makePlotExp000234(homedir, 'matfree', 'backend_cpu', axarr=axarr, index=counter)
+        # add plot to single-page plot
+        makePlotExp0013(homedir, 13, fig=finalfig, axarr=axarr, index=counter)
         counter += 1
 
-    finalfig.savefig(open("./timings/exp0006_singlepage.pdf", "wb"),
+    # plt.show()
+    finalfig.legend(ncol=3, loc='lower center',
+            fontsize=7, bbox_to_anchor=(0.45,0.01))
+    finalfig.suptitle('Opt-mt(n) matrix-free strong scaling small size', fontsize=15, y=0.92)
+    finalfig.savefig(open("./timings/exp0013_singlepage.pdf", "wb"),
             bbox_inches='tight',
             format='pdf')
 
     merger = PdfFileMerger()
     for homedir in folders:
         # then append it to the Merger
-        merger.append(open("{0}/timings/exp0006.pdf".format(homedir), "rb"))
-    merger.write("./timings/exp0006.pdf")
+        merger.append(open("{0}/timings/exp0013.pdf".format(homedir), "rb"))
+    merger.write("./timings/exp0013.pdf")
+
+    # load all plots and merge them in a single-page pdf.
+    # axarr[1].plot([1,2,3,4])
+
+    # finalfig.show()
+    # plt.show()
 
 
 if exParser._exampleName is not None:
     homedir = exParser._exampleName
 
-    print("exp0006.py: performing simulations for {0}".format(homedir))
-    doTimingsExp000234(exParser._exampleName, 'matfree', 'backend_cpu_mt', 1)
+    print("exp0013.py: performing simulations for {0}".format(homedir))
+    doTimingsExp0013(exParser._exampleName, 0)
 
-    print("exp0006.py: creating plot for {0}".format(homedir))
-    makePlotExp000234(exParser._exampleName, 'matfree', 'backend_cpu_mt')
+    print("exp0013.py: creating plot for {0}".format(homedir))
+    makePlotExp0013(exParser._exampleName, 13)
 
     # re-do the file with the collected plots
     merger = PdfFileMerger()
     for homedir in folders:
-        merger.append(open("{0}/timings/exp0006.pdf".format(homedir), "rb"))
-    merger.write("./timings/exp0006.pdf")
+        merger.append(open("{0}/timings/exp0013.pdf".format(homedir), "rb"))
+    merger.write("./timings/exp0013.pdf")

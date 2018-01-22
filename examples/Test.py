@@ -1,3 +1,4 @@
+from __future__ import print_function
 import pdb
 
 import os
@@ -26,11 +27,11 @@ class ExampleRun:
         sp.Popen("make").communicate()
 
         callcommand = [self._execCommand] + self._args
-        print(callcommand)
+        print(*callcommand, sep=' ')
         process = sp.Popen(callcommand, stdout=sp.PIPE)
         self._output = process.communicate()[0]
         if self._printOutput == True:
-            print self._output
+            print(self._output)
 
         os.chdir("..")
 
@@ -49,7 +50,7 @@ class ExampleRun:
         #         print "final cost is OK"
 
     def printOutput(self):
-        print self._output
+        print(self._output)
 
     def getOutput(self):
         return self._output
@@ -65,7 +66,7 @@ class ExampleRun:
 
 
     def printInfoEnd(self):
-        print "simulation finished by testrunner"
+        print("simulation finished by testrunner")
         print("END Test")
         print("\n\n")
 

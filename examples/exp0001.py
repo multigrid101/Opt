@@ -1,7 +1,9 @@
 from myPlots import ceresVsOptCpuBar
 from myTimings import doTimingsCeresVsOptCpu
 from myArgParsers import experimentParser
+import myHelpers as hlp
 from PyPDF2 import PdfFileMerger
+import matplotlib.pyplot as plt
 import sys
 
 
@@ -28,9 +30,22 @@ if exParser._doTimeAll:
         doTimingsCeresVsOptCpu(homedir)
 
 if exParser._doPlotAll:
+    finalfig, axarr = plt.subplots(4,2, sharex=True)
+    finalfig.set_size_inches(*hlp.paperSizes['A4'])
+    axarr = axarr.reshape(-1)
+    counter=0
     for homedir in folders:
         print("exp0001.py: creating plot for {0}".format(homedir))
         ceresVsOptCpuBar(homedir)
+
+        ceresVsOptCpuBar(homedir, axarr=axarr, index=counter)
+        counter += 1
+
+    finalfig.show()
+
+    finalfig.savefig(open("./timings/exp0001_singlepage.pdf", "wb"),
+            bbox_inches='tight',
+            format='pdf')
 
     merger = PdfFileMerger()
     for homedir in folders:

@@ -43,8 +43,8 @@ if exParser._doTimeAll:
     for homedir in folders:
         print("exp0005.py: performing simulations for {0}".format(homedir))
         doTimingsExp000234(homedir, 'matfree')
-        doTimingsExp000234(homedir, 'matfree')
-        doTimingsExp000234(homedir, 'matfree')
+        doTimingsExp000234(homedir, 'JTJ')
+        doTimingsExp000234(homedir, 'fusedJTJ')
 
 if exParser._doPlotAll:
     print("exp0005.py: creating plot")
