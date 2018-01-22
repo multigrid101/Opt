@@ -163,6 +163,7 @@ for homedir in folders:
         t._args = ["--backend", backend,
             "--numthreads", "4"]
         t._args += iterArgs[homedir]
+        # t._args += ["--useMaterializedJTJ", "--useFusedJTJ"]
 
         t.run()
 
