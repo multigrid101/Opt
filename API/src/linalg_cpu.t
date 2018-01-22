@@ -679,8 +679,8 @@ local terra applyAtoVectorSym(handle : &opaque, -- needed by cusparse lib TODO r
         elapsed = elapsed + (stop.tv_usec - start.tv_usec)/(double)(1e3)
         C.printf("loop time was %f\n", elapsed)
 end
--- la.applyAtoVector = applyAtoVector
-la.applyAtoVector = applyAtoVectorSym
+la.applyAtoVector = applyAtoVector
+-- la.applyAtoVector = applyAtoVectorSym
 
 
 local terra initMatrixStuff(handlePtr : &opaque, descrPtr : &opaque)
